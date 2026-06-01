@@ -453,15 +453,18 @@ export function buildOrchestrationFailureMessage({ reason }) {
 
 export function parseReviewerVerdict(text) {
   const raw = String(text ?? "");
-  const match = raw.match(/\bverdict\s*:\s*(agree_with_changes|needs_user_decision|disagree|agree)\b/i);
-  if (match) return match[1].toLocaleLowerCase();
+  const match = raw.match(/\bverdict\s*:\s*(partial_agree|agree_with_changes|needs_user_decision|disagree|agree)\b/i);
+  if (match) {
+    const verdict = match[1].toLocaleLowerCase();
+    return verdict === "agree_with_changes" ? "partial_agree" : verdict;
+  }
   if (/\bneeds_user_decision\b/i.test(raw) || /(사용자|유저|오너).{0,12}(승인|결정|확인).{0,8}(필요|받아야|먼저)/.test(raw)) {
     return "needs_user_decision";
   }
   if (/\bdisagree\b/i.test(raw) || /(반대|동의하지 않)/.test(raw)) return "disagree";
-  if (/\bagree_with_changes\b/i.test(raw) || /(수정|보완).{0,12}(동의|진행|추천)/.test(raw)) return "agree_with_changes";
+  if (/\b(partial_agree|agree_with_changes)\b/i.test(raw) || /(수정|보완).{0,12}(동의|진행|추천)/.test(raw)) return "partial_agree";
   if (/\bagree\b/i.test(raw) || /(동의|추천)/.test(raw)) return "agree";
-  return "agree_with_changes";
+  return "partial_agree";
 }
 
 const ESCALATION_PATTERNS = [

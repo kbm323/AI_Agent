@@ -133,6 +133,12 @@ test("escalation policy ignores ordinary review tasks", () => {
   assert.match(buildEscalationMessage({ reasons: ["brand_or_public_release"] }), /User decision required/);
 });
 
+test("reviewer verdict parser uses Phase 2-A partial_agree enum", () => {
+  assert.equal(parseReviewerVerdict("Verdict: partial_agree\n보완 후 진행 추천"), "partial_agree");
+  assert.equal(parseReviewerVerdict("Verdict: agree_with_changes\nlegacy plugin output"), "partial_agree");
+  assert.equal(parseReviewerVerdict("수정 보완하면 동의하고 진행을 추천한다."), "partial_agree");
+});
+
 test("escalation policy pauses public release and reviewer decision requests", () => {
   const reasons = evaluateEscalationReasons({
     request: "완성본을 외부 공개하고 실제 게시해줘",

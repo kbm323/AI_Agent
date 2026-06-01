@@ -76,6 +76,14 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
   - parent project channel messages call `runUserRequest(...)`
   - project thread messages call `resumeFromUserDecision(...)`
   - bot, empty, non-project parent, and non-project thread messages are ignored
+- Created OpenClaw plugin verdict alignment plan:
+  - `docs/superpowers/plans/2026-06-02-plugin-verdict-alignment.md`
+- Aligned imported OpenClaw plugin reviewer verdict parsing:
+  - `partial_agree` is now the canonical partial-agreement value.
+  - legacy `agree_with_changes` still parses but normalizes to
+    `partial_agree`.
+  - ambiguous revision/recommendation text falls back to `partial_agree`.
+- Added nested `node_modules` ignore coverage for plugin test links.
 - Re-read current repository docs.
 - Attempted WSL plugin discovery.
 - WSL is accessible from Codex Desktop only when WSL commands are run outside
@@ -151,7 +159,12 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
      `resumeWaitingOrchestrationFromUserDecision(...)`
    - align plugin same-thread violation handling with
      `CompanyOrchestrator.recordHermesThreadViolation(...)`
-4. Add the next Phase 2-A implementation slice:
+4. Continue OpenClaw plugin alignment:
+   - inspect whether plugin timeout/no-reply paths should become
+     `waiting_for_user` or remain `failed`
+   - add explicit same-thread violation reason if a future gateway signal can
+     identify Hermes in a different thread
+5. Add the next Phase 2-A implementation slice:
    - Discord polling fallback that captures the next Hermes bot message
    - debug-only actual mention timeline
 
@@ -274,6 +287,35 @@ pass 32
 fail 0
 ```
 
+After aligning the imported OpenClaw plugin verdict parser:
+
+```bash
+cd /mnt/f/ai-projects/AI_Agent/openclaw-plugins/inter-agent-orchestration
+node --test --test-name-pattern "partial_agree enum" test/reviewer-mode.test.js
+```
+
+Result:
+
+```text
+tests 1
+pass 1
+fail 0
+```
+
+AI_Agent suite still passes:
+
+```powershell
+& 'C:\Users\KBM\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --test tests/*.test.ts
+```
+
+Result:
+
+```text
+tests 32
+pass 32
+fail 0
+```
+
 Selected WSL original plugin tests passed:
 
 ```bash
@@ -291,5 +333,5 @@ pass 11 for persistence/parent orchestration pattern
 Git status:
 
 ```text
-clean after Discord gateway routing commit/push
+clean after OpenClaw plugin verdict alignment commit/push
 ```
