@@ -96,6 +96,17 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
   - a `hermes_wrong_thread` waiting task can resume from user decision even
     without a valid same-thread Hermes review
   - final synthesis still posts in the expected task thread
+- Added WSL gateway autostart support:
+  - `scripts/start-wsl-gateways.ps1`
+  - `docs/wsl-gateway-autostart.md`
+  - enables and starts `openclaw-gateway.service`
+  - enables and starts `hermes-gateway.service`
+  - writes logs under `data/autostart/`
+- Registered Windows user Startup file:
+  - `C:\Users\KBM\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\AI_Agent_WSL_Gateways_Autostart.vbs`
+  - this wakes WSL and runs the gateway start script at Windows user logon
+- Task Scheduler registration was attempted first, but Windows denied access in
+  this session, so Startup-folder registration was used instead.
 - Re-read current repository docs.
 - Attempted WSL plugin discovery.
 - WSL is accessible from Codex Desktop only when WSL commands are run outside
@@ -179,6 +190,10 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
 5. Add the next Phase 2-A implementation slice:
    - Discord polling fallback that captures the next Hermes bot message
    - debug-only actual mention timeline
+6. Live-verify autostart after a Windows reboot/login:
+   - confirm Discord shows OpenClaw/Hermes online
+   - inspect latest `data/autostart/wsl-gateways-*.log`
+   - run `wsl.exe -d Ubuntu --exec bash -lc "systemctl --user is-active openclaw-gateway.service hermes-gateway.service"`
 
 ## Verification Status
 
@@ -357,6 +372,35 @@ pass 32
 fail 0
 ```
 
+After adding WSL gateway autostart:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File F:\ai-projects\AI_Agent\scripts\start-wsl-gateways.ps1
+```
+
+Observed result:
+
+```text
+openclaw=active
+hermes=active
+ExitCode=0
+```
+
+Startup file test:
+
+```powershell
+cscript.exe //Nologo "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\AI_Agent_WSL_Gateways_Autostart.vbs"
+```
+
+Service status after test:
+
+```text
+openclaw_enabled=enabled
+openclaw_active=active
+hermes_enabled=enabled
+hermes_active=active
+```
+
 Selected WSL original plugin tests passed:
 
 ```bash
@@ -374,5 +418,5 @@ pass 11 for persistence/parent orchestration pattern
 Git status:
 
 ```text
-clean after OpenClaw plugin same-thread violation commit/push
+clean after WSL gateway autostart commit/push
 ```
