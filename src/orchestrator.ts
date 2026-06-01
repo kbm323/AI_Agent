@@ -11,6 +11,8 @@ import type {
   ReviewerExecutor,
   ReviewerVerdict,
   TaskRecord,
+  TurnKind,
+  TurnRecord,
 } from "./types.ts";
 
 export interface CompanyOrchestratorDeps {
@@ -173,6 +175,85 @@ export class CompanyOrchestrator {
     return { task, status: task.status, threadId: task.threadId, finalSynthesis, escalationReasons: [] };
   }
 
+  async recordHermesThreadViolation(input: { taskId: string; observedThreadId: string }): Promise<RunTaskResult> {
+    let task = this.deps.db.getTask(input.taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${input.taskId}`);
+    }
+
+    const reasons = ["hermes_wrong_thread"];
+    const escalation = [
+      "User decision required",
+      "",
+      "Hermes replied outside the task thread.",
+      `Expected thread: ${task.threadId}`,
+      `Observed thread: ${input.observedThreadId}`,
+      "",
+      "Reasons:",
+      "- hermes_wrong_thread",
+    ].join("\n");
+
+    const round = nextRound(this.deps.db.getTurns(task.id));
+    await this.recordAndPost(task, round, "openclaw-finalizer", "escalation", escalation);
+    this.deps.db.insertDecision({
+      taskId: task.id,
+      requiresUserDecision: true,
+      reasons,
+    });
+    this.deps.db.updateTaskStatus(task.id, "waiting_for_user");
+    task = this.deps.db.getTask(task.id) ?? task;
+    return { task, status: task.status, threadId: task.threadId, escalationReasons: reasons };
+  }
+
+  async resumeFromUserDecision(input: { threadId: string; userDecision: string }): Promise<RunTaskResult> {
+    let task = this.deps.db.getTaskByThreadId(input.threadId);
+    if (!task) {
+      throw new Error(`Task not found for thread: ${input.threadId}`);
+    }
+    if (task.status !== "waiting_for_user") {
+      throw new Error(`Task is not waiting for user decision: ${task.id}`);
+    }
+
+    const userDecision = input.userDecision.trim();
+    if (userDecision.length === 0) {
+      throw new Error("User decision cannot be empty");
+    }
+
+    const turns = this.deps.db.getTurns(task.id);
+    const round = nextRound(turns);
+    this.deps.db.insertTurn({
+      taskId: task.id,
+      round,
+      role: "openclaw-finalizer",
+      kind: "user_decision",
+      content: userDecision,
+      visibleSummary: summarizeForThread(`User decision\n\n${userDecision}`),
+    });
+
+    const draft = latestTurnContent(turns, "owner_draft");
+    const review = latestTurnContent(turns, "review");
+    const finalSynthesis = await this.deps.finalizer.synthesize({
+      task,
+      userRequest: task.userRequest,
+      draft,
+      review,
+      reviewerVerdict: "needs_user_decision",
+      acceptedFeedback: [`User decision: ${userDecision}`],
+      rejectedFeedback: [],
+    });
+    await this.recordAndPost(task, round + 1, "openclaw-finalizer", "final_synthesis", `Final synthesis\n\n${finalSynthesis}`, finalSynthesis);
+    this.logger.log(`[AI_AGENT-LIVE] Resumed task from user decision threadId=${task.threadId} chars=${finalSynthesis.length}`);
+    this.deps.db.insertDecision({
+      taskId: task.id,
+      requiresUserDecision: false,
+      reasons: ["user_decision_received"],
+    });
+    this.deps.db.updateTaskStatus(task.id, "finalized");
+    task = this.deps.db.getTask(task.id) ?? task;
+
+    return { task, status: task.status, threadId: task.threadId, finalSynthesis, escalationReasons: [] };
+  }
+
   private async recordAndPost(
     task: TaskRecord,
     round: number,
@@ -240,4 +321,12 @@ function isUsableModelOutput(output: string, userRequest: string): boolean {
 
 function normalizeIssueSignature(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function nextRound(turns: TurnRecord[]): number {
+  return turns.reduce((max, turn) => Math.max(max, turn.round), 0) + 1;
+}
+
+function latestTurnContent(turns: TurnRecord[], kind: TurnKind): string {
+  return [...turns].reverse().find((turn) => turn.kind === kind)?.content ?? "";
 }

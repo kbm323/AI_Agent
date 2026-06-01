@@ -50,6 +50,11 @@ export class AiAgentDatabase {
     return row ? mapTask(row) : undefined;
   }
 
+  getTaskByThreadId(threadId: string): TaskRecord | undefined {
+    const row = this.db.prepare(`SELECT * FROM tasks WHERE thread_id = ? ORDER BY rowid DESC LIMIT 1`).get(threadId) as StoredTask | undefined;
+    return row ? mapTask(row) : undefined;
+  }
+
   insertTurn(input: Omit<TurnRecord, "id" | "createdAt"> & { id?: string; createdAt?: string }): TurnRecord {
     const turn: TurnRecord = {
       id: input.id ?? crypto.randomUUID(),

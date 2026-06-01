@@ -284,3 +284,124 @@ test("repeated unresolved reviewer issue escalates to user decision", async () =
   ]);
   db.close();
 });
+
+test("Hermes reply in a different thread escalates to user decision", async () => {
+  const db = new AiAgentDatabase();
+  const discord = createFakeDiscord();
+  const orchestrator = new CompanyOrchestrator({
+    db,
+    discord,
+    owner: {
+      async createDraft() {
+        throw new Error("Owner should not be called for thread violation recording");
+      },
+    },
+    reviewer: {
+      async review() {
+        throw new Error("Reviewer should not be called for thread violation recording");
+      },
+    },
+    finalizer: {
+      async synthesize() {
+        throw new Error("Finalizer should not be called for thread violation recording");
+      },
+    },
+  });
+  db.createTask({
+    id: "task-thread-violation-1",
+    projectChannelId: "parent-1",
+    threadId: "thread-expected",
+    userRequest: "Build a same-thread workflow.",
+  });
+
+  const result = await orchestrator.recordHermesThreadViolation({
+    taskId: "task-thread-violation-1",
+    observedThreadId: "thread-wrong",
+  });
+
+  assert.equal(result.status, "waiting_for_user");
+  assert.deepEqual(result.escalationReasons, ["hermes_wrong_thread"]);
+  assert.deepEqual(discord.threadPosts.map((post) => post.threadId), ["thread-expected"]);
+  assert.match(discord.threadPosts[0].content, /Hermes replied outside the task thread/);
+  assert.deepEqual(db.getTurns("task-thread-violation-1").map((turn) => turn.kind), ["escalation"]);
+  db.close();
+});
+
+test("waiting task resumes from user decision in the same thread", async () => {
+  const db = new AiAgentDatabase();
+  const discord = createFakeDiscord();
+  const task = db.createTask({
+    id: "task-resume-1",
+    projectChannelId: "parent-1",
+    threadId: "thread-resume",
+    userRequest: "Choose the final direction.",
+  });
+  db.insertTurn({
+    taskId: task.id,
+    round: 1,
+    role: "openclaw-owner",
+    kind: "owner_draft",
+    content: "Owner draft: option A and option B.",
+    visibleSummary: "Owner draft summary",
+  });
+  db.insertTurn({
+    taskId: task.id,
+    round: 1,
+    role: "hermes-reviewer",
+    kind: "review",
+    content: "Hermes review: option B is stronger, but needs user choice.",
+    visibleSummary: "Hermes review summary",
+  });
+  db.insertTurn({
+    taskId: task.id,
+    round: 1,
+    role: "openclaw-finalizer",
+    kind: "escalation",
+    content: "User decision required",
+    visibleSummary: "User decision required",
+  });
+  db.updateTaskStatus(task.id, "waiting_for_user");
+
+  let finalizerInput: Parameters<FinalizerExecutor["synthesize"]>[0] | undefined;
+  const orchestrator = new CompanyOrchestrator({
+    db,
+    discord,
+    owner: {
+      async createDraft() {
+        throw new Error("Owner should not be called during resume");
+      },
+    },
+    reviewer: {
+      async review() {
+        throw new Error("Reviewer should not be called during resume");
+      },
+    },
+    finalizer: {
+      async synthesize(input) {
+        finalizerInput = input;
+        return `Final after decision: ${input.acceptedFeedback.join(" ")}`;
+      },
+    },
+  });
+
+  const result = await orchestrator.resumeFromUserDecision({
+    threadId: "thread-resume",
+    userDecision: "Use option B.",
+  });
+
+  assert.equal(result.status, "finalized");
+  assert.equal(result.threadId, "thread-resume");
+  assert.equal(finalizerInput?.draft, "Owner draft: option A and option B.");
+  assert.equal(finalizerInput?.review, "Hermes review: option B is stronger, but needs user choice.");
+  assert.deepEqual(finalizerInput?.acceptedFeedback, ["User decision: Use option B."]);
+  assert.deepEqual(db.getTurns("task-resume-1").map((turn) => turn.kind), [
+    "owner_draft",
+    "review",
+    "escalation",
+    "user_decision",
+    "final_synthesis",
+  ]);
+  assert.deepEqual(discord.threadPosts.map((post) => post.threadId), ["thread-resume"]);
+  assert.match(discord.threadPosts[0].content, /Final after decision/);
+  db.close();
+});

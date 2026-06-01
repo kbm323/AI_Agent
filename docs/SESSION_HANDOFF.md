@@ -63,8 +63,9 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
 - Created this handoff file.
 - Created Phase 2-A foundation implementation plan:
   - `docs/superpowers/plans/2026-06-01-phase-2a-foundation.md`
-- Implemented the Phase 2-A foundation plan in-place because this folder is not
-  a git repository and no worktree can be created.
+- Created Phase 2-A thread-control implementation plan:
+  - `docs/superpowers/plans/2026-06-01-phase-2a-thread-control.md`
+- Implemented the Phase 2-A foundation plan in-place before git initialization.
 - Added minimal team routing:
   - `src/routing.ts`
   - `tests/routing.test.ts`
@@ -80,14 +81,23 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
   - `needs_user_decision`
   - legacy `agree_with_changes` still parses as `partial_agree`
 - Added repeated unresolved issue escalation after 3 repeated reviewer issues.
+- Added thread-control foundation:
+  - `AiAgentDatabase.getTaskByThreadId(threadId)`
+  - `CompanyOrchestrator.recordHermesThreadViolation(...)`
+  - `CompanyOrchestrator.resumeFromUserDecision(...)`
+  - Hermes wrong-thread replies now escalate in the original task thread.
+  - Waiting tasks can resume from a user decision and finalize in the same
+    thread.
 - Added runtime config:
   - `AI_AGENT_HERMES_TIMEOUT_SECONDS`
   - `AI_AGENT_DEBUG_MENTIONS`
   - team model routing env vars for OpenClaw and Hermes.
 - Confirmed finishing state:
   - tests pass
-  - workspace is still not a git repository, so merge/PR branch workflow does
-    not apply
+  - git repository is initialized
+  - remote `origin` is `https://github.com/kbm323/AI_Agent.git`
+  - initial foundation commit was pushed:
+    `6c1a63f chore: initialize ai agent phase 2a foundation`
 
 ## Blockers / Unknowns
 
@@ -119,10 +129,11 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
 3. Inspect plugin entrypoints and gateway hooks.
 4. Align plugin behavior with `docs/source-of-truth.md`.
 5. Add the next Phase 2-A implementation slice:
-   - same-thread enforcement
-   - thread resume
    - Discord polling fallback that captures the next Hermes bot message
    - debug-only actual mention timeline
+   - gateway hook that calls `resumeFromUserDecision(...)` for user replies
+   - gateway hook that calls `recordHermesThreadViolation(...)` when Hermes
+     appears outside the expected thread
 
 ## Verification Status
 
@@ -187,8 +198,37 @@ pass 25
 fail 0
 ```
 
+Passed after implementing the Phase 2-A thread-control foundation:
+
+```powershell
+& 'C:\Users\KBM\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --test tests/orchestrator.test.ts
+```
+
+Result:
+
+```text
+tests 8
+pass 8
+fail 0
+```
+
+Full suite passed after the same change:
+
+```powershell
+& 'C:\Users\KBM\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --test tests/*.test.ts
+```
+
+Result:
+
+```text
+tests 27
+pass 27
+fail 0
+```
+
 Git status:
 
 ```text
-not a git repository
+working tree has uncommitted Phase 2-A thread-control changes until the next
+commit/push is completed
 ```
