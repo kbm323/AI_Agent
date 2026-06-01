@@ -98,6 +98,8 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
   - remote `origin` is `https://github.com/kbm323/AI_Agent.git`
   - initial foundation commit was pushed:
     `6c1a63f chore: initialize ai agent phase 2a foundation`
+  - thread-control foundation commit was pushed:
+    `dae29ae feat: add phase 2a thread control foundation`
 
 ## Blockers / Unknowns
 
@@ -229,6 +231,5 @@ fail 0
 Git status:
 
 ```text
-working tree has uncommitted Phase 2-A thread-control changes until the next
-commit/push is completed
+clean after thread-control handoff commit/push
 ```
