@@ -498,6 +498,20 @@ export function buildEscalationMessage({ reasons }) {
   ].join("\n");
 }
 
+export function buildHermesThreadViolationMessage({ expectedThreadId, observedThreadId }) {
+  return [
+    "**User decision required**",
+    "",
+    "Hermes replied outside the task thread.",
+    `Expected thread: ${expectedThreadId}`,
+    `Observed thread: ${observedThreadId}`,
+    "",
+    "Reasons: hermes_wrong_thread",
+    "",
+    "Same-thread policy was violated. Reply in this thread with the direction to continue."
+  ].join("\n");
+}
+
 export function buildResumedFinalSynthesisMessage({ config, request, openClawDraft, reviews, userDecision }) {
   const base = buildFinalSynthesisMessage({
     config,
@@ -1210,6 +1224,96 @@ function buildReviewsFromTurns(turns, config) {
     }));
 }
 
+export async function recordHermesThreadViolation({ api, config, task, observedThreadId, openClawDraft, sendMessage = sendDiscordMessage, logger = liveLog }) {
+  const token = api.config.channels?.discord?.token;
+  if (!token) {
+    logger("same-thread violation skipped", { reason: "Discord bot token not configured" });
+    return null;
+  }
+  const expectedThreadId = normalizeDiscordTargetId(task?.threadId);
+  const normalizedObservedThreadId = normalizeDiscordTargetId(observedThreadId);
+  if (!expectedThreadId || !normalizedObservedThreadId) {
+    logger("same-thread violation skipped", {
+      reason: "invalid thread id",
+      expectedThreadId: task?.threadId,
+      observedThreadId
+    });
+    return null;
+  }
+
+  const taskId = String(task.id);
+  const draft = String(openClawDraft ?? "").trim();
+  recordStateTask(config, {
+    id: taskId,
+    parentChannelId: task.parentChannelId,
+    threadId: expectedThreadId,
+    messageId: task.messageId,
+    userRequest: task.userRequest,
+    status: "waiting_for_user",
+    correlationId: task.correlationId,
+    finalMessageId: null,
+    failureReason: "hermes_wrong_thread"
+  }, logger);
+  if (draft) {
+    recordStateTurn(config, {
+      taskId,
+      round: 1,
+      role: "openclaw-owner",
+      kind: "owner_draft",
+      content: draft
+    }, logger);
+  }
+
+  const content = buildHermesThreadViolationMessage({
+    expectedThreadId,
+    observedThreadId: normalizedObservedThreadId
+  });
+  const sent = await sendMessage({
+    token,
+    channelId: expectedThreadId,
+    config,
+    content
+  });
+  logger("User decision required", {
+    threadId: expectedThreadId,
+    observedThreadId: normalizedObservedThreadId,
+    messageId: sent?.id,
+    reasons: ["hermes_wrong_thread"]
+  });
+  recordStateTurn(config, {
+    taskId,
+    round: 1,
+    role: "openclaw-finalizer",
+    kind: "escalation",
+    content,
+    messageId: sent?.id
+  }, logger);
+  recordStateTask(config, {
+    id: taskId,
+    parentChannelId: task.parentChannelId,
+    threadId: expectedThreadId,
+    messageId: task.messageId,
+    userRequest: task.userRequest,
+    status: "waiting_for_user",
+    correlationId: task.correlationId,
+    finalMessageId: sent?.id,
+    failureReason: "hermes_wrong_thread"
+  }, logger);
+  rememberOrchestrationMessageId(task.messageId, {
+    status: "waiting_for_user",
+    threadId: expectedThreadId,
+    correlationId: task.correlationId,
+    finalMessageId: sent?.id
+  });
+  return {
+    status: "waiting_for_user",
+    threadId: expectedThreadId,
+    taskId,
+    finalMessageId: sent?.id,
+    escalationReasons: ["hermes_wrong_thread"]
+  };
+}
+
 export async function resumeWaitingOrchestrationFromUserDecision({ api, event, ctx, config, sendMessage = sendDiscordMessage, logger = liveLog }) {
   if (isBotAuthor({ senderId: event?.senderId, authorId: event?.senderId, metadata: event?.metadata }, config)) return null;
   const token = api.config.channels?.discord?.token;
@@ -1227,7 +1331,8 @@ export async function resumeWaitingOrchestrationFromUserDecision({ api, event, c
   const turns = getStateTurns(config, task.id, logger);
   const openClawDraft = turns.find((turn) => turn.kind === "owner_draft")?.content ?? "";
   const reviews = buildReviewsFromTurns(turns, config);
-  if (!openClawDraft || reviews.length === 0) {
+  const canResumeWithoutReview = task.failure_reason === "hermes_wrong_thread";
+  if (!openClawDraft || (!canResumeWithoutReview && reviews.length === 0)) {
     logger("orchestration resume skipped", { reason: "waiting task sources missing", threadId, taskId: task.id });
     return null;
   }

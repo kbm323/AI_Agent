@@ -84,6 +84,18 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
     `partial_agree`.
   - ambiguous revision/recommendation text falls back to `partial_agree`.
 - Added nested `node_modules` ignore coverage for plugin test links.
+- Created OpenClaw plugin same-thread violation plan:
+  - `docs/superpowers/plans/2026-06-02-plugin-same-thread-violation.md`
+- Added plugin same-thread violation handling:
+  - `recordHermesThreadViolation(...)`
+  - `buildHermesThreadViolationMessage(...)`
+  - wrong-thread Hermes signals post escalation only in the expected thread
+  - task state is persisted as `waiting_for_user`
+  - `failure_reason` is stored as `hermes_wrong_thread`
+- Updated plugin resume behavior:
+  - a `hermes_wrong_thread` waiting task can resume from user decision even
+    without a valid same-thread Hermes review
+  - final synthesis still posts in the expected task thread
 - Re-read current repository docs.
 - Attempted WSL plugin discovery.
 - WSL is accessible from Codex Desktop only when WSL commands are run outside
@@ -162,8 +174,8 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
 4. Continue OpenClaw plugin alignment:
    - inspect whether plugin timeout/no-reply paths should become
      `waiting_for_user` or remain `failed`
-   - add explicit same-thread violation reason if a future gateway signal can
-     identify Hermes in a different thread
+   - wire a real gateway signal to call `recordHermesThreadViolation(...)` if
+     Hermes is observed outside the expected thread
 5. Add the next Phase 2-A implementation slice:
    - Discord polling fallback that captures the next Hermes bot message
    - debug-only actual mention timeline
@@ -316,6 +328,35 @@ pass 32
 fail 0
 ```
 
+After adding OpenClaw plugin same-thread violation handling:
+
+```bash
+cd /mnt/f/ai-projects/AI_Agent/openclaw-plugins/inter-agent-orchestration
+node --test --test-name-pattern "Hermes same-thread violation" test/reviewer-mode.test.js
+```
+
+Observed result:
+
+```text
+tests 21
+pass 21
+fail 0
+```
+
+AI_Agent suite still passes:
+
+```powershell
+& 'C:\Users\KBM\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --test tests/*.test.ts
+```
+
+Result:
+
+```text
+tests 32
+pass 32
+fail 0
+```
+
 Selected WSL original plugin tests passed:
 
 ```bash
@@ -333,5 +374,5 @@ pass 11 for persistence/parent orchestration pattern
 Git status:
 
 ```text
-clean after OpenClaw plugin verdict alignment commit/push
+clean after OpenClaw plugin same-thread violation commit/push
 ```

@@ -38,6 +38,7 @@ import {
   parseReviewerVerdict,
   capturePendingOpenClawDraftSend,
   consumeThreadAutoReplySuppression,
+  recordHermesThreadViolation,
   resumeWaitingOrchestrationFromUserDecision,
   resolveConfig,
   runThreadReviewFromFacts,
@@ -981,6 +982,97 @@ test("user decision in waiting thread resumes final synthesis", async () => {
       assert.equal(task.status, "completed");
       const turns = db.prepare("SELECT kind FROM orchestration_turns WHERE task_id = ? ORDER BY rowid ASC").all("m-resume");
       assert.deepEqual(turns.map((turn) => turn.kind), ["owner_draft", "review_request", "review", "escalation", "user_decision", "final_synthesis"]);
+    } finally {
+      db.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Hermes same-thread violation waits for user and can resume", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "iao-thread-violation-"));
+  const dbPath = join(dir, "state.sqlite");
+  try {
+    const persistentConfig = resolveConfig({
+      reviewerName: "Hermes",
+      reviewerRoleIds: ["1505923805422293105"],
+      reviewerBotIds: [HERMES_ID],
+      orchestratorBotIds: [OPENCLAW_ID],
+      maxRounds: 1,
+      stateDbPath: dbPath
+    });
+    const sent = [];
+    const logs = [];
+
+    const violation = await recordHermesThreadViolation({
+      api: { config: { channels: { discord: { token: "test-token" } } } },
+      config: persistentConfig,
+      logger: (event, details = {}) => logs.push({ event, details }),
+      task: {
+        id: "m-thread-violation",
+        parentChannelId: "1508500341937672343",
+        threadId: "1508500341937672999",
+        messageId: "m-thread-violation",
+        userRequest: "같은 thread에서 Hermes 리뷰를 받아 최종안을 정리해줘",
+        correlationId: "m-thread-violation-correlation"
+      },
+      observedThreadId: "1508500341937672888",
+      openClawDraft: "OpenClaw draft:\nDraft candidates: 라온, 제논",
+      sendMessage: async ({ channelId, content }) => {
+        sent.push({ channelId, content });
+        return { id: `sent-${sent.length}`, timestamp: "2026-05-26T00:00:05.000Z" };
+      }
+    });
+
+    assert.equal(violation.status, "waiting_for_user");
+    assert.equal(violation.threadId, "1508500341937672999");
+    assert.deepEqual(sent.map((message) => message.channelId), ["1508500341937672999"]);
+    assert.match(sent[0].content, /Hermes replied outside the task thread/);
+    assert.ok(logs.find((entry) => entry.event === "User decision required"));
+
+    let db = new DatabaseSync(dbPath);
+    try {
+      const task = db.prepare("SELECT status, failure_reason FROM orchestration_tasks WHERE id = ?").get("m-thread-violation");
+      assert.deepEqual({ ...task }, {
+        status: "waiting_for_user",
+        failure_reason: "hermes_wrong_thread"
+      });
+      const turns = db.prepare("SELECT kind FROM orchestration_turns WHERE task_id = ? ORDER BY rowid ASC").all("m-thread-violation");
+      assert.deepEqual(turns.map((turn) => turn.kind), ["owner_draft", "escalation"]);
+    } finally {
+      db.close();
+    }
+
+    const resumed = await resumeWaitingOrchestrationFromUserDecision({
+      api: { config: { channels: { discord: { token: "test-token" } } } },
+      config: persistentConfig,
+      logger: (event, details = {}) => logs.push({ event, details }),
+      event: {
+        threadId: "1508500341937672999",
+        messageId: "m-user-decision-after-violation",
+        senderId: "307374050282307584",
+        content: "Hermes는 잘못된 thread에 답했으니 OpenClaw draft 기준으로 최종 정리해줘."
+      },
+      sendMessage: async ({ channelId, content }) => {
+        sent.push({ channelId, content });
+        return { id: `sent-${sent.length}`, timestamp: "2026-05-26T00:01:05.000Z" };
+      }
+    });
+
+    assert.equal(resumed.status, "completed");
+    assert.deepEqual(sent.map((message) => message.channelId), ["1508500341937672999", "1508500341937672999"]);
+    assert.match(sent.at(-1).content, /\*\*Final synthesis\*\*/);
+
+    db = new DatabaseSync(dbPath);
+    try {
+      const task = db.prepare("SELECT status, failure_reason FROM orchestration_tasks WHERE id = ?").get("m-thread-violation");
+      assert.deepEqual({ ...task }, {
+        status: "completed",
+        failure_reason: null
+      });
+      const turns = db.prepare("SELECT kind FROM orchestration_turns WHERE task_id = ? ORDER BY rowid ASC").all("m-thread-violation");
+      assert.deepEqual(turns.map((turn) => turn.kind), ["owner_draft", "escalation", "user_decision", "final_synthesis"]);
     } finally {
       db.close();
     }
