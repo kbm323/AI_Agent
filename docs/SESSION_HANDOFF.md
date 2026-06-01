@@ -67,6 +67,15 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
   - `user decision in waiting thread resumes final synthesis`
   - `orchestration state is persisted to SQLite`
   - related parent-thread orchestration tests selected by the same test pattern
+- Created Discord gateway routing plan:
+  - `docs/superpowers/plans/2026-06-02-discord-gateway-routing.md`
+- Added pure Discord message routing policy:
+  - `src/discord/messageRouter.ts`
+  - `tests/messageRouter.test.ts`
+- Updated the development Discord runtime:
+  - parent project channel messages call `runUserRequest(...)`
+  - project thread messages call `resumeFromUserDecision(...)`
+  - bot, empty, non-project parent, and non-project thread messages are ignored
 - Re-read current repository docs.
 - Attempted WSL plugin discovery.
 - WSL is accessible from Codex Desktop only when WSL commands are run outside
@@ -135,12 +144,16 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
    ```
 
 2. Align plugin behavior with `docs/source-of-truth.md`.
-3. Add the next Phase 2-A implementation slice:
+3. Connect the same routing policy to the OpenClaw plugin copy:
+   - compare `src/discord/messageRouter.ts` with
+     `openclaw-plugins/inter-agent-orchestration/index.js`
+   - preserve plugin behavior that already handles
+     `resumeWaitingOrchestrationFromUserDecision(...)`
+   - align plugin same-thread violation handling with
+     `CompanyOrchestrator.recordHermesThreadViolation(...)`
+4. Add the next Phase 2-A implementation slice:
    - Discord polling fallback that captures the next Hermes bot message
    - debug-only actual mention timeline
-   - gateway hook that calls `resumeFromUserDecision(...)` for user replies
-   - gateway hook that calls `recordHermesThreadViolation(...)` when Hermes
-     appears outside the expected thread
 
 ## Verification Status
 
@@ -247,6 +260,20 @@ pass 27
 fail 0
 ```
 
+After adding Discord gateway routing and runtime resume hook:
+
+```powershell
+& 'C:\Users\KBM\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --test tests/*.test.ts
+```
+
+Result:
+
+```text
+tests 32
+pass 32
+fail 0
+```
+
 Selected WSL original plugin tests passed:
 
 ```bash
@@ -264,5 +291,5 @@ pass 11 for persistence/parent orchestration pattern
 Git status:
 
 ```text
-clean after OpenClaw plugin import commit/push
+clean after Discord gateway routing commit/push
 ```
