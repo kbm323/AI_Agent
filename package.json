@@ -1,0 +1,21 @@
+{
+  "name": "ai-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.ts",
+    "dry-run": "node scripts/dry-run.ts",
+    "start:discord": "node scripts/start-discord.ts",
+    "inspect:latest": "node scripts/inspect-latest.ts",
+    "live:start": "node scripts/live-start.ts",
+    "live:stop": "node scripts/live-stop.ts",
+    "live:status": "node scripts/live-status.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2"
+  }
+}
