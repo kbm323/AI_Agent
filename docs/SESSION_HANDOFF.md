@@ -98,7 +98,9 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
   - final synthesis still posts in the expected task thread
 - Added WSL gateway autostart support:
   - `scripts/start-wsl-gateways.ps1`
+  - `scripts/wsl-keepalive.sh`
   - `docs/wsl-gateway-autostart.md`
+  - starts hidden WSL keepalive process `ai-agent-wsl-keepalive`
   - enables and starts `openclaw-gateway.service`
   - enables and starts `hermes-gateway.service`
   - writes logs under `data/autostart/`
@@ -107,6 +109,11 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
   - this wakes WSL and runs the gateway start script at Windows user logon
 - Task Scheduler registration was attempted first, but Windows denied access in
   this session, so Startup-folder registration was used instead.
+- Discord showed the bots offline after the first autostart attempt because WSL
+  shut down shortly after the startup script exited. Root cause was missing WSL
+  keepalive, not missing systemd units.
+- Fixed autostart to launch `scripts/wsl-keepalive.sh` with `nohup` before
+  starting gateway services.
 - Re-read current repository docs.
 - Attempted WSL plugin discovery.
 - WSL is accessible from Codex Desktop only when WSL commands are run outside
@@ -399,6 +406,23 @@ openclaw_enabled=enabled
 openclaw_active=active
 hermes_enabled=enabled
 hermes_active=active
+```
+
+After fixing WSL keepalive:
+
+```text
+ai-agent-wsl-keepalive infinity
+openclaw-gateway.service active
+hermes-gateway.service active
+```
+
+OpenClaw Discord connection evidence from logs:
+
+```text
+[discord] [default] starting provider
+[gateway] ready
+[discord] client initialized as 1505917780577357928
+[discord] [default] Discord bot probe resolved @버추얼컴퍼니-OpenClaw
 ```
 
 Selected WSL original plugin tests passed:
