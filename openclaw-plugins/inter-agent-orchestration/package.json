@@ -1,0 +1,19 @@
+{
+  "name": "inter-agent-orchestration",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "peerDependencies": {
+    "openclaw": ">=2026.5.19"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "live-checklist": "sed -n '1,220p' LIVE_TEST_CHECKLIST.md",
+    "inspect-runtime": "node scripts/inspect-runtime.js"
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "id": "inter-agent-orchestration",
+  "name": "Inter-Agent Orchestration",
+  "description": "Thread-relayed OpenClaw/Hermes reviewer orchestration without patching channel dist files.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "marker": {
+        "type": "string",
+        "default": "OC-IA"
+      },
+      "reviewerName": {
+        "type": "string",
+        "default": "Hermes"
+      },
+      "reviewerPostTokenEnv": {
+        "type": "string",
+        "default": "HERMES_DISCORD_BOT_TOKEN"
+      },
+      "statePersistenceEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "stateDbPath": {
+        "type": "string",
+        "default": "/home/kbm/.openclaw/inter-agent-orchestration.sqlite"
+      },
+      "reviewerRoleIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "reviewerBotIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [
+          "1505920161956499649"
+        ]
+      },
+      "reviewerMentionNames": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [
+          "버추얼컴퍼니-Hermes",
+          "Hermes"
+        ]
+      },
+      "orchestratorBotIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [
+          "1505917780577357928"
+        ]
+      },
+      "orchestratorMentionNames": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [
+          "버추얼컴퍼니-OpenClaw",
+          "OpenClaw"
+        ]
+      },
+      "simpleCommandBlacklist": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [
+          "ping",
+          "status",
+          "help",
+          "stop",
+          "reset",
+          "안녕",
+          "테스트",
+          "uptime",
+          "/status",
+          "/help"
+        ]
+      },
+      "reviewerUserIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "maxRounds": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5,
+        "default": 1
+      },
+      "waitMs": {
+        "type": "integer",
+        "minimum": 5000,
+        "maximum": 180000,
+        "default": 45000
+      },
+      "pollMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 10000,
+        "default": 2500
+      },
+      "confidenceThreshold": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.7
+      }
+    }
+  }
+}

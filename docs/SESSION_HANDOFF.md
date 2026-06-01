@@ -52,9 +52,26 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
 
 ## Completed This Stage
 
+- Confirmed WSL is installed and registered as:
+  - distribution: `Ubuntu`
+  - version: WSL2
+  - base path: `F:\WSL\Ubuntu`
+- Found the OpenClaw local plugin in WSL:
+  - `/home/kbm/.openclaw/local-plugins/inter-agent-orchestration`
+- Copied the plugin source into this repository:
+  - `openclaw-plugins/inter-agent-orchestration`
+- Excluded `node_modules` from the repo copy.
+- Added plugin directory notes:
+  - `openclaw-plugins/README.md`
+- Verified important WSL plugin tests from the original plugin location:
+  - `user decision in waiting thread resumes final synthesis`
+  - `orchestration state is persisted to SQLite`
+  - related parent-thread orchestration tests selected by the same test pattern
 - Re-read current repository docs.
 - Attempted WSL plugin discovery.
-- WSL was not accessible from the current Codex Desktop session.
+- WSL is accessible from Codex Desktop only when WSL commands are run outside
+  the sandbox. Plain sandboxed `wsl.exe --list` may incorrectly report no
+  distributions.
 - Updated repository docs to match the latest system design:
   - `README.md`
   - `docs/source-of-truth.md`
@@ -103,34 +120,22 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
 
 ## Blockers / Unknowns
 
-- OpenClaw local plugin source has not been found yet.
-- User said to search first in WSL:
-
-```text
-~/.openclaw/local-plugins
-```
-
-- Current Codex Desktop shell reports no accessible WSL distribution. A future
-  session should retry from a working WSL shell or open the WSL workspace
-  directly.
+- The repo copy of the OpenClaw plugin is source-only for now.
+- `openclaw-plugins/inter-agent-orchestration` does not include `node_modules`.
+- The plugin declares `openclaw` as a peer dependency, so plugin tests should be
+  run from the WSL original or after installing/linking the OpenClaw SDK
+  dependency for the repo copy.
 
 ## Next Recommended Steps
 
-1. From a working WSL shell, locate local plugins:
-
-   ```bash
-   find ~/.openclaw/local-plugins -maxdepth 3 -print
-   ```
-
-2. Copy the relevant plugin into this repository. Suggested destination:
+1. Inspect plugin entrypoints and gateway hooks in:
 
    ```text
-   openclaw-plugins/inter-agent-orchestration/
+   openclaw-plugins/inter-agent-orchestration/index.js
    ```
 
-3. Inspect plugin entrypoints and gateway hooks.
-4. Align plugin behavior with `docs/source-of-truth.md`.
-5. Add the next Phase 2-A implementation slice:
+2. Align plugin behavior with `docs/source-of-truth.md`.
+3. Add the next Phase 2-A implementation slice:
    - Discord polling fallback that captures the next Hermes bot message
    - debug-only actual mention timeline
    - gateway hook that calls `resumeFromUserDecision(...)` for user replies
@@ -228,8 +233,36 @@ pass 27
 fail 0
 ```
 
+After copying the WSL OpenClaw plugin source, AI_Agent suite still passes:
+
+```powershell
+& 'C:\Users\KBM\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --test tests/*.test.ts
+```
+
+Result:
+
+```text
+tests 27
+pass 27
+fail 0
+```
+
+Selected WSL original plugin tests passed:
+
+```bash
+cd ~/.openclaw/local-plugins/inter-agent-orchestration
+node --test --test-name-pattern "user decision|state is persisted|parent OpenClaw reply" test/reviewer-mode.test.js
+```
+
+Observed result:
+
+```text
+pass 1 for user-decision resume pattern
+pass 11 for persistence/parent orchestration pattern
+```
+
 Git status:
 
 ```text
-clean after thread-control handoff commit/push
+clean after OpenClaw plugin import commit/push
 ```
