@@ -136,3 +136,66 @@ Escalation/resume tasks should contain:
 - `final_synthesis`
 
 If the task fails before Hermes, inspect whether `owner_draft` is missing or equal to the user request.
+
+## Verified Live Run - 2026-06-02
+
+Test message:
+
+```text
+테스트 요청: 후보 A/B/C를 만들고 Hermes 리뷰를 받아 최종안을 정리해줘.
+```
+
+Observed thread:
+
+```text
+1511218087167393944
+```
+
+Observed OpenClaw flow:
+
+```text
+[IAO-LIVE] parent channel request detected
+[IAO-LIVE] auto thread creation requested
+[IAO-LIVE] auto thread created threadId="1511218087167393944"
+[IAO-LIVE] orchestration target switched
+[IAO-LIVE] OpenClaw parent reply intercepted
+[IAO-LIVE] parent reply suppressed
+[IAO-LIVE] OpenClaw draft captured
+[IAO-LIVE] OpenClaw draft posted threadId="1511218087167393944"
+[IAO-LIVE] reviewer request includes captured draft
+[IAO-LIVE] Hermes reviewer request using internal executor
+[IAO-LIVE] Hermes reviewer request posted threadId="1511218087167393944"
+[IAO-LIVE] Hermes review posted threadId="1511218087167393944"
+[IAO-LIVE] Hermes reply detected threadId="1511218087167393944"
+[IAO-LIVE] Final synthesis posted threadId="1511218087167393944"
+```
+
+Observed Hermes flow:
+
+```text
+[HERMES-IA] reviewer request accepted authorId="1505917780577357928"
+```
+
+Result:
+
+```text
+PASS: parent channel -> auto thread -> OpenClaw draft -> same-thread Hermes review -> final synthesis
+```
+
+SQLite persistence:
+
+```text
+task.status=completed
+task.final_message_id=1511218781232562246
+openclaw-owner owner_draft length=496 messageId=1511218612285870152
+openclaw-owner review_request length=1304
+hermes-reviewer review length=1050 messageId=1511218778300485805
+openclaw-finalizer final_synthesis length=623 messageId=1511218781232562246
+```
+
+Notes:
+
+- Services stayed active during the run.
+- WSL keepalive remained alive as `/usr/bin/tail -f /dev/null`.
+- OpenClaw emitted retry-limit warnings for a subagent completion direct
+  announce after final synthesis. The main orchestration still completed.

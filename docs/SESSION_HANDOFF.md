@@ -128,6 +128,24 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
   services stayed `active`.
 - Earlier `scripts/wsl-keepalive.sh` remains in the repository but is not the
   active keepalive path.
+- Completed Phase 2-A live Discord happy-path verification:
+  - user posted a parent-channel request at 2026-06-02 13:01 KST
+  - OpenClaw detected the parent-channel request
+  - OpenClaw auto-created Discord thread `1511218087167393944`
+  - OpenClaw suppressed the parent-channel draft reply
+  - OpenClaw captured and posted the draft in the thread
+  - Hermes accepted the reviewer request in the same thread
+  - OpenClaw detected the Hermes reply in the same thread
+  - OpenClaw posted final synthesis in the same thread
+- Confirmed live plugin SQLite persistence for thread `1511218087167393944`:
+  - task status: `completed`
+  - `owner_draft` stored
+  - `review_request` stored
+  - Hermes `review` stored
+  - `final_synthesis` stored
+- Noted one non-blocking warning after final synthesis:
+  subagent completion direct announce retried and gave up, but the main
+  orchestration completed successfully.
 - Re-read current repository docs.
 - Attempted WSL plugin discovery.
 - WSL is accessible from Codex Desktop only when WSL commands are run outside
@@ -189,36 +207,12 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
 
 ## Next Recommended Steps
 
-1. Inspect plugin entrypoints and gateway hooks in:
-
-   ```text
-   openclaw-plugins/inter-agent-orchestration/index.js
-   ```
-
-2. Align plugin behavior with `docs/source-of-truth.md`.
-3. Connect the same routing policy to the OpenClaw plugin copy:
-   - compare `src/discord/messageRouter.ts` with
-     `openclaw-plugins/inter-agent-orchestration/index.js`
-   - preserve plugin behavior that already handles
-     `resumeWaitingOrchestrationFromUserDecision(...)`
-   - align plugin same-thread violation handling with
-     `CompanyOrchestrator.recordHermesThreadViolation(...)`
-4. Continue OpenClaw plugin alignment:
-   - inspect whether plugin timeout/no-reply paths should become
-     `waiting_for_user` or remain `failed`
-   - wire a real gateway signal to call `recordHermesThreadViolation(...)` if
-     Hermes is observed outside the expected thread
-5. Add the next Phase 2-A implementation slice:
-   - Discord polling fallback that captures the next Hermes bot message
-   - debug-only actual mention timeline
-6. Ask the user to confirm Discord now shows OpenClaw/Hermes online after the
-   keepalive fix.
-7. Continue Phase 2-A live Discord verification:
-   - parent channel user message
-   - automatic thread creation
-   - OpenClaw draft capture
-   - Hermes same-thread review
-   - final synthesis in the same thread
+1. Run a live user-decision/resume scenario in a Discord thread.
+2. Decide whether the post-completion subagent announce retry warning needs a
+   code fix or can remain a logged non-blocking OpenClaw behavior.
+3. Add or verify Discord polling fallback for cases where the internal Hermes
+   executor fails.
+4. Add debug-only mention timeline verification if needed.
 
 ## Verification Status
 
@@ -476,6 +470,35 @@ Result:
 tests 32
 pass 32
 fail 0
+```
+
+Phase 2-A live Discord happy path passed:
+
+```text
+threadId=1511218087167393944
+parent channel request detected
+auto thread created
+OpenClaw parent reply intercepted and suppressed
+OpenClaw draft captured and posted in thread
+Hermes reviewer request accepted in same thread
+Hermes reply detected in same thread
+Final synthesis posted in same thread
+```
+
+SQLite persistence for the same live run:
+
+```text
+task.status=completed
+owner_draft stored
+review_request stored
+review stored
+final_synthesis stored
+```
+
+Non-blocking warning observed after final synthesis:
+
+```text
+Subagent completion direct announce failed / retry-limit
 ```
 
 Selected WSL original plugin tests passed:
