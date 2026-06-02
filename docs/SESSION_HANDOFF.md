@@ -1,6 +1,6 @@
 # Session Handoff
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## Current Objective
 
@@ -114,6 +114,20 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
   keepalive, not missing systemd units.
 - Fixed autostart to launch `scripts/wsl-keepalive.sh` with `nohup` before
   starting gateway services.
+- Rechecked autostart after a Windows reboot/login because Discord showed the
+  bots offline.
+- Root cause: the original WSL keepalive did not keep a Windows-attached WSL
+  process alive, so WSL terminated 15-30 seconds after startup and stopped the
+  user systemd gateway services.
+- Replaced the active keepalive path in `scripts/start-wsl-gateways.ps1` with a
+  hidden Windows-attached WSL process:
+  `wsl.exe -d Ubuntu --exec /usr/bin/tail -f /dev/null`.
+- Verified the final autostart path by terminating Ubuntu WSL, running
+  `scripts/start-wsl-gateways.ps1`, waiting 30 seconds, and confirming Ubuntu
+  WSL stayed `Running`, the keepalive process stayed alive, and both gateway
+  services stayed `active`.
+- Earlier `scripts/wsl-keepalive.sh` remains in the repository but is not the
+  active keepalive path.
 - Re-read current repository docs.
 - Attempted WSL plugin discovery.
 - WSL is accessible from Codex Desktop only when WSL commands are run outside
@@ -197,10 +211,14 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
 5. Add the next Phase 2-A implementation slice:
    - Discord polling fallback that captures the next Hermes bot message
    - debug-only actual mention timeline
-6. Live-verify autostart after a Windows reboot/login:
-   - confirm Discord shows OpenClaw/Hermes online
-   - inspect latest `data/autostart/wsl-gateways-*.log`
-   - run `wsl.exe -d Ubuntu --exec bash -lc "systemctl --user is-active openclaw-gateway.service hermes-gateway.service"`
+6. Ask the user to confirm Discord now shows OpenClaw/Hermes online after the
+   keepalive fix.
+7. Continue Phase 2-A live Discord verification:
+   - parent channel user message
+   - automatic thread creation
+   - OpenClaw draft capture
+   - Hermes same-thread review
+   - final synthesis in the same thread
 
 ## Verification Status
 
@@ -423,6 +441,41 @@ OpenClaw Discord connection evidence from logs:
 [gateway] ready
 [discord] client initialized as 1505917780577357928
 [discord] [default] Discord bot probe resolved @버추얼컴퍼니-OpenClaw
+```
+
+After rechecking the reboot/login failure, the active keepalive implementation
+was replaced with a hidden Windows-attached WSL process:
+
+```powershell
+wsl.exe --terminate Ubuntu
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File F:\ai-projects\AI_Agent\scripts\start-wsl-gateways.ps1
+Start-Sleep -Seconds 30
+wsl.exe -l -v
+wsl.exe -d Ubuntu --exec systemctl --user is-active openclaw-gateway.service hermes-gateway.service
+```
+
+Observed result:
+
+```text
+Ubuntu WSL remained Running
+/usr/bin/tail -f /dev/null keepalive remained alive
+openclaw-gateway.service active
+hermes-gateway.service active
+OpenClaw log reached [gateway] ready and Discord provider startup
+```
+
+AI_Agent suite still passed after the autostart keepalive fix:
+
+```powershell
+& 'C:\Users\KBM\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --test tests\*.test.ts
+```
+
+Result:
+
+```text
+tests 32
+pass 32
+fail 0
 ```
 
 Selected WSL original plugin tests passed:
