@@ -199,3 +199,11 @@ Notes:
 - WSL keepalive remained alive as `/usr/bin/tail -f /dev/null`.
 - OpenClaw emitted retry-limit warnings for a subagent completion direct
   announce after final synthesis. The main orchestration still completed.
+- Follow-up from screenshot review: the parent channel also received a Korean
+  review/final-summary style auto reply. This was not normal for the design.
+  Root cause was content-pattern suppression only matching English markers such
+  as `**Final synthesis**`; the live model produced Korean final-answer text
+  without those markers.
+- Fix applied: after a thread result is posted, the plugin now records a
+  parent-channel one-shot suppression and suppresses the next parent launcher
+  auto reply regardless of visible text language or marker format.

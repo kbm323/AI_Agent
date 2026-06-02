@@ -17,6 +17,7 @@ const orchestrationResults = new Map();
 const orchestrationMessageIds = new Map();
 const pendingDraftCaptures = new Map();
 const threadAutoReplySuppressions = new Map();
+const parentAutoReplySuppressions = new Map();
 const stateDbByPath = new Map();
 
 function liveLog(event, details = {}) {
@@ -1008,6 +1009,25 @@ export function consumeThreadAutoReplySuppression(threadId) {
   return value;
 }
 
+function rememberParentAutoReplySuppression(parentChannelId, value = {}) {
+  const normalized = normalizeDiscordTargetId(parentChannelId);
+  if (!normalized) return;
+  parentAutoReplySuppressions.set(normalized, { ...value, expiresAt: Date.now() + 5 * 60 * 1000 });
+}
+
+export function consumeParentAutoReplySuppression(parentChannelId) {
+  const normalized = normalizeDiscordTargetId(parentChannelId);
+  if (!normalized) return undefined;
+  const value = parentAutoReplySuppressions.get(normalized);
+  if (!value) return undefined;
+  if (value.expiresAt < Date.now()) {
+    parentAutoReplySuppressions.delete(normalized);
+    return undefined;
+  }
+  parentAutoReplySuppressions.delete(normalized);
+  return value;
+}
+
 function resolveInboundFacts(event, ctx) {
   const threadId = event.threadId ?? ctx?.conversationId;
   const channelId = threadId ?? String(event.from ?? "").match(/discord:channel:(\d+)/)?.[1] ?? ctx?.conversationId;
@@ -1802,6 +1822,13 @@ export async function runThreadReviewFromFacts({ api, facts, config, sendMessage
         const reviewState = { threadId, correlationId, openClawDraft, reviews, stop, maxRounds: config.maxRounds, finalMessageId, failureReason: null, escalationReasons };
         rememberOrchestrationResult(stateKey, { status: "waiting_for_user", ...reviewState });
         rememberOrchestrationMessageId(facts.messageId, { status: "waiting_for_user", threadId, correlationId, finalMessageId });
+        rememberParentAutoReplySuppression(normalizedChannelId, {
+          reason: "thread_result_already_posted",
+          status: "waiting_for_user",
+          threadId,
+          correlationId,
+          finalMessageId
+        });
         recordStateTask(config, {
           id: taskId,
           parentChannelId: normalizedChannelId,
@@ -1894,6 +1921,13 @@ export async function runThreadReviewFromFacts({ api, facts, config, sendMessage
     const reviewState = { threadId, correlationId, openClawDraft, reviews, stop, maxRounds: config.maxRounds, finalMessageId, failureReason };
     rememberOrchestrationResult(stateKey, { status: "completed", ...reviewState });
     rememberOrchestrationMessageId(facts.messageId, { status: "completed", threadId, correlationId, finalMessageId });
+    rememberParentAutoReplySuppression(normalizedChannelId, {
+      reason: "thread_result_already_posted",
+      status: failureReason ? "failed" : "completed",
+      threadId,
+      correlationId,
+      finalMessageId
+    });
     recordStateTask(config, {
       id: taskId,
       parentChannelId: normalizedChannelId,
@@ -2186,6 +2220,20 @@ export default definePluginEntry({
           threadId: event.threadId,
           messageId: autoReplySuppression.messageId,
           finalMessageId: autoReplySuppression.finalMessageId
+        });
+        return {
+          content: "NO_REPLY",
+          metadata: { ...(event.metadata ?? {}), interAgentOrchestrationSuppressed: true }
+        };
+      }
+      const parentAutoReplySuppression = consumeParentAutoReplySuppression(event.to ?? event.channelId);
+      if (parentAutoReplySuppression) {
+        liveLog("completed orchestration parent auto reply suppressed", {
+          to: event.to,
+          threadId: event.threadId,
+          finalMessageId: parentAutoReplySuppression.finalMessageId,
+          resultThreadId: parentAutoReplySuppression.threadId,
+          reason: parentAutoReplySuppression.reason
         });
         return {
           content: "NO_REPLY",

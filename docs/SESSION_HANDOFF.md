@@ -146,6 +146,21 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
 - Noted one non-blocking warning after final synthesis:
   subagent completion direct announce retried and gave up, but the main
   orchestration completed successfully.
+- User screenshot showed the parent channel also contained a Korean
+  review/final-summary style auto reply. This is not normal under the Phase 2-A
+  parent-channel policy; parent should only show the thread-start notice.
+- Root cause: parent-channel leakage suppression matched English content
+  markers like `**Final synthesis**`, but the live OpenClaw auto reply was
+  Korean final-answer text without those markers.
+- Fixed the imported OpenClaw plugin to store a one-shot parent-channel
+  suppression after a thread result is posted. The next parent launcher auto
+  reply is now suppressed regardless of text language or marker format.
+- Synced the repo plugin fix into the live WSL plugin at
+  `/home/kbm/.openclaw/local-plugins/inter-agent-orchestration`.
+- Fixed copied live plugin file permissions from world-writable to safe mode
+  after OpenClaw blocked the plugin candidate.
+- Restarted `openclaw-gateway.service` and confirmed
+  `inter-agent-orchestration` loaded again with Discord ready.
 - Re-read current repository docs.
 - Attempted WSL plugin discovery.
 - WSL is accessible from Codex Desktop only when WSL commands are run outside
@@ -208,11 +223,14 @@ Parent Channel -> OpenClaw creates thread -> same-thread Hermes review
 ## Next Recommended Steps
 
 1. Run a live user-decision/resume scenario in a Discord thread.
-2. Decide whether the post-completion subagent announce retry warning needs a
+2. Re-run a parent-channel happy-path live test and confirm the parent channel
+   contains only the thread-start notice, while draft/review/final synthesis
+   stay in the created thread.
+3. Decide whether the post-completion subagent announce retry warning needs a
    code fix or can remain a logged non-blocking OpenClaw behavior.
-3. Add or verify Discord polling fallback for cases where the internal Hermes
+4. Add or verify Discord polling fallback for cases where the internal Hermes
    executor fails.
-4. Add debug-only mention timeline verification if needed.
+5. Add debug-only mention timeline verification if needed.
 
 ## Verification Status
 
@@ -499,6 +517,17 @@ Non-blocking warning observed after final synthesis:
 
 ```text
 Subagent completion direct announce failed / retry-limit
+```
+
+Parent-channel duplicate fix verification:
+
+```text
+OpenClaw plugin tests: tests 63, pass 63, fail 0
+AI_Agent tests: tests 32, pass 32, fail 0
+Live WSL plugin hash matches repo plugin hash
+OpenClaw gateway restarted
+inter-agent-orchestration loaded as one of 11 plugins
+Discord provider reached gateway ready
 ```
 
 Selected WSL original plugin tests passed:

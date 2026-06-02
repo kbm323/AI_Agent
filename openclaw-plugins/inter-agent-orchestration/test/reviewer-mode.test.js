@@ -37,6 +37,7 @@ import {
   prepareThreadOrchestrationFromFacts,
   parseReviewerVerdict,
   capturePendingOpenClawDraftSend,
+  consumeParentAutoReplySuppression,
   consumeThreadAutoReplySuppression,
   recordHermesThreadViolation,
   resumeWaitingOrchestrationFromUserDecision,
@@ -730,7 +731,8 @@ test("posts unavailable when no valid reviewer reply is found", async () => {
       if (sent.length === 2) return { id: "request-1", timestamp: "2026-05-26T00:00:05.000Z" };
       return { id: "failure-1", timestamp: "2026-05-26T00:00:20.000Z" };
     },
-    waitForReview: async () => null
+    waitForReview: async () => null,
+    runCliReview: async () => ""
   });
   assert.equal(result.reviews.length, 0);
   assert.equal(result.stop.reason, "reviewer_timeout");
@@ -1180,4 +1182,38 @@ test("parent OpenClaw reply is captured, suppressed, and used as real thread dra
   assert.ok(logs.find((entry) => entry.event === "OpenClaw parent reply intercepted"));
   assert.ok(logs.find((entry) => entry.event === "parent reply suppressed"));
   assert.ok(logs.find((entry) => entry.event === "OpenClaw draft captured"));
+});
+
+test("completed parent launcher auto reply is suppressed even without English markers", async () => {
+  const sent = [];
+  const result = await runThreadReviewFromFacts({
+    api: { config: { channels: { discord: { token: "test-token" } } } },
+    facts: {
+      channelId: "1505600167221526621",
+      threadId: "channel:1505600167221526621",
+      messageId: "m-parent-suppress",
+      currentRequest: "후보 A/B/C를 만들고 Hermes 리뷰를 받아 최종안을 정리해줘",
+      openClawDraft: "OpenClaw draft:\n후보 A는 단순 확인, 후보 B는 근거 있는 결론, 후보 C는 분석형 설명입니다."
+    },
+    config,
+    logger: () => {},
+    createThread: async () => ({ id: "1505600167999999999", name: "Agent discussion" }),
+    sendMessage: async ({ channelId, content }) => {
+      sent.push({ channelId, content });
+      return { id: `sent-${sent.length}`, timestamp: "2026-05-26T00:00:05.000Z" };
+    },
+    waitForReview: async () => ({
+      messageId: "review-parent-suppress",
+      authorId: HERMES_ID,
+      authorName: "Hermes",
+      text: "Reviewer view: 후보 B가 OpenClaw draft의 후보 중 가장 적합하다."
+    })
+  });
+
+  assert.equal(Boolean(result.failureReason), false);
+  assert.equal(sent.at(-1).channelId, "1505600167999999999");
+  const suppression = consumeParentAutoReplySuppression("channel:1505600167221526621");
+  assert.equal(suppression.reason, "thread_result_already_posted");
+  assert.equal(suppression.threadId, "1505600167999999999");
+  assert.equal(consumeParentAutoReplySuppression("1505600167221526621"), undefined);
 });
