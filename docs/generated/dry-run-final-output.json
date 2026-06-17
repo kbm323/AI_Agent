@@ -1,0 +1,591 @@
+{
+  "schemaVersion": "final-output-artifact.v1",
+  "command": "ai-agent dry-run",
+  "metadata": {
+    "executionId": "run:5f605735bb696dec",
+    "inputIdentifier": "request:f42143edc0867a0d",
+    "inputSource": "inline",
+    "version": {
+      "schemaVersion": "run-version-metadata.v1",
+      "artifactSchemaVersion": "final-output-artifact.v1",
+      "commandVersion": "ai-agent-dry-run.v1",
+      "implementationVersion": "multi-agent-meeting-mvp.v1",
+      "runtime": {
+        "name": "node",
+        "version": "24.15.0"
+      }
+    },
+    "runSettings": {
+      "executionMode": "dry_run",
+      "orchestrator": {
+        "maxRounds": 4,
+        "escalationPolicy": "default"
+      },
+      "models": {
+        "openclawOwner": {
+          "provider": "local-deterministic",
+          "model": "openclaw-dry-run-owner-v1",
+          "temperature": 0,
+          "maxOutputTokens": 512
+        },
+        "hermesReviewer": {
+          "provider": "local-deterministic",
+          "model": "hermes-dry-run-reviewer-v1",
+          "temperature": 0,
+          "maxOutputTokens": 512
+        },
+        "openclawFinalizer": {
+          "provider": "local-deterministic",
+          "model": "openclaw-dry-run-finalizer-v1",
+          "temperature": 0,
+          "maxOutputTokens": 768
+        }
+      }
+    }
+  },
+  "status": "finalized",
+  "threadId": "thread-demo-1",
+  "userRequest": "뮤직비디오 오프닝 아이디어를 회의해줘.",
+  "selectedDecision": {
+    "outcome": "partial_redesign",
+    "label": "partial redesign",
+    "basis": "docs/diagnosis-report.md priority assessment: error frequency > maintenance difficulty > token cost > architecture fit > feature completeness",
+    "justification": {
+      "outcome": "partial_redesign",
+      "label": "partial redesign",
+      "rule": "high_or_token_cost_evidence",
+      "summary": "partial redesign: high-severity or token-cost evidence requires scoped redesign; supporting findings: #1 finding:existing:src/acceptance-evidence.ts:missing-test, #2 finding:existing:src/compression-verification.ts:missing-test, #3 finding:existing:src/context-storage.ts:missing-test, #4 finding:existing:src/convergence-failure.ts:missing-test, #5 finding:existing:src/db.ts:missing-test, #6 finding:existing:src/decision-justification-report.ts:missing-test, #7 finding:existing:src/evaluation.ts:missing-test, #8 finding:existing:src/final-synthesis.ts:missing-test, #9 finding:existing:src/health-check.ts:missing-test, #10 finding:existing:src/index.ts:missing-test, #11 finding:existing:src/meeting-transcript.ts:missing-test, #12 finding:existing:src/orchestrator.ts:missing-test, #13 finding:existing:src/public.ts:missing-test, #14 finding:existing:src/token-strategy-artifact.ts:missing-test, #15 finding:existing:src/types.ts:missing-test, #18 finding:existing:src/context-storage.ts:raw-content-exposure, #19 finding:existing:src/final-output-schema.ts:raw-content-exposure, #20 finding:existing:src/final-synthesis.ts:raw-content-exposure, #21 finding:existing:src/inspection.ts:raw-content-exposure, #22 finding:existing:src/orchestrator.ts:raw-content-exposure, #23 finding:existing:src/types.ts:raw-content-exposure, #24 finding:existing:src/verification-workflow-runner.ts:raw-content-exposure.",
+      "priorityOrder": [
+        "error_frequency",
+        "maintainability",
+        "token_cost",
+        "architecture_fit",
+        "feature_completeness"
+      ],
+      "supportingEvidence": [
+        {
+          "rank": 1,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/acceptance-evidence.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 2,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/compression-verification.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 3,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/context-storage.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 4,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/convergence-failure.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 5,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/db.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 6,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/decision-justification-report.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 7,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/evaluation.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 8,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/final-synthesis.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 9,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/health-check.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 10,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/index.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 11,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/meeting-transcript.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 12,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/orchestrator.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 13,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/public.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 14,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/token-strategy-artifact.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 15,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/types.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 18,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/context-storage.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 19,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/final-output-schema.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 20,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/final-synthesis.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 21,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/inspection.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 22,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/orchestrator.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 23,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/types.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 24,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/verification-workflow-runner.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        }
+      ]
+    }
+  },
+  "diagnosis": {
+    "decision": "partial_redesign",
+    "decisionLabel": "partial redesign",
+    "basis": "docs/diagnosis-report.md priority assessment: error frequency > maintenance difficulty > token cost > architecture fit > feature completeness",
+    "justification": {
+      "outcome": "partial_redesign",
+      "label": "partial redesign",
+      "rule": "high_or_token_cost_evidence",
+      "summary": "partial redesign: high-severity or token-cost evidence requires scoped redesign; supporting findings: #1 finding:existing:src/acceptance-evidence.ts:missing-test, #2 finding:existing:src/compression-verification.ts:missing-test, #3 finding:existing:src/context-storage.ts:missing-test, #4 finding:existing:src/convergence-failure.ts:missing-test, #5 finding:existing:src/db.ts:missing-test, #6 finding:existing:src/decision-justification-report.ts:missing-test, #7 finding:existing:src/evaluation.ts:missing-test, #8 finding:existing:src/final-synthesis.ts:missing-test, #9 finding:existing:src/health-check.ts:missing-test, #10 finding:existing:src/index.ts:missing-test, #11 finding:existing:src/meeting-transcript.ts:missing-test, #12 finding:existing:src/orchestrator.ts:missing-test, #13 finding:existing:src/public.ts:missing-test, #14 finding:existing:src/token-strategy-artifact.ts:missing-test, #15 finding:existing:src/types.ts:missing-test, #18 finding:existing:src/context-storage.ts:raw-content-exposure, #19 finding:existing:src/final-output-schema.ts:raw-content-exposure, #20 finding:existing:src/final-synthesis.ts:raw-content-exposure, #21 finding:existing:src/inspection.ts:raw-content-exposure, #22 finding:existing:src/orchestrator.ts:raw-content-exposure, #23 finding:existing:src/types.ts:raw-content-exposure, #24 finding:existing:src/verification-workflow-runner.ts:raw-content-exposure.",
+      "priorityOrder": [
+        "error_frequency",
+        "maintainability",
+        "token_cost",
+        "architecture_fit",
+        "feature_completeness"
+      ],
+      "supportingEvidence": [
+        {
+          "rank": 1,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/acceptance-evidence.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 2,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/compression-verification.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 3,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/context-storage.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 4,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/convergence-failure.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 5,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/db.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 6,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/decision-justification-report.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 7,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/evaluation.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 8,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/final-synthesis.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 9,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/health-check.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 10,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/index.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 11,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/meeting-transcript.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 12,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/orchestrator.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 13,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/public.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 14,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/token-strategy-artifact.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 15,
+          "priority": 1,
+          "category": "error_frequency",
+          "severity": "high",
+          "findingId": "finding:existing:src/types.ts:missing-test",
+          "title": "Source module has no observable test coverage"
+        },
+        {
+          "rank": 18,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/context-storage.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 19,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/final-output-schema.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 20,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/final-synthesis.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 21,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/inspection.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 22,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/orchestrator.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 23,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/types.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        },
+        {
+          "rank": 24,
+          "priority": 3,
+          "category": "token_cost",
+          "severity": "medium",
+          "findingId": "finding:existing:src/verification-workflow-runner.ts:raw-content-exposure",
+          "title": "Raw content handling needs explicit summary boundary"
+        }
+      ]
+    }
+  },
+  "diagnosticOutput": {
+    "sections": [
+      {
+        "title": "Prior Review Evidence",
+        "evidence": {
+          "artifactPath": "/home/kbm/F:ai-projects/AI_Agent/docs/review-evidence.json",
+          "schemaVersion": "review-evidence.v1",
+          "recommendation": "partial_redesign",
+          "inspectedModules": 139,
+          "findingCount": 25,
+          "validationValid": true,
+          "completenessComplete": true,
+          "decisionGateAccepted": true
+        }
+      },
+      {
+        "title": "Keep Decision",
+        "evidence": {
+          "outcome": "keep",
+          "label": "Keep",
+          "selected": false,
+          "rule": "no_redesign_evidence",
+          "criterion": "Preserve the implementation when no critical, high-severity, or token-cost redesign evidence is ranked."
+        }
+      },
+      {
+        "title": "Partial Redesign Decision",
+        "evidence": {
+          "outcome": "partial_redesign",
+          "label": "partial redesign",
+          "selected": true,
+          "rule": "high_or_token_cost_evidence",
+          "criterion": "Preserve the implementation shape while redesigning scoped error, maintenance, or token-cost pressure points."
+        }
+      },
+      {
+        "title": "Full Redesign Decision",
+        "evidence": {
+          "outcome": "full_replan",
+          "label": "full replan",
+          "selected": false,
+          "rule": "critical_evidence",
+          "criterion": "Replace the plan only when critical evidence shows the current implementation cannot satisfy the MVP safely."
+        }
+      }
+    ]
+  },
+  "requestAnalysis": {
+    "taskBreakdown": [
+      "task-001:요청 의도와 성공 기준 정리",
+      "task-002:OpenClaw 실행 초안 작성",
+      "task-003:Hermes 리뷰와 수렴 판단",
+      "task-004:최종 합성 또는 escalation"
+    ],
+    "roleRoutes": [
+      "task-001->openclaw-owner",
+      "task-002->openclaw-owner",
+      "task-003->hermes-reviewer",
+      "task-004->openclaw-finalizer"
+    ],
+    "tokenStrategy": "Reduce exposed loop tokens by at least 40-50% compared with replaying every full turn."
+  },
+  "openclawOutputs": [
+    {
+      "round": 0,
+      "role": "openclaw-owner",
+      "kind": "request_analysis",
+      "summary": "Request analysis\n\nSummary: 뮤직비디오 오프닝 아이디어를 회의해줘.\n\nTask breakdown:\n- task-001: 요청 의도와 성공 기준 정리\n- task-002: OpenClaw 실행 초안 작성\n- task-003: Hermes 리뷰와 수렴 판단\n- task-004: 최종 합성 또는 escalation\n\nRole routing:\n- task-001 -> openclaw-owner: 요청을 작업 단위로 분해하고 회의 목표를 고정한다.\n- task-002 -> openclaw-owner: 실행 가능한 초안을 작성하고 Hermes에게 리뷰를 요청한다.\n- task-003 -> hermes-reviewer: 초안 검토, 리스크 식별, 수렴 여부 또는 사용자 결정 필요성을 판단한다.\n- task-004 -> openclaw-finalizer: 합의된 내용을 최종 산출물로 합성하거나 escalation artifact를 남긴다.\n\nLoop context:\n- request_summary: 뮤직비디오 오프닝 아이디어를 회의해줘.\n- required_flow: analysis -> routing -> OpenClaw draft -> Hermes review -> final synthesis/escalation\n- storage_boundary: full text stays in SQLite; exposed context uses summaries"
+    },
+    {
+      "round": 1,
+      "role": "openclaw-owner",
+      "kind": "owner_draft",
+      "summary": "OpenClaw draft\n\nOpenClaw owner draft round 1:\n- 요청을 3막 구조의 실행안으로 정리한다.\n- 첫 3초는 강한 후킹 컷으로 시작한다.\n- 후반부는 캐릭터 실루엣과 브랜드 컬러를 반복 노출한다."
+    },
+    {
+      "round": 1,
+      "role": "openclaw-owner",
+      "kind": "review_request",
+      "summary": "Hermes reviewer request (round 1)\n\nUser request:\n뮤직비디오 오프닝 아이디어를 회의해줘.\n\nCaptured OpenClaw draft:\nOpenClaw owner draft round 1:\n- 요청을 3막 구조의 실행안으로 정리한다.\n- 첫 3초는 강한 후킹 컷으로 시작한다.\n- 후반부는 캐릭터 실루엣과 브랜드 컬러를 반복 노출한다.\n\nReview task:\nOpenClaw draft를 기준으로 비판/보완/동의 여부를 판단하라.\n독립 제안을 새로 만들지 말고, draft의 장점/문제/리스크/수정안을 분리하라.\n\nVerdict must be one of: agree, agree_with_changes, disagree, needs_user_decision."
+    }
+  ],
+  "hermesReviews": [
+    {
+      "round": 1,
+      "role": "hermes-reviewer",
+      "kind": "review",
+      "summary": "Hermes review\n\nHermes review:\nagree. 후킹/구조/브랜드 반복은 타당하다.\n썸네일 전환 컷과 숏폼 재사용 가능성을 final에 명시하라."
+    }
+  ],
+  "meetingHistory": [
+    {
+      "round": 0,
+      "role": "openclaw-owner",
+      "kind": "request_analysis",
+      "summary": "Request analysis\n\nSummary: 뮤직비디오 오프닝 아이디어를 회의해줘.\n\nTask breakdown:\n- task-001: 요청 의도와 성공 기준 정리\n- task-002: OpenClaw 실행 초안 작성\n- task-003: Hermes 리뷰와 수렴 판단\n- task-004: 최종 합성 또는 escalation\n\nRole routing:\n- task-001 -> openclaw-owner: 요청을 작업 단위로 분해하고 회의 목표를 고정한다.\n- task-002 -> openclaw-owner: 실행 가능한 초안을 작성하고 Hermes에게 리뷰를 요청한다.\n- task-003 -> hermes-reviewer: 초안 검토, 리스크 식별, 수렴 여부 또는 사용자 결정 필요성을 판단한다.\n- task-004 -> openclaw-finalizer: 합의된 내용을 최종 산출물로 합성하거나 escalation artifact를 남긴다.\n\nLoop context:\n- request_summary: 뮤직비디오 오프닝 아이디어를 회의해줘.\n- required_flow: analysis -> routing -> OpenClaw draft -> Hermes review -> final synthesis/escalation\n- storage_boundary: full text stays in SQLite; exposed context uses summaries"
+    },
+    {
+      "round": 1,
+      "role": "openclaw-owner",
+      "kind": "owner_draft",
+      "summary": "OpenClaw draft\n\nOpenClaw owner draft round 1:\n- 요청을 3막 구조의 실행안으로 정리한다.\n- 첫 3초는 강한 후킹 컷으로 시작한다.\n- 후반부는 캐릭터 실루엣과 브랜드 컬러를 반복 노출한다."
+    },
+    {
+      "round": 1,
+      "role": "openclaw-owner",
+      "kind": "review_request",
+      "summary": "Hermes reviewer request (round 1)\n\nUser request:\n뮤직비디오 오프닝 아이디어를 회의해줘.\n\nCaptured OpenClaw draft:\nOpenClaw owner draft round 1:\n- 요청을 3막 구조의 실행안으로 정리한다.\n- 첫 3초는 강한 후킹 컷으로 시작한다.\n- 후반부는 캐릭터 실루엣과 브랜드 컬러를 반복 노출한다.\n\nReview task:\nOpenClaw draft를 기준으로 비판/보완/동의 여부를 판단하라.\n독립 제안을 새로 만들지 말고, draft의 장점/문제/리스크/수정안을 분리하라.\n\nVerdict must be one of: agree, agree_with_changes, disagree, needs_user_decision."
+    },
+    {
+      "round": 1,
+      "role": "hermes-reviewer",
+      "kind": "review",
+      "summary": "Hermes review\n\nHermes review:\nagree. 후킹/구조/브랜드 반복은 타당하다.\n썸네일 전환 컷과 숏폼 재사용 가능성을 final에 명시하라."
+    },
+    {
+      "round": 5,
+      "role": "openclaw-finalizer",
+      "kind": "final_synthesis",
+      "summary": "Final synthesis\n\nFinal synthesis:\n뮤직비디오 오프닝은 3초 후킹 컷, 3막 감정선, 반복 가능한 브랜드 컬러를 중심으로 구성한다.\nHermes 피드백에 따라 썸네일 전환 컷과 숏폼 재사용 포인트를 포함한다.\n\nCompressed evidence:\n- OpenClaw owner draft round 1:\n- Hermes review:"
+    }
+  ],
+  "finalSynthesis": "Final synthesis:\n뮤직비디오 오프닝은 3초 후킹 컷, 3막 감정선, 반복 가능한 브랜드 컬러를 중심으로 구성한다.\nHermes 피드백에 따라 썸네일 전환 컷과 숏폼 재사용 포인트를 포함한다.\n\nCompressed evidence:\n- OpenClaw owner draft round 1:\n- Hermes review:",
+  "escalation": {
+    "required": false,
+    "reasons": [],
+    "decisionContext": {
+      "status": "finalized",
+      "trigger": "none",
+      "preservedTurns": 5,
+      "latestMeetingSummary": "Final synthesis\n\nFinal synthesis:\n뮤직비디오 오프닝은 3초 후킹 컷, 3막 감정선, 반복 가능한 브랜드 컬러를 중심으로 구성한다.\nHermes 피드백에 따라 썸네일 전환 컷과 숏폼 재사용 포인트를 포함한다.\n\nCompressed evidence:\n- OpenClaw owner draft round 1:\n- Hermes review:",
+      "diagnosisDecision": "partial_redesign"
+    },
+    "nextAction": {
+      "type": "continue",
+      "prompt": "No user decision is required; use finalSynthesis as the current result.",
+      "requestedFields": []
+    },
+    "preservedContext": {
+      "rawStorage": "Full request, draft, review, and escalation text is retained in turns.content.",
+      "exposedSummary": "Normal dry-run output exposes bounded meetingHistory summaries instead of raw full text.",
+      "compressedContext": "Next loop turn should carry request summary, latest meeting summary, reasons, and requestedFields only."
+    }
+  },
+  "tokenStrategy": {
+    "rawStorage": "SQLite turns.content stores full model outputs and reviewer requests for audit/history.",
+    "exposedLoopContext": "Discord thread messages and loop prompts use bounded summaries from turns.visibleSummary.",
+    "compressionPolicy": "Each round carries request summary, latest draft summary, latest Hermes verdict, accepted feedback, rejected feedback, and escalation reasons instead of replaying full raw text.",
+    "targetReduction": "Reduce exposed loop tokens by at least 40-50% compared with replaying every full turn."
+  }
+}

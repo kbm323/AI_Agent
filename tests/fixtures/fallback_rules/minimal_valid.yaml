@@ -1,0 +1,347 @@
+# Minimal valid routing_rules.yaml for testing Sub-AC 3.2.1
+# This file has all required sections but is much smaller than the real config.
+
+version: "1.0.0"
+
+metadata:
+  description: "Test ruleset for fallback rules loader tests"
+  activated_when:
+    - qwen_timeout
+    - qwen_error
+  primary_router: qwen-llm-via-opencode-go
+  fallback_mode: keyword_based_classification
+
+defaults:
+  validator_required: true
+  validator_role_id: validator
+  validator_model: glm-5.1
+  codex_required: false
+  codex_model: gpt-5.5
+  max_roles_per_meeting: 7
+  max_required_roles: 6
+  quorum_minimum_ratio: 0.67
+
+teams:
+  content-production:
+    name: "Content Team"
+    display_emoji: "🎬"
+    description: "Content production team"
+  art-design:
+    name: "Art Team"
+    display_emoji: "🎨"
+    description: "Art and design team"
+  tech-engineering:
+    name: "Tech Team"
+    display_emoji: "⚙️"
+    description: "Technology team"
+  marketing:
+    name: "Marketing Team"
+    display_emoji: "📈"
+    description: "Marketing team"
+  validation:
+    name: "Validation Team"
+    display_emoji: "🛡️"
+    description: "QA and validation team"
+  execution:
+    name: "Execution Team"
+    display_emoji: "🛠️"
+    description: "Tool-use execution team"
+
+roles:
+  - role_id: content-director
+    display_name: "Content Director"
+    team: content-production
+    role_type: leader
+    persistent_bot: true
+    discord_name: "🎬 ContentPD"
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - creative_direction
+    description: "Content team leader"
+
+  - role_id: scriptwriter
+    display_name: "Scriptwriter"
+    team: content-production
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - scriptwriting
+    description: "Writes scripts"
+
+  - role_id: art-director
+    display_name: "Art Director"
+    team: art-design
+    role_type: leader
+    persistent_bot: true
+    discord_name: "🎨 ArtDirector"
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - visual_direction
+    description: "Art team leader"
+
+  - role_id: character-designer
+    display_name: "Character Designer"
+    team: art-design
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - character_design
+    description: "Character designer"
+
+  - role_id: tech-director
+    display_name: "Tech Director"
+    team: tech-engineering
+    role_type: leader
+    persistent_bot: true
+    discord_name: "⚙️ TechDirector"
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: qwen-max
+    expertise_tags:
+      - technical_architecture
+    description: "Tech team leader"
+
+  - role_id: backend-engineer
+    display_name: "Backend Engineer"
+    team: tech-engineering
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: qwen-max
+    expertise_tags:
+      - backend
+    description: "Backend engineer"
+
+  - role_id: marketing-lead
+    display_name: "Marketing Lead"
+    team: marketing
+    role_type: leader
+    persistent_bot: true
+    discord_name: "📈 MarketingLead"
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - marketing_strategy
+    description: "Marketing team leader"
+
+  - role_id: brand-strategist
+    display_name: "Brand Strategist"
+    team: marketing
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - brand_strategy
+    description: "Brand strategist"
+
+  - role_id: validator
+    display_name: "Validator"
+    team: validation
+    role_type: validator
+    persistent_bot: true
+    discord_name: "🛡️ Validator"
+    model:
+      provider: opencode-go
+      name: glm-5.1
+      fallback: glm-4
+    expertise_tags:
+      - validation
+    description: "Primary validator"
+
+  - role_id: legal-reviewer
+    display_name: "Legal Reviewer"
+    team: validation
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: glm-5.1
+      fallback: deepseek-v3
+    expertise_tags:
+      - legal_review
+    description: "Legal reviewer"
+
+  - role_id: execution-lead
+    display_name: "Execution Lead"
+    team: execution
+    role_type: executor
+    persistent_bot: true
+    discord_name: "🛠️ ExecutionLead"
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: qwen-max
+    expertise_tags:
+      - tool_execution
+    description: "Execution team lead"
+
+agenda_types:
+  - id: creative-production
+    display_name: "Creative Production"
+    keywords:
+      - ["video", "music"]
+      - ["production"]
+    tags:
+      - creative
+    risk_tags: []
+    required_roles:
+      - content-director
+      - scriptwriter
+    optional_roles:
+      - art-director
+    validator_required: true
+    codex_required: false
+
+  - id: technical-development
+    display_name: "Technical Development"
+    keywords:
+      - ["code", "api"]
+      - ["development"]
+    tags:
+      - tech
+    risk_tags:
+      - code_change
+    required_roles:
+      - tech-director
+      - backend-engineer
+    optional_roles: []
+    validator_required: true
+    codex_required: false
+
+  - id: general-discussion
+    display_name: "General Discussion"
+    keywords: []
+    tags:
+      - general
+    risk_tags: []
+    required_roles:
+      - content-director
+    optional_roles: []
+    validator_required: true
+    codex_required: false
+
+risk_detection:
+  patterns:
+    - risk_tag: security_risk
+      severity: high
+      keywords:
+        - security
+        - hack
+      auto_codex: true
+
+    - risk_tag: code_change
+      severity: low
+      keywords:
+        - refactoring
+        - deploy
+      auto_codex: false
+
+    - risk_tag: budget_financial
+      severity: medium
+      keywords:
+        - budget
+        - cost
+      auto_codex: true
+      requires_approval: true
+
+escalation_rules:
+  codex_triggers:
+    - id: trigger-security
+      trigger_number: 1
+      description: "Security risk triggers Codex"
+      condition:
+        any_risk_tag_in:
+          - security_risk
+      action: set_codex_required_true
+
+    - id: trigger-budget
+      trigger_number: 2
+      description: "Budget triggers Codex"
+      condition:
+        any_risk_tag_in:
+          - budget_financial
+      action: set_codex_required_true
+
+  conflict_resolution:
+    tech_security_data:
+      priority: codex
+      description: "Codex priority for tech/security"
+
+priority_rules:
+  inference:
+    - priority: P0
+      label: "Urgent"
+      keywords:
+        - urgent
+        - critical
+      description: "Critical incidents"
+
+    - priority: P1
+      label: "Important"
+      keywords:
+        - important
+        - deadline
+      description: "Important tasks"
+
+  default: P2
+
+guardrails:
+  - id: max_roles_per_meeting
+    description: "Max 7 agents"
+    rule: "len(required + optional) <= 7"
+    enforcement: truncate
+
+  - id: validator_always_required
+    description: "Validator always required"
+    rule: "validator in required_roles"
+    enforcement: force_add_validator
+
+matching_algorithm:
+  description: "Keyword-based classification"
+  steps:
+    - "1. Normalize input"
+    - "2. Match keywords"
+    - "3. Fall through to general-discussion"
+  language_support:
+    - korean
+    - english
+
+output_schema:
+  description: "Output format for static router"
+  fields:
+    agenda_type: string
+    agenda_label: string
+    tags: array<string>
+    risk_tags: array<string>
+    required_roles: array<string>
+    optional_roles: array<string>
+    validator_required: boolean
+    codex_required: boolean
+    priority: string
+    routing_source: string
+    routing_reason: string
+    confidence: number
+    generated_at: string
+    version: string

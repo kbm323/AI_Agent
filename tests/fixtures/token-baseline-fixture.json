@@ -1,0 +1,59 @@
+{
+  "name": "minimal-representative-token-baseline",
+  "input": {
+    "turns": [
+      {
+        "round": 1,
+        "role": "openclaw-owner",
+        "kind": "owner_draft",
+        "content": "OpenClaw draft builds launch plan.",
+        "visibleSummary": "OpenClaw plan."
+      },
+      {
+        "round": 1,
+        "role": "hermes-reviewer",
+        "kind": "review",
+        "content": "Hermes review agrees.",
+        "visibleSummary": "Hermes agrees."
+      }
+    ],
+    "compressedContext": "Compressed: approved plan."
+  },
+  "expected": {
+    "method": "deterministic-local-estimate-v1",
+    "turnCount": 2,
+    "rawFullTextTokens": 17,
+    "exposedLoopContextTokens": 9,
+    "compressedLoopContextTokens": 8,
+    "exposedReductionPercent": 47.1,
+    "compressedReductionPercent": 52.9,
+    "targetReductionThresholds": [
+      {
+        "reductionPercent": 40,
+        "maxAllowedTokens": 10,
+        "minimumSavedTokens": 7
+      },
+      {
+        "reductionPercent": 50,
+        "maxAllowedTokens": 8,
+        "minimumSavedTokens": 9
+      }
+    ],
+    "perTurn": [
+      {
+        "round": 1,
+        "role": "openclaw-owner",
+        "kind": "owner_draft",
+        "rawFullTextTokens": 10,
+        "exposedSummaryTokens": 4
+      },
+      {
+        "round": 1,
+        "role": "hermes-reviewer",
+        "kind": "review",
+        "rawFullTextTokens": 7,
+        "exposedSummaryTokens": 5
+      }
+    ]
+  }
+}

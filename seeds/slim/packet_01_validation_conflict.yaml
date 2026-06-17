@@ -1,0 +1,56 @@
+goal: Verify or implement domain-based dual-validation conflict resolution for tech/security/data
+  vs legal/budget/brand vs factual conflicts.
+task_type: code
+constraints:
+- Do not recreate implemented ACs. Inspect matching src/ and tests/ first.
+- If implementation and tests already exist, run tests and mark verified instead of
+  editing.
+- 'Use strict TDD for any missing behavior: failing test first, then minimal implementation.'
+- All Coordinator-Worker contracts use filesystem-based JSON I/O.
+- No Hermes Core modifications.
+- 'Keep token use low: read only target files; do not load full original seed unless
+  necessary.'
+- 'Rate-limit safe: no live LLM calls in tests; mock or pure-function only.'
+- 'Target packet only: packet_01_validation_conflict. Do not implement other packets.'
+acceptance_criteria:
+- AC8 Codex dual-validation resolves conflicts by domain
+target_files:
+- src/conflict_detector.py
+- src/resolution_decision.py
+- src/validation_wrapper.py
+- tests/test_conflict_detector.py
+- tests/test_resolution_decision.py
+- tests/test_validation_wrapper.py
+verification_commands:
+- pytest tests/test_conflict_detector.py tests/test_resolution_decision.py tests/test_validation_wrapper.py
+  -q
+evaluation_principles:
+- name: no_duplicate_work
+  weight: 0.3
+  description: Existing implementation is verified before creating new files
+- name: targeted_scope
+  weight: 0.25
+  description: Only packet target files/ACs are touched
+- name: test_evidence
+  weight: 0.25
+  description: Behavior is proven by focused tests
+- name: seed_alignment
+  weight: 0.2
+  description: Behavior satisfies parent remaining seed constraints
+exit_conditions:
+- name: packet_verified
+  description: All packet verification commands pass
+  criteria: state transitions to completed
+- name: already_complete
+  description: Existing code/tests already satisfy packet
+  criteria: no edits; evidence recorded
+- name: blocked
+  description: Missing prerequisite outside packet scope
+  criteria: stop and report blocker without broadening scope
+metadata:
+  seed_id: packet_01_validation_conflict
+  title: Validation conflict resolution
+  parent_seed_id: seed_08605bf07c22_remaining
+  created_at: '2026-06-16T14:19:55Z'
+  generation_mode: manual_slim_split
+  token_strategy: targeted-files-only; verify-before-edit; no full-seed rerun

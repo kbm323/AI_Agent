@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "verification-workflow-runner.v1",
+  "command": "ai-agent run-verification-workflow",
+  "status": "passed",
+  "deterministicInputs": {
+    "clearRequest": "브랜드 캠페인 제작 회의를 열고 OpenClaw 실행안과 Hermes 검토를 거쳐 최종안을 합성해줘.",
+    "ambiguousRequest": "대충 좋은 후보 여러 개를 추천만 해줘.",
+    "projectChannelId": "verification-parent-channel"
+  },
+  "cases": [
+    {
+      "name": "finalized_meeting_loop",
+      "status": "passed",
+      "observed": {
+        "status": "finalized",
+        "taskBreakdownCount": 4,
+        "routeRoles": [
+          "openclaw-owner",
+          "openclaw-owner",
+          "hermes-reviewer",
+          "openclaw-finalizer"
+        ],
+        "meetingKinds": [
+          "request_analysis",
+          "owner_draft",
+          "review_request",
+          "review",
+          "owner_draft",
+          "review_request",
+          "review",
+          "final_synthesis"
+        ],
+        "ownerCallRounds": [
+          "1",
+          "2"
+        ],
+        "reviewerCallRounds": [
+          "1",
+          "2"
+        ],
+        "finalSynthesisCreated": true,
+        "parentPostCount": 1,
+        "rawSentinelStored": true,
+        "rawSentinelHiddenFromSummaries": true,
+        "threadFullContentPreserved": true
+      },
+      "failures": []
+    },
+    {
+      "name": "ambiguous_request_escalation",
+      "status": "passed",
+      "observed": {
+        "status": "waiting_for_user",
+        "escalationReasons": [
+          "underspecified_preference",
+          "unclear_success_criteria"
+        ],
+        "meetingKinds": [
+          "request_analysis",
+          "escalation"
+        ],
+        "ownerCalled": false,
+        "reviewerCalled": false,
+        "finalizerCalled": false,
+        "parentPostCount": 1
+      },
+      "failures": []
+    }
+  ],
+  "summary": {
+    "caseCount": 2,
+    "passedCaseCount": 2,
+    "failedCaseCount": 0,
+    "mvpWorkflowExecuted": true,
+    "escalationWorkflowExecuted": true,
+    "rawStorageSeparatedFromLoopContext": true
+  },
+  "errors": []
+}

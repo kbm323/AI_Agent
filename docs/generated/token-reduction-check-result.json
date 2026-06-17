@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "token-cost-control-check.v1",
+  "status": "passed",
+  "method": "deterministic-local-estimate-v1",
+  "baselineTokenCount": 734,
+  "optimizedTokenCount": 189,
+  "savedTokenCount": 545,
+  "percentSavings": 74.3,
+  "targetThreshold": {
+    "percentSavings": 40,
+    "maxOptimizedTokenCount": 440,
+    "minimumSavedTokenCount": 294
+  },
+  "pass": true
+}

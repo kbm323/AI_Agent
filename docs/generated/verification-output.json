@@ -1,0 +1,113 @@
+     1|{
+     2|  "schemaVersion": "verification-output.v1",
+     3|  "command": "ai-agent check-verification-output",
+     4|  "status": "passed",
+     5|  "deterministic": true,
+     6|  "artifactEvidence": [
+     7|    {
+     8|      "id": "diagnosis_report",
+     9|      "path": "docs/generated/diagnosis-report.json",
+    10|      "schemaVersion": "diagnosis-report.v1",
+    11|      "requiredFieldsPresent": true,
+    12|      "evidence": {
+    13|        "decision": "partial_redesign",
+    14|        "decisionEvidenceArtifact": "docs/review-evidence.json",
+    15|        "recommendation": "partial_redesign"
+    16|      }
+    17|    },
+    18|    {
+    19|      "id": "requirement_gap_mapping",
+    20|      "path": "docs/generated/requirement-gap-mapping.json",
+    21|      "schemaVersion": "implementation-capabilities.v1",
+    22|      "requiredFieldsPresent": true,
+    23|      "evidence": {
+    24|        "implementedCount": 6,
+    25|        "missingCount": 0,
+    26|        "readmeRequirementCount": 27
+    27|      }
+    28|    },
+    29|    {
+    30|      "id": "dry_run_final_output",
+    31|      "path": "docs/generated/dry-run-final-output.json",
+    32|      "schemaVersion": "final-output-artifact.v1",
+    33|      "requiredFieldsPresent": true,
+    34|      "evidence": {
+    35|        "command": "ai-agent dry-run",
+    36|        "status": "finalized",
+    37|        "escalationRequired": false,
+    38|        "targetReduction": "Reduce exposed loop tokens by at least 40-50% compared with replaying every full turn.",
+    39|        "meetingTurnCount": 5
+    40|      }
+    41|    },
+    42|    {
+    43|      "id": "meeting_loop_transcript",
+    44|      "path": "docs/generated/meeting-loop-transcript.json",
+    45|      "schemaVersion": "preserved-meeting-transcript.v1",
+    46|      "requiredFieldsPresent": true,
+    47|      "evidence": {
+    48|        "executionTurnId": "turn-002:owner_draft",
+    49|        "reviewTurnId": "turn-004:review",
+    50|        "transcriptSummaryOnly": true
+    51|      }
+    52|    },
+    53|    {
+    54|      "id": "token_cost_control",
+    55|      "path": "docs/generated/token-reduction-check-result.json",
+    56|      "schemaVersion": "token-cost-control-check.v1",
+    57|      "requiredFieldsPresent": true,
+    58|      "evidence": {
+    59|        "status": "passed",
+    60|        "percentSavings": 74.3,
+    61|        "minimumTargetSavingsPercent": 40,
+    62|        "pass": true
+    63|      }
+    64|    },
+    65|    {
+    66|      "id": "typecheck_check",
+    67|      "path": "docs/generated/typecheck-check-result.json",
+    68|      "schemaVersion": "typecheck-proof-artifact.v1",
+    69|      "requiredFieldsPresent": true,
+    70|      "evidence": {
+    71|        "command": "ai-agent check:typecheck",
+    72|        "status": "passed",
+    73|        "exitCode": 0
+    74|      }
+    75|    },
+    76|    {
+    77|      "id": "dry_run_fixture_harness",
+    78|      "path": "tests/fixtures/dry-run-harness-fixtures.json",
+    79|      "schemaVersion": "dry-run-fixture-harness.v1",
+    80|      "requiredFieldsPresent": true,
+    81|      "evidence": {
+    82|        "finalizedFixtureStatus": "finalized",
+    83|        "escalationFixtureStatus": "waiting_for_user",
+    84|        "invalidInputFixtureExitCode": 2,
+    85|        "invalidInputFixtureError": "invalid_input"
+    86|      }
+    87|    },
+    88|    {
+    89|      "id": "verification_workflow_runner",
+    90|      "path": "docs/generated/verification-workflow-result.json",
+    91|      "schemaVersion": "verification-workflow-runner.v1",
+    92|      "requiredFieldsPresent": true,
+    93|      "evidence": {
+    94|        "command": "ai-agent run-verification-workflow",
+    95|        "status": "passed",
+    96|        "mvpWorkflowExecuted": true,
+    97|        "escalationWorkflowExecuted": true,
+    98|        "rawStorageSeparatedFromLoopContext": true,
+    99|        "passedCaseCount": 2,
+   100|        "caseCount": 2
+   101|      }
+   102|    }
+   103|  ],
+   104|  "acceptanceEvidence": {
+   105|    "workflowRunnerPassed": true,
+   106|    "mvpObservable": true,
+   107|    "diagnosisComplete": true,
+   108|    "invalidInputHandled": true,
+   109|    "escalationHandled": true,
+   110|    "tokenStrategyDefined": true
+   111|  }
+   112|}
+   113|

@@ -1,0 +1,59 @@
+{
+  "modulePath": "ai-agent",
+  "verifiedSymbols": [
+    "CompanyOrchestrator",
+    "AiAgentDatabase",
+    "analyzeUserRequest",
+    "buildCompressedLoopContextArtifact",
+    "buildDefaultTokenStrategy",
+    "buildReviewerRequest",
+    "buildRoleRoutes",
+    "buildTaskGraph",
+    "decomposeUserRequest",
+    "format_message",
+    "load_config",
+    "serializeEscalationResult",
+    "summarizeForThread",
+    "validate_token"
+  ],
+  "exportedSymbols": [
+    "AiAgentDatabase",
+    "CompanyOrchestrator",
+    "analyzeUserRequest",
+    "buildCompressedLoopContextArtifact",
+    "buildDefaultTokenStrategy",
+    "buildReviewerRequest",
+    "buildRoleRoutes",
+    "buildTaskGraph",
+    "decomposeUserRequest",
+    "format_message",
+    "load_config",
+    "serializeEscalationResult",
+    "summarizeForThread",
+    "validate_token"
+  ],
+  "undocumentedRuntimeSymbols": [],
+  "verifiedClassSymbols": [
+    "CompanyOrchestrator",
+    "AiAgentDatabase"
+  ],
+  "verifiedFunctionSymbols": [
+    "analyzeUserRequest",
+    "buildCompressedLoopContextArtifact",
+    "buildDefaultTokenStrategy",
+    "buildReviewerRequest",
+    "buildRoleRoutes",
+    "buildTaskGraph",
+    "decomposeUserRequest",
+    "format_message",
+    "load_config",
+    "serializeEscalationResult",
+    "summarizeForThread",
+    "validate_token"
+  ],
+  "importSideEffects": {
+    "stdoutBytes": 0,
+    "stderrBytes": 0,
+    "createdFiles": []
+  }
+}

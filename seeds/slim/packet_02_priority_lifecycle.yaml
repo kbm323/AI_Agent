@@ -1,0 +1,59 @@
+goal: 'Implement only missing scheduling lifecycle behavior: priority ordering, concurrency
+  cap, P0 preemption/resume, and cancel preservation.'
+task_type: code
+constraints:
+- Do not recreate implemented ACs. Inspect matching src/ and tests/ first.
+- If implementation and tests already exist, run tests and mark verified instead of
+  editing.
+- 'Use strict TDD for any missing behavior: failing test first, then minimal implementation.'
+- All Coordinator-Worker contracts use filesystem-based JSON I/O.
+- No Hermes Core modifications.
+- 'Keep token use low: read only target files; do not load full original seed unless
+  necessary.'
+- 'Rate-limit safe: no live LLM calls in tests; mock or pure-function only.'
+- 'Target packet only: packet_02_priority_lifecycle. Do not implement other packets.'
+acceptance_criteria:
+- AC9 P0-P1-P2-P3 priority queue FIFO max 2 concurrent meetings
+- AC10 P0 pauses lower-priority meetings and resumes from manifest.completed_step
+- AC11 Cancel command cancels meeting with cancelled state and preserved output
+target_files:
+- src/priority_queue.py
+- src/meeting_scheduler.py
+- src/manifest_serializer.py
+- src/cancelled_transition.py
+- tests/test_priority_queue.py
+- tests/test_meeting_scheduler.py
+- tests/test_cancelled_transition.py
+verification_commands:
+- pytest tests/test_cancelled_transition.py -q
+- pytest tests/test_priority_queue.py tests/test_meeting_scheduler.py -q
+evaluation_principles:
+- name: no_duplicate_work
+  weight: 0.3
+  description: Existing implementation is verified before creating new files
+- name: targeted_scope
+  weight: 0.25
+  description: Only packet target files/ACs are touched
+- name: test_evidence
+  weight: 0.25
+  description: Behavior is proven by focused tests
+- name: seed_alignment
+  weight: 0.2
+  description: Behavior satisfies parent remaining seed constraints
+exit_conditions:
+- name: packet_verified
+  description: All packet verification commands pass
+  criteria: state transitions to completed
+- name: already_complete
+  description: Existing code/tests already satisfy packet
+  criteria: no edits; evidence recorded
+- name: blocked
+  description: Missing prerequisite outside packet scope
+  criteria: stop and report blocker without broadening scope
+metadata:
+  seed_id: packet_02_priority_lifecycle
+  title: Priority queue, pause/resume, cancel
+  parent_seed_id: seed_08605bf07c22_remaining
+  created_at: '2026-06-16T14:19:55Z'
+  generation_mode: manual_slim_split
+  token_strategy: targeted-files-only; verify-before-edit; no full-seed rerun

@@ -1,0 +1,1652 @@
+# =============================================================================
+# routing_rules.yaml — Static Fallback / Guardrail Routing Rules
+# =============================================================================
+#
+# ROLE: Fallback and guardrail ONLY. The primary router is Qwen LLM (via
+# opencode-go CLI). This file is activated ONLY when:
+#   - Qwen LLM is unavailable (timeout, error, rate-limit)
+#   - Qwen response fails JSON schema validation
+#   - Network partition prevents opencode-go CLI execution
+#
+# GUARDRAIL: Certain rules in this file OVERRIDE even Qwen output as hard
+# safety constraints (see `guardrails` section). These are non-negotiable
+# system invariants.
+#
+# OUTPUT: When activated, this file must produce the same structured output
+# as Qwen: agenda_type, tags, risk_tags, required_roles, optional_roles,
+# validator_required, codex_required.
+#
+# CONVENTIONS:
+#   - role_id: kebab-case
+#   - team: kebab-case
+#   - agenda_type: kebab-case
+#   - tags / risk_tags: snake_case, lowercase
+#
+# Version: 1.0.0
+# Generated: 2026-06-10
+# Source: interview_20260610_070847 → seed_08605bf07c22
+# =============================================================================
+
+version: "1.0.0"
+
+# ── Metadata ────────────────────────────────────────────────────────────────
+metadata:
+  description: >
+    Static fallback routing rules for the AI Virtual Entertainment Company
+    multi-agent meeting system. NOT the primary router. Activated only when
+    Qwen LLM classification fails. Also serves as guardrail for hard safety
+    constraints that override even Qwen output.
+  activated_when:
+    - qwen_timeout             # Qwen API call exceeds timeout
+    - qwen_error               # Qwen returns error or non-200
+    - qwen_parse_failure       # Qwen response fails JSON schema validation
+    - qwen_rate_limited        # Qwen API rate limit hit
+    - opencode_go_unavailable  # opencode-go CLI cannot execute
+  primary_router: qwen-llm-via-opencode-go
+  fallback_mode: keyword_based_classification
+
+# ── Defaults ────────────────────────────────────────────────────────────────
+defaults:
+  validator_required: true
+  validator_role_id: validator
+  validator_model: glm-5.1
+  codex_required: false
+  codex_model: gpt-5.5
+  max_roles_per_meeting: 7
+  max_required_roles: 6
+  quorum_minimum_ratio: 0.67  # 2/3 minimum for quorum
+
+# ═════════════════════════════════════════════════════════════════════════════
+# TEAMS & ROLES — Complete 29 roles across 6 teams
+# ═════════════════════════════════════════════════════════════════════════════
+
+teams:
+  content-production:
+    name: 콘텐츠/제작팀
+    display_emoji: "🎬"
+    description: >
+      Content creation, scriptwriting, music composition, video production,
+      and all creative content output.
+
+  art-design:
+    name: 아트/디자인팀
+    display_emoji: "🎨"
+    description: >
+      Visual design, character art, backgrounds, VFX, motion graphics,
+      and UI/UX design.
+
+  tech-engineering:
+    name: 기술/엔지니어링팀
+    display_emoji: "⚙️"
+    description: >
+      Software engineering, infrastructure, DevOps, AI/ML, security,
+      and all technical implementation.
+
+  marketing:
+    name: 마케팅팀
+    display_emoji: "📈"
+    description: >
+      Marketing strategy, SNS management, PR, data analytics,
+      community management, and brand strategy.
+
+  validation:
+    name: 검증팀
+    display_emoji: "🛡️"
+    description: >
+      Quality assurance, legal review, validation of meeting outputs,
+      and risk assessment.
+
+  execution:
+    name: 실행팀
+    display_emoji: "🛠️"
+    description: >
+      Tool-use execution, code deployment, automation, and artifact
+      creation via OpenClaw.
+
+# ── Complete Role Registry (29 roles) ──────────────────────────────────────
+
+roles:
+  # ── Content/Production Team (6 roles) ──
+  - role_id: content-director
+    display_name: 콘텐츠 디렉터
+    team: content-production
+    role_type: leader
+    persistent_bot: true
+    discord_name: "🎬 ContentPD"
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - creative_direction
+      - content_strategy
+      - production_planning
+      - script_review
+      - music_direction
+      - video_production
+      - entertainment_industry
+    description: >
+      Team leader for content production. Oversees all creative output,
+      script quality, music direction, and video production pipeline.
+
+  - role_id: scriptwriter
+    display_name: 대본작가
+    team: content-production
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - scriptwriting
+      - storytelling
+      - dialogue
+      - narrative_design
+      - korean_content
+    description: >
+      Writes scripts, dialogue, and narrative content for entertainment
+      productions. Specializes in Korean-language creative writing.
+
+  - role_id: storyboard-artist
+    display_name: 스토리보드 아티스트
+    team: content-production
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - storyboarding
+      - visual_narrative
+      - scene_composition
+      - shot_planning
+    description: >
+      Creates storyboard concepts and visual narrative flow for video and
+      animation projects.
+
+  - role_id: composer
+    display_name: 작곡가
+    team: content-production
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: minimax-music
+    expertise_tags:
+      - music_composition
+      - soundtrack
+      - bgm
+      - audio_production
+      - music_theory
+    description: >
+      Composes original music, soundtracks, and background music for
+      entertainment content.
+
+  - role_id: sound-designer
+    display_name: 사운드 디자이너
+    team: content-production
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - sound_design
+      - audio_effects
+      - foley
+      - mixing
+      - audio_post_production
+    description: >
+      Designs sound effects, audio atmosphere, and handles post-production
+      audio mixing.
+
+  - role_id: video-editor
+    display_name: 영상편집자
+    team: content-production
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - video_editing
+      - post_production
+      - color_grading
+      - motion_graphics
+      - timeline_management
+    description: >
+      Handles video editing, post-production workflow, color grading,
+      and final cut assembly.
+
+  # ── Art/Design Team (6 roles) ──
+  - role_id: art-director
+    display_name: 아트 디렉터
+    team: art-design
+    role_type: leader
+    persistent_bot: true
+    discord_name: "🎨 ArtDirector"
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - visual_direction
+      - art_style
+      - design_system
+      - character_design
+      - vfx_direction
+      - ui_ux_oversight
+    description: >
+      Team leader for art and design. Defines visual direction, art style
+      guides, and oversees all visual output quality.
+
+  - role_id: character-designer
+    display_name: 캐릭터 디자이너
+    team: art-design
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - character_design
+      - concept_art
+      - character_sheets
+      - illustration
+      - anime_style
+      - game_art
+    description: >
+      Designs characters, turnarounds, expression sheets, and concept
+      illustrations.
+
+  - role_id: background-artist
+    display_name: 배경 아티스트
+    team: art-design
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - background_art
+      - environment_design
+      - matte_painting
+      - scene_composition
+      - color_script
+    description: >
+      Creates background art, environment concepts, matte paintings,
+      and scene-setting visuals.
+
+  - role_id: vfx-specialist
+    display_name: VFX 스페셜리스트
+    team: art-design
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - vfx
+      - particle_effects
+      - shader_design
+      - compositing
+      - simulation
+    description: >
+      Handles visual effects, particle systems, shader work,
+      compositing, and physics simulations.
+
+  - role_id: ui-ux-designer
+    display_name: UI/UX 디자이너
+    team: art-design
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - ui_design
+      - ux_design
+      - interaction_design
+      - prototyping
+      - design_system
+      - accessibility
+    description: >
+      Designs user interfaces, interaction flows, prototypes, and
+      design systems for digital products.
+
+  - role_id: motion-graphics-designer
+    display_name: 모션그래픽 디자이너
+    team: art-design
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - motion_graphics
+      - animation
+      - kinetic_typography
+      - title_sequence
+      - transition_design
+    description: >
+      Creates motion graphics, animated titles, transitions, and
+      kinetic typography for video content.
+
+  # ── Tech/Engineering Team (6 roles) ──
+  - role_id: tech-director
+    display_name: 테크 디렉터
+    team: tech-engineering
+    role_type: leader
+    persistent_bot: true
+    discord_name: "⚙️ TechDirector"
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: qwen-max
+    expertise_tags:
+      - technical_architecture
+      - system_design
+      - code_review
+      - infrastructure
+      - security_oversight
+      - performance
+    description: >
+      Team leader for technology and engineering. Oversees technical
+      architecture, code quality, infrastructure decisions, and
+      security posture.
+
+  - role_id: backend-engineer
+    display_name: 백엔드 엔지니어
+    team: tech-engineering
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: qwen-max
+    expertise_tags:
+      - backend
+      - api_design
+      - database
+      - server_architecture
+      - microservices
+      - python
+      - typescript
+    description: >
+      Designs and implements backend services, APIs, database schemas,
+      and server-side logic.
+
+  - role_id: frontend-engineer
+    display_name: 프론트엔드 엔지니어
+    team: tech-engineering
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: qwen-max
+    expertise_tags:
+      - frontend
+      - react
+      - ui_components
+      - web_performance
+      - typescript
+      - css
+    description: >
+      Builds frontend applications, UI components, and client-side
+      logic with modern web frameworks.
+
+  - role_id: devops-engineer
+    display_name: 데브옵스 엔지니어
+    team: tech-engineering
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: qwen-max
+    expertise_tags:
+      - devops
+      - ci_cd
+      - containerization
+      - cloud_infrastructure
+      - monitoring
+      - deployment
+    description: >
+      Manages CI/CD pipelines, container orchestration, cloud
+      infrastructure, monitoring, and deployment automation.
+
+  - role_id: ai-ml-engineer
+    display_name: AI/ML 엔지니어
+    team: tech-engineering
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: glm-5.1
+    expertise_tags:
+      - machine_learning
+      - ai_systems
+      - model_deployment
+      - data_pipeline
+      - llm
+      - nlp
+    description: >
+      Develops AI/ML systems, model deployment pipelines, data
+      processing, and LLM integration.
+
+  - role_id: security-engineer
+    display_name: 보안 엔지니어
+    team: tech-engineering
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: glm-5.1
+    expertise_tags:
+      - security
+      - vulnerability_assessment
+      - data_protection
+      - auth
+      - encryption
+      - compliance
+    description: >
+      Handles security assessment, vulnerability analysis, data
+      protection, authentication systems, and compliance.
+
+  # ── Marketing Team (6 roles) ──
+  - role_id: marketing-lead
+    display_name: 마케팅 리드
+    team: marketing
+    role_type: leader
+    persistent_bot: true
+    discord_name: "📈 MarketingLead"
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - marketing_strategy
+      - brand_management
+      - campaign_planning
+      - market_research
+      - growth
+      - audience_development
+    description: >
+      Team leader for marketing. Oversees marketing strategy, brand
+      management, campaign planning, and audience growth.
+
+  - role_id: sns-strategist
+    display_name: SNS 전략가
+    team: marketing
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - social_media
+      - sns_strategy
+      - content_calendar
+      - platform_optimization
+      - viral_marketing
+      - engagement
+    description: >
+      Develops social media strategies, content calendars, platform
+      optimization, and engagement tactics.
+
+  - role_id: pr-specialist
+    display_name: PR 스페셜리스트
+    team: marketing
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - public_relations
+      - press_release
+      - media_outreach
+      - crisis_communication
+      - brand_reputation
+    description: >
+      Manages public relations, press releases, media outreach,
+      and brand reputation.
+
+  - role_id: data-analyst
+    display_name: 데이터 분석가
+    team: marketing
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: qwen-max
+    expertise_tags:
+      - data_analysis
+      - metrics
+      - a_b_testing
+      - user_behavior
+      - reporting
+      - sql
+      - python
+    description: >
+      Analyzes marketing data, user behavior, campaign metrics,
+      and produces analytical reports.
+
+  - role_id: community-manager
+    display_name: 커뮤니티 매니저
+    team: marketing
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - community_management
+      - user_engagement
+      - moderation
+      - event_planning
+      - fan_outreach
+    description: >
+      Manages online communities, user engagement, moderation
+      strategies, and fan outreach events.
+
+  - role_id: brand-strategist
+    display_name: 브랜드 전략가
+    team: marketing
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: qwen-max
+      fallback: deepseek-v3
+    expertise_tags:
+      - brand_strategy
+      - positioning
+      - brand_identity
+      - market_positioning
+      - competitive_analysis
+    description: >
+      Develops brand strategy, positioning, identity guidelines,
+      and competitive analysis.
+
+  # ── Validation Team (3 roles) ──
+  - role_id: validator
+    display_name: 검증자
+    team: validation
+    role_type: validator
+    persistent_bot: true
+    discord_name: "🛡️ Validator"
+    model:
+      provider: opencode-go
+      name: glm-5.1
+      fallback: glm-4  # fallback to older GLM before Codex escalation
+    expertise_tags:
+      - validation
+      - quality_assurance
+      - risk_assessment
+      - requirements_check
+      - consistency_check
+      - factual_verification
+    description: >
+      Primary validator (GLM-5.1). Evaluates meeting outputs across 5 areas:
+      requirements_fit, logical_consistency, factual_grounding, feasibility,
+      risk_policy. Produces 5-level verdict.
+
+  - role_id: legal-reviewer
+    display_name: 법률 검토자
+    team: validation
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: glm-5.1
+      fallback: deepseek-v3
+    expertise_tags:
+      - legal_review
+      - copyright
+      - compliance
+      - contract_terms
+      - ip_law
+      - regulatory
+    description: >
+      Reviews legal aspects: copyright, IP law, compliance, contract terms,
+      and regulatory requirements.
+
+  - role_id: quality-assurance
+    display_name: 품질 보증
+    team: validation
+    role_type: worker
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: glm-5.1
+      fallback: qwen-max
+    expertise_tags:
+      - quality_assurance
+      - testing
+      - acceptance_criteria
+      - bug_tracking
+      - standards_compliance
+    description: >
+      Validates output quality against acceptance criteria, standards
+      compliance, and tracks issues.
+
+  # ── Execution Team (2 roles) ──
+  - role_id: execution-lead
+    display_name: 실행 리드
+    team: execution
+    role_type: executor
+    persistent_bot: true
+    discord_name: "🛠️ ExecutionLead"
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: qwen-max
+    expertise_tags:
+      - tool_execution
+      - code_generation
+      - deployment
+      - automation
+      - artifact_creation
+      - openclaw
+    description: >
+      Team lead for tool-use execution via OpenClaw. Coordinates
+      code generation, deployment, and automation tasks.
+
+  - role_id: tool-operator
+    display_name: 도구 운영자
+    team: execution
+    role_type: executor
+    persistent_bot: false
+    model:
+      provider: opencode-go
+      name: deepseek-v3
+      fallback: qwen-max
+    expertise_tags:
+      - cli_tools
+      - git_operations
+      - file_management
+      - build_systems
+      - testing_frameworks
+      - api_calls
+    description: >
+      Executes tool operations: CLI commands, git operations, file
+      management, build systems, and API calls via OpenClaw.
+
+# ═════════════════════════════════════════════════════════════════════════════
+# AGENDA TYPE CLASSIFICATION RULES
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# When Qwen fails, these keyword-based rules determine:
+#   agenda_type, tags, risk_tags, required_roles, optional_roles,
+#   validator_required, codex_required.
+#
+# Matching: First agenda_type whose `keywords` all match the user text wins.
+# If no match, falls through to `general_discussion`.
+
+agenda_types:
+
+  # ── Creative Production ─────────────────────────────────────────────────
+  - id: creative-production
+    display_name: 창작 제작 회의
+    keywords:
+      - ["뮤직비디오", "music_video"]
+      - ["애니메이션", "animation"]
+      - ["영상", "video", "영화", "film"]
+      - ["제작", "production", "프로덕션"]
+      - ["콘텐츠", "content"]
+      - ["오프닝", "opening"]
+      - ["엔딩", "ending"]
+      - ["bgm", "사운드트랙", "soundtrack"]
+    tags:
+      - creative_production
+      - content_creation
+      - video_production
+      - entertainment
+    risk_tags: []
+    required_roles:
+      - content-director
+      - scriptwriter
+      - art-director
+      - composer
+    optional_roles:
+      - video-editor
+      - sound-designer
+      - storyboard-artist
+      - vfx-specialist
+      - motion-graphics-designer
+    validator_required: true
+    codex_required: false
+
+  # ── Character / Art Design ──────────────────────────────────────────────
+  - id: art-design-review
+    display_name: 아트 디자인 검토
+    keywords:
+      - ["캐릭터", "character"]
+      - ["디자인", "design"]
+      - ["아트", "art"]
+      - ["일러스트", "illustration"]
+      - ["컨셉아트", "concept_art"]
+      - ["배경", "background"]
+      - ["vfx", "이펙트", "effects"]
+      - ["ui", "ux", "인터페이스"]
+    tags:
+      - art_design
+      - visual_development
+      - character_design
+      - concept_art
+    risk_tags: []
+    required_roles:
+      - art-director
+      - character-designer
+    optional_roles:
+      - background-artist
+      - vfx-specialist
+      - ui-ux-designer
+      - motion-graphics-designer
+      - content-director
+    validator_required: true
+    codex_required: false
+
+  # ── Technical Development ───────────────────────────────────────────────
+  - id: technical-development
+    display_name: 기술 개발 회의
+    keywords:
+      - ["코드", "code"]
+      - ["api", "endpoint"]
+      - ["버그", "bug", "오류", "error"]
+      - ["개발", "development", "개발"]
+      - ["구현", "implementation"]
+      - ["아키텍처", "architecture"]
+      - ["리팩토링", "refactoring"]
+      - ["배포", "deployment", "deploy"]
+      - ["인프라", "infrastructure"]
+      - ["ci", "cd", "파이프라인", "pipeline"]
+      - ["테스트", "test"]
+    tags:
+      - technical_development
+      - software_engineering
+      - code
+      - infrastructure
+    risk_tags:
+      - code_change
+      - automation_risk
+    required_roles:
+      - tech-director
+      - backend-engineer
+    optional_roles:
+      - frontend-engineer
+      - devops-engineer
+      - ai-ml-engineer
+      - security-engineer
+    validator_required: true
+    # Codex escalation for code/automation/security risk
+    codex_required: false   # conditionally set true by risk_detection
+
+  # ── Security Review ─────────────────────────────────────────────────────
+  - id: security-review
+    display_name: 보안 검토 회의
+    keywords:
+      - ["보안", "security"]
+      - ["취약점", "vulnerability"]
+      - ["데이터", "data", "개인정보", "privacy"]
+      - ["침해", "breach"]
+      - ["암호화", "encryption"]
+      - ["인증", "authentication", "auth"]
+      - ["권한", "authorization"]
+      - ["감사", "audit"]
+      - ["규정준수", "compliance"]
+    tags:
+      - security
+      - risk_management
+      - data_protection
+    risk_tags:
+      - security_risk
+      - data_loss_risk
+    required_roles:
+      - tech-director
+      - security-engineer
+      - validator
+    optional_roles:
+      - backend-engineer
+      - devops-engineer
+      - legal-reviewer
+    validator_required: true
+    codex_required: true   # security always escalates to Codex
+
+  # ── AI/ML System Design ─────────────────────────────────────────────────
+  - id: ai-ml-design
+    display_name: AI/ML 시스템 설계
+    keywords:
+      - ["ai", "인공지능"]
+      - ["머신러닝", "ml", "machine_learning"]
+      - ["llm", "언어모델"]
+      - ["모델", "model"]
+      - ["학습", "training", "fine_tuning"]
+      - ["추론", "inference"]
+      - ["데이터셋", "dataset"]
+      - ["임베딩", "embedding"]
+      - ["nlp", "자연어"]
+    tags:
+      - ai_ml
+      - model_development
+      - data_science
+    risk_tags:
+      - code_change
+      - data_risk
+    required_roles:
+      - tech-director
+      - ai-ml-engineer
+    optional_roles:
+      - backend-engineer
+      - devops-engineer
+      - data-analyst
+    validator_required: true
+    codex_required: false   # conditional: if risk_tags escalate
+
+  # ── Marketing Strategy ──────────────────────────────────────────────────
+  - id: marketing-strategy
+    display_name: 마케팅 전략 회의
+    keywords:
+      - ["마케팅", "marketing"]
+      - ["홍보", "promotion"]
+      - ["sns", "소셜미디어", "social_media"]
+      - ["캠페인", "campaign"]
+      - ["브랜드", "brand"]
+      - ["타겟", "target"]
+      - ["시장", "market"]
+      - ["광고", "advertisement", "ad"]
+      - ["바이럴", "viral"]
+      - ["성장", "growth"]
+    tags:
+      - marketing
+      - brand_strategy
+      - campaign
+      - growth
+    risk_tags: []
+    required_roles:
+      - marketing-lead
+      - brand-strategist
+    optional_roles:
+      - sns-strategist
+      - pr-specialist
+      - data-analyst
+      - community-manager
+    validator_required: true
+    codex_required: false
+
+  # ── External Publication / Launch ────────────────────────────────────────
+  - id: external-launch
+    display_name: 외부 공개/런칭 회의
+    keywords:
+      - ["런칭", "launch"]
+      - ["공개", "release", "publish"]
+      - ["발표", "announcement"]
+      - ["외부", "external"]
+      - ["출시", "ship"]
+      - ["프레스", "press"]
+      - ["공식", "official"]
+    tags:
+      - launch
+      - external_publication
+      - brand_direction
+    risk_tags:
+      - external_publication
+      - brand_reputation
+      - legal_exposure
+    required_roles:
+      - content-director
+      - marketing-lead
+      - validator
+      - legal-reviewer
+    optional_roles:
+      - pr-specialist
+      - art-director
+      - tech-director
+      - brand-strategist
+    validator_required: true
+    codex_required: true   # external publication triggers Codex
+
+  # ── Legal / Compliance ──────────────────────────────────────────────────
+  - id: legal-compliance
+    display_name: 법률/규정 준수 회의
+    keywords:
+      - ["법률", "legal"]
+      - ["저작권", "copyright"]
+      - ["라이선스", "license"]
+      - ["계약", "contract"]
+      - ["규정", "regulation", "compliance"]
+      - ["ip", "지식재산권"]
+      - ["소송", "litigation"]
+      - ["개인정보", "privacy_policy"]
+      - ["이용약관", "terms_of_service"]
+    tags:
+      - legal
+      - compliance
+      - copyright
+      - ip
+    risk_tags:
+      - legal_exposure
+      - copyright_risk
+      - regulatory_risk
+    required_roles:
+      - legal-reviewer
+      - validator
+    optional_roles:
+      - tech-director
+      - content-director
+      - marketing-lead
+    validator_required: true
+    codex_required: true   # legal always escalates
+
+  # ── Budget / Schedule ───────────────────────────────────────────────────
+  - id: budget-planning
+    display_name: 예산/일정 회의
+    keywords:
+      - ["예산", "budget"]
+      - ["비용", "cost"]
+      - ["일정", "schedule"]
+      - ["기한", "deadline"]
+      - ["리소스", "resource"]
+      - ["인력", "staffing"]
+      - ["견적", "estimate"]
+      - ["예상", "forecast"]
+      - ["투자", "investment"]
+    tags:
+      - budget
+      - schedule
+      - resource_planning
+    risk_tags:
+      - budget_financial
+      - schedule_critical
+    required_roles:
+      - content-director
+      - tech-director
+      - marketing-lead
+      - validator
+    optional_roles:
+      - data-analyst
+      - legal-reviewer
+    validator_required: true
+    codex_required: true   # budget triggers Codex
+
+  # ── Data Analysis / Reporting ───────────────────────────────────────────
+  - id: data-analysis
+    display_name: 데이터 분석 회의
+    keywords:
+      - ["데이터", "data"]
+      - ["분석", "analysis", "analytics"]
+      - ["통계", "statistics"]
+      - ["리포트", "report"]
+      - ["메트릭", "metric"]
+      - ["지표", "kpi"]
+      - ["대시보드", "dashboard"]
+      - ["ab테스트", "ab_test", "a_b_test"]
+    tags:
+      - data_analysis
+      - metrics
+      - reporting
+    risk_tags: []
+    required_roles:
+      - data-analyst
+    optional_roles:
+      - marketing-lead
+      - tech-director
+      - ai-ml-engineer
+    validator_required: true
+    codex_required: false
+
+  # ── Brainstorming / Ideation ────────────────────────────────────────────
+  - id: brainstorming
+    display_name: 아이디어 브레인스토밍
+    keywords:
+      - ["아이디어", "idea"]
+      - ["브레인스토밍", "brainstorm"]
+      - ["기획", "planning"]
+      - ["제안", "proposal", "suggestion"]
+      - ["검토", "review"]
+      - ["구상", "concept"]
+      - ["가능성", "feasibility", "가능"]
+      - ["탐색", "exploration"]
+    tags:
+      - brainstorming
+      - ideation
+      - planning
+    risk_tags: []
+    required_roles:
+      - content-director
+    optional_roles:
+      - art-director
+      - tech-director
+      - marketing-lead
+      - scriptwriter
+      - character-designer
+    validator_required: true
+    codex_required: false
+
+  # ── Community / Fan Engagement ──────────────────────────────────────────
+  - id: community-engagement
+    display_name: 커뮤니티/팬 소통 회의
+    keywords:
+      - ["커뮤니티", "community"]
+      - ["팬", "fan"]
+      - ["이벤트", "event"]
+      - ["디스코드", "discord"]
+      - ["공지", "notice", "announcement"]
+      - ["소통", "engagement"]
+      - ["피드백", "feedback"]
+      - ["설문", "survey", "poll"]
+    tags:
+      - community
+      - fan_engagement
+      - communication
+    risk_tags: []
+    required_roles:
+      - community-manager
+      - marketing-lead
+    optional_roles:
+      - content-director
+      - pr-specialist
+    validator_required: true
+    codex_required: false
+
+  # ── System Operations / Meta-Cognition ──────────────────────────────────
+  - id: system-operations
+    display_name: 시스템 운영/메타인지 회의
+    keywords:
+      - ["운영", "operations"]
+      - ["시스템", "system"]
+      - ["장애", "incident", "outage"]
+      - ["모니터링", "monitoring"]
+      - ["성능", "performance"]
+      - ["개선", "improvement"]
+      - ["리뷰", "review", "회고", "retrospective"]
+      - ["자동화", "automation"]
+      - ["워크플로우", "workflow"]
+    tags:
+      - system_operations
+      - meta_cognition
+      - improvement
+    risk_tags: []
+    required_roles:
+      - tech-director
+    optional_roles:
+      - devops-engineer
+      - ai-ml-engineer
+      - backend-engineer
+    validator_required: true
+    codex_required: false
+
+  # ── General Discussion (catch-all fallback) ─────────────────────────────
+  - id: general-discussion
+    display_name: 일반 토론
+    keywords: []   # matches anything
+    tags:
+      - general
+      - discussion
+    risk_tags: []
+    required_roles:
+      - content-director
+    optional_roles:
+      - tech-director
+      - art-director
+      - marketing-lead
+    validator_required: true
+    codex_required: false
+    note: "Catch-all fallback. Activated when no other agenda_type matches."
+
+# ═════════════════════════════════════════════════════════════════════════════
+# RISK DETECTION — Guardrail patterns that trigger risk_tags
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# These patterns run on ALL user input regardless of Qwen classification.
+# If any pattern matches, the risk_tag is ADDED to the routing output.
+# This ensures no risk slips through even when Qwen misses it.
+
+risk_detection:
+  patterns:
+    - risk_tag: security_risk
+      severity: high
+      keywords:
+        - 보안
+        - security
+        - 해킹
+        - hack
+        - 취약점
+        - vulnerability
+        - 인증우회
+        - bypass
+        - 침투
+        - exploit
+      auto_codex: true   # security always triggers Codex
+
+    - risk_tag: data_loss_risk
+      severity: high
+      keywords:
+        - 데이터손실
+        - data_loss
+        - 삭제
+        - delete
+        - 마이그레이션
+        - migration
+        - 데이터베이스변경
+        - schema_change
+      auto_codex: true
+      requires_approval: true   # human-in-the-loop required
+
+    - risk_tag: budget_financial
+      severity: medium
+      keywords:
+        - 예산
+        - budget
+        - 비용
+        - cost
+        - 달러
+        - 원
+        - 견적
+        - 투자
+        - investment
+        - 지출
+        - expense
+      auto_codex: true
+
+    - risk_tag: legal_exposure
+      severity: high
+      keywords:
+        - 법률
+        - legal
+        - 저작권
+        - copyright
+        - 소송
+        - sue
+        - 라이선스위반
+        - license_violation
+        - 계약위반
+        - breach_of_contract
+      auto_codex: true
+      requires_approval: true
+
+    - risk_tag: copyright_risk
+      severity: high
+      keywords:
+        - 저작권
+        - copyright
+        - 표절
+        - plagiarism
+        - 무단사용
+        - unauthorized_use
+        - 라이선스
+        - license
+      auto_codex: true
+      requires_approval: true
+
+    - risk_tag: regulatory_risk
+      severity: high
+      keywords:
+        - 규제
+        - regulation
+        - 개인정보보호법
+        - gdpr
+        - ccpa
+        - 컴플라이언스
+        - compliance
+      auto_codex: true
+
+    - risk_tag: external_publication
+      severity: medium
+      keywords:
+        - 공개
+        - release
+        - 런칭
+        - launch
+        - 출시
+        - publish
+        - 외부발표
+        - public_announcement
+        - 프레스
+        - press
+      auto_codex: true
+
+    - risk_tag: brand_reputation
+      severity: medium
+      keywords:
+        - 브랜드이미지
+        - brand_image
+        - 평판
+        - reputation
+        - 논란
+        - controversy
+        - 악플
+        - backlash
+      auto_codex: true
+
+    - risk_tag: code_change
+      severity: low
+      keywords:
+        - 코드변경
+        - code_change
+        - 리팩토링
+        - refactoring
+        - 배포
+        - deploy
+        - pr
+        - pull_request
+      auto_codex: false   # conditional — only if combined with other risks
+
+    - risk_tag: automation_risk
+      severity: medium
+      keywords:
+        - 자동화
+        - automation
+        - 자동배포
+        - auto_deploy
+        - cron
+        - 스크립트
+        - script
+      auto_codex: false
+
+    - risk_tag: data_risk
+      severity: medium
+      keywords:
+        - 데이터처리
+        - data_processing
+        - 데이터파이프라인
+        - data_pipeline
+        - 데이터셋
+        - dataset
+        - 학습데이터
+        - training_data
+        - 데이터품질
+        - data_quality
+      auto_codex: false
+      note: "Moderate data risk — not data loss. Covers data processing, pipeline issues, dataset quality."
+
+    - risk_tag: schedule_critical
+      severity: medium
+      keywords:
+        - 데드라인
+        - deadline
+        - 긴급
+        - urgent
+        - 기한임박
+        - due_soon
+        - 지연
+        - delayed
+        - 마감
+      auto_codex: true
+
+    - risk_tag: irreversible_action
+      severity: high
+      keywords:
+        - 복구불가
+        - irreversible
+        - 되돌릴수없
+        - 영구삭제
+        - permanent_delete
+        - 덮어쓰기
+        - overwrite
+      auto_codex: true
+      requires_approval: true
+
+    - risk_tag: consensus_unstable
+      severity: medium
+      keywords:
+        - 의견충돌
+        - disagreement
+        - 합의불가
+        - no_consensus
+        - 이견
+        - dissent
+        - 반대
+        - oppose
+      auto_codex: true
+
+    - risk_tag: latest_info_dependent
+      severity: low
+      keywords:
+        - 최신정보
+        - latest
+        - 실시간
+        - realtime
+        - 현재
+        - current
+        - 오늘
+        - today
+      auto_codex: true
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CODEX ESCALATION RULES — 7 defined triggers
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# These are the 7 defined Codex GPT-5.5 escalation triggers as specified in
+# the system design (Track 4: Validation Layer). When any trigger fires,
+# codex_required is forced to true in the routing output.
+
+escalation_rules:
+  codex_triggers:
+    - id: trigger-budget-schedule
+      trigger_number: 1
+      description: "Budget/schedule related items"
+      condition:
+        any_risk_tag_in:
+          - budget_financial
+          - schedule_critical
+      action: set_codex_required_true
+
+    - id: trigger-legal-copyright
+      trigger_number: 2
+      description: "Legal/copyright related items"
+      condition:
+        any_risk_tag_in:
+          - legal_exposure
+          - copyright_risk
+          - regulatory_risk
+      action: set_codex_required_true
+
+    - id: trigger-external-publication
+      trigger_number: 3
+      description: "External publication/brand direction"
+      condition:
+        any_risk_tag_in:
+          - external_publication
+          - brand_reputation
+      action: set_codex_required_true
+
+    - id: trigger-code-security-data
+      trigger_number: 4
+      description: "Code/automation/security/data loss risk"
+      condition:
+        any_risk_tag_in:
+          - security_risk
+          - data_loss_risk
+          - code_change
+          - automation_risk
+          - irreversible_action
+      action: set_codex_required_true
+
+    - id: trigger-consensus-unstable
+      trigger_number: 5
+      description: "Unstable consensus in meeting"
+      condition:
+        any_risk_tag_in:
+          - consensus_unstable
+      action: set_codex_required_true
+
+    - id: trigger-latest-info
+      trigger_number: 6
+      description: "Latest-information-dependent items"
+      condition:
+        any_risk_tag_in:
+          - latest_info_dependent
+      action: set_codex_required_true
+
+    - id: trigger-glm-verdict
+      trigger_number: 7
+      description: "GLM returns non-pass verdict, confidence below threshold (0.75), or escalation recommendation"
+      condition:
+        runtime: true   # cannot determine from static rules — set by runtime
+      action: set_codex_required_true
+      note: "This trigger can only be evaluated at validation runtime, not from static rules."
+
+  # ── Conflict Resolution (GLM vs Codex) ─────────────────────────────────
+  conflict_resolution:
+    tech_security_data:
+      priority: codex
+      description: "Technical judgment, security assessment, data risk → Codex priority"
+    legal_budget_brand:
+      priority: user_escalation
+      description: "Legal, budget, brand, external matters → User escalation"
+    factual:
+      priority: re_search_then_re_validate
+      description: "Factual disagreements → Re-search and re-validate"
+    code_automation:
+      priority: codex
+      description: "Code and automation decisions → Codex priority"
+    irreversible:
+      priority: user_escalation
+      description: "Data loss, operational change, irreversible actions → User escalation"
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PRIORITY INFERENCE RULES — Qwen failure fallback
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# When Qwen cannot determine meeting priority, these keyword rules take over.
+# Priority order: P0 > P1 > P2 > P3. First matching priority wins.
+
+priority_rules:
+  inference:
+    - priority: P0
+      label: "긴급/중대사항"
+      keywords:
+        - 긴급
+        - urgent
+        - 보안사고
+        - security_incident
+        - 데이터유출
+        - data_breach
+        - 장애
+        - outage
+        - 중단
+        - down
+        - 심각
+        - critical
+        - 즉시
+        - immediately
+        - asap
+      description: "Incident response, data loss, security, urgent fixes"
+
+    - priority: P1
+      label: "중요"
+      keywords:
+        - 중요
+        - important
+        - 법률
+        - legal
+        - 예산
+        - budget
+        - 외부공개
+        - launch
+        - 계약
+        - contract
+        - 데드라인
+        - deadline
+      description: "In-progress project decisions, legal, budget, external publication"
+
+    - priority: P2
+      label: "일반"
+      keywords:
+        - 개발
+        - development
+        - 제작
+        - production
+        - 마케팅
+        - marketing
+        - 디자인
+        - design
+        - 검토
+        - review
+        - 자동화
+        - automation
+      description: "General production, automation, development"
+
+    - priority: P3
+      label: "아이디어/브레인스토밍"
+      keywords:
+        - 아이디어
+        - idea
+        - 브레인스토밍
+        - brainstorm
+        - 제안
+        - suggestion
+        - 탐색
+        - exploration
+        - 가능성
+        - feasibility
+      description: "Ideas, brainstorming, exploration"
+
+  # Default when no keywords match
+  default: P2
+
+# ═════════════════════════════════════════════════════════════════════════════
+# GUARDRAILS — Hard constraints overriding even Qwen output
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# These are NON-NEGOTIABLE system invariants. Even if Qwen returns different
+# values, the guardrail logic MUST enforce these constraints before the
+# routing result is committed.
+
+guardrails:
+  # ── Role Limits ──
+  - id: max_roles_per_meeting
+    description: "Maximum 7 agents per meeting (including validator)"
+    rule: "len(required_roles) + len(optional_roles) <= 7"
+    enforcement: truncate_optional_roles_by_expertise_match
+
+  - id: max_required_roles
+    description: "Maximum 6 required roles per meeting"
+    rule: "len(required_roles) <= 6"
+    enforcement: demote_lowest_priority_required_to_optional
+
+  - id: validator_always_required
+    description: "Validator role is ALWAYS required (GLM-5.1 or fallback)"
+    rule: "'validator' in required_roles"
+    enforcement: force_add_validator
+
+  - id: team_leader_quorum
+    description: >
+      At least 2 team leaders must be in required_roles or optional_roles
+      for cross-functional meetings (non-single-team meetings).
+    rule: >
+      if len(involved_teams) >= 2: count_team_leaders(required + optional) >= 2
+    enforcement: promote_team_leader_to_optional
+
+  # ── Codex Escalation Guardrails ──
+  - id: security_always_codex
+    description: "Any meeting tagged security_risk MUST have codex_required=true"
+    rule: "if 'security_risk' in risk_tags: codex_required = true"
+    enforcement: force_codex_true
+
+  - id: data_loss_always_codex
+    description: "Any meeting tagged data_loss_risk MUST have codex_required=true"
+    rule: "if 'data_loss_risk' in risk_tags: codex_required = true"
+    enforcement: force_codex_true
+
+  - id: legal_always_codex
+    description: "Any meeting tagged legal_exposure or copyright_risk MUST have codex_required=true"
+    rule: "if any(tag in risk_tags for tag in ['legal_exposure', 'copyright_risk', 'regulatory_risk']): codex_required = true"
+    enforcement: force_codex_true
+
+  - id: external_publication_codex
+    description: "External publication/brand meetings MUST have codex_required=true"
+    rule: "if 'external_publication' in risk_tags: codex_required = true"
+    enforcement: force_codex_true
+
+  # ── Meeting Constraints ──
+  - id: max_rounds_absolute
+    description: "Maximum 3 meeting rounds + 1 tie-break, no exceptions"
+    rule: "round_count <= 4"
+    enforcement: force_escalation_after_4_rounds
+
+  - id: max_concurrent_meetings
+    description: "Maximum 2 concurrent meetings"
+    rule: "active_meetings <= 2"
+    enforcement: queue_or_reject
+
+  - id: max_concurrent_opencode_calls
+    description: "Maximum 4 concurrent opencode-go CLI calls"
+    rule: "active_opencode_calls <= 4"
+    enforcement: queue_or_degrade
+
+  # ── Silent Fail Prevention ──
+  - id: no_silent_fail
+    description: "All failures, fallbacks, and degradations MUST be logged to manifest"
+    rule: "error_log must contain all failure events"
+    enforcement: reject_manifest_without_error_log
+
+  - id: required_role_no_silent_skip
+    description: "Required roles cannot be silently skipped"
+    rule: "if required_role fails: manifest must record retry_count, fallback_used, final_status"
+    enforcement: validate_manifest_completeness
+
+  # ── Isolation ──
+  - id: meeting_directory_isolation
+    description: "Every meeting MUST have a unique meetings/{meeting_id}/ directory"
+    rule: "meeting_id maps 1:1 to filesystem directory"
+    enforcement: create_or_verify_directory
+
+  # ── Model Constraints ──
+  - id: validator_is_glm
+    description: "Validator MUST use GLM-5.1 (or GLM-4 fallback). Never Qwen or DeepSeek."
+    rule: "validator.model.provider in ['glm-5.1', 'glm-4']"
+    enforcement: force_glm_for_validator
+
+  - id: no_same_model_revalidation
+    description: "Never use the same model for re-validation. Dual validation = GLM + Codex, never GLM + GLM."
+    rule: "if validation_attempt > 1: validator_model != previous_validator_model"
+    enforcement: force_codex_on_second_validation
+
+# ═════════════════════════════════════════════════════════════════════════════
+# KEYWORD MATCHING ALGORITHM
+# ═════════════════════════════════════════════════════════════════════════════
+
+matching_algorithm:
+  description: >
+    How keyword matching works for agenda_type classification when Qwen fails.
+  steps:
+    - "1. Normalize input: lowercase, strip punctuation, split into tokens"
+    - "2. For each agenda_type (in order), check each keyword group"
+    - "3. A keyword group matches if ANY keyword in the group is found in input"
+    - "4. An agenda_type matches if ALL its keyword groups match"
+    - "5. First matching agenda_type wins (order is significant)"
+    - "6. If no agenda_type matches, use 'general-discussion' as catch-all"
+    - "7. After classification: run risk_detection patterns"
+    - "8. Apply escalation_rules to determine codex_required"
+    - "9. Apply guardrails as hard overrides"
+    - "10. Return final routing result"
+  language_support:
+    - korean
+    - english
+    - mixed (korean + english terms in same input)
+  note: >
+    Keyword groups use OR logic internally (any keyword in group matches).
+    Agenda type requires ALL keyword groups to match (AND logic between groups).
+    This allows matching "뮤직비디오 제작" (matches both ["뮤직비디오"] and ["제작"] groups).
+
+# ── Routing Output Schema (must match Qwen output format) ─────────────────
+output_schema:
+  description: >
+    The exact JSON structure returned by this fallback router.
+    Must be identical to Qwen LLM output format so consumers
+    (Coordinator, meeting loop) do not need fallback-specific parsing.
+  fields:
+    agenda_type: string        # e.g., "creative-production"
+    agenda_label: string       # e.g., "창작 제작 회의"
+    tags: array<string>        # e.g., ["creative_production", "content_creation"]
+    risk_tags: array<string>   # e.g., ["budget_financial"]
+    required_roles: array<string>  # role_id list
+    optional_roles: array<string>  # role_id list
+    validator_required: boolean
+    codex_required: boolean
+    priority: string           # P0 | P1 | P2 | P3
+    routing_source: "static_fallback"  # always this value when fallback active
+    routing_reason: string     # e.g., "qwen_timeout" or "qwen_parse_failure"
+    confidence: number         # static fallback confidence is always 0.7
+    generated_at: string       # ISO 8601 timestamp
+    version: "1.0.0"

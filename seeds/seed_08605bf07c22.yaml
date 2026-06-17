@@ -1,0 +1,49 @@
+goal: Build a Hermes-first multi-agent meeting system that simulates an AI virtual
+  entertainment company — Discord-based meeting initiation with 6–7 persistent team-leader
+  personas, 29 specialized roles across 6 teams, per-role multi-model LLM workers
+  executed via opencode-go CLI, structured context-packet-based round progression,
+  GLM-5.1 primary + Codex GPT-5.5 conditional dual validation, OpenClaw tool-use execution
+  with human-in-the-loop for high-risk actions, priority-queue concurrent meeting
+  handling, crash-resilient manifest-based state recovery, and 4-layer knowledge accumulation
+  across meetings.
+task_type: code
+constraints:
+- Hermes Core modification minimized (no fork, no custom PR to delegate_task)
+- opencode-go CLI for all per-role model-diverse worker execution
+- All Coordinator-Worker contracts use filesystem-based JSON I/O
+- Maximum 3 meeting rounds + 1 tie-break round
+- Maximum 2 concurrent meetings, 4 concurrent opencode-go calls, 7 agents per meeting
+- Context packet token limits: normal worker 12k, validator 20k, Codex 30k
+- GLM-5.1 primary validator, Codex GPT-5.5 conditional secondary
+- All state transitions persist to manifest.json before external calls
+- Discord single-interface — Coordinator sole user-facing channel
+- Silent fail forbidden — all failures logged to manifest
+- meeting_id-based complete directory isolation
+- Append-only immutable records for meetings, decisions, sources
+- Meta-cognition proposals require human approval
+
+acceptance_criteria:
+- Users initiate meetings via /meeting slash command or @AI_Company mention
+- Qwen LLM primary router classifies meeting topics
+- Static routing_rules.yaml serves as fallback/guardrail only
+- Full lifecycle state machine: created->queued->routing->context_retrieval->in_meeting->consensus_building->validating->executing(optional)->finalizing->completed
+- Round 1: independent opinion context packets to all required roles
+- Round 2: conflict-resolution context packets
+- Round 3: convergence context packets
+- Tie-break: deadlock context packets when consensus fails after 3 rounds
+- Internal validation: 5 areas, 5-level verdict
+- GLM-5.1 default validator, Codex GPT-5.5 escalates on 7 triggers
+- Codex dual-validation conflict resolution by domain
+- P0>P1>P2>P3 priority queue with FIFO within same priority
+- P0 may pause lower-priority meetings; resume from manifest
+- /cancel {meeting_id} with cancelled state, output preserved
+- Worker failures: retry(1x)->fallback(1x)->quorum reassessment->escalation/fail
+- Required roles must complete; optional may skip with degradation
+- Coordinator crash recovery from manifest.json completed_step
+- OpenClaw: sync(<=30s)/async(>30s), callback+file-watch+polling notification
+- OpenClaw high-risk actions require human-in-the-loop approval
+- 4-layer knowledge: L0 Google Drive, L1 Obsidian, L2 FTS5, L3 Coordinator
+- Dynamic knowledge retrieval per meeting, not blanket injection
+- Agent persona specs: agent.yaml + persona.md in agents/{team}/{role_id}/
+- 6-7 persistent team-leader Discord bots, internal specialists as workers only
+- Meeting responses in original Discord thread

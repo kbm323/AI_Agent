@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "request-analysis.v1",
+  "intent": {
+    "summary": "브랜드 영상 제작 회의를 진행하고 최종 산출물을 합성해줘.",
+    "primaryGoal": "Run the requested work through the MVP virtual-company multi-agent meeting flow.",
+    "meetingSystem": "virtual-company-multi-agent-meeting",
+    "workflow": "analysis-routing-openclaw-hermes-synthesis"
+  },
+  "constraints": [
+    {
+      "id": "mvp-flow-required",
+      "source": "mvp-default",
+      "description": "Preserve request analysis, role routing, OpenClaw execution, Hermes review, final synthesis, and escalation boundaries."
+    },
+    {
+      "id": "compressed-loop-context",
+      "source": "mvp-default",
+      "description": "Expose bounded summaries in the meeting loop while keeping raw full text in storage."
+    }
+  ],
+  "requiredOutputs": [
+    {
+      "id": "task_breakdown",
+      "producedBy": "openclaw-owner",
+      "description": "Structured work breakdown derived from the user request."
+    },
+    {
+      "id": "role_routes",
+      "producedBy": "system",
+      "description": "Role assignments that route work to OpenClaw, Hermes, and the finalizer."
+    },
+    {
+      "id": "meeting_loop_result",
+      "producedBy": "hermes-reviewer",
+      "description": "Reviewed meeting loop outcome with convergence or decision-needed evidence."
+    },
+    {
+      "id": "final_synthesis",
+      "producedBy": "openclaw-finalizer",
+      "description": "Final consolidated answer when the meeting loop converges."
+    },
+    {
+      "id": "escalation",
+      "producedBy": "openclaw-finalizer",
+      "description": "Structured escalation artifact when user input is required."
+    }
+  ],
+  "userRequestSummary": "브랜드 영상 제작 회의를 진행하고 최종 산출물을 합성해줘.",
+  "taskBreakdown": [
+    {
+      "id": "task-001",
+      "title": "요청 의도와 성공 기준 정리",
+      "rationale": "회의 루프가 같은 목표를 검토하도록 사용자 요청을 짧은 기준으로 고정한다."
+    },
+    {
+      "id": "task-002",
+      "title": "OpenClaw 실행 초안 작성",
+      "rationale": "owner persona가 실행 가능한 1차 산출물을 만든다."
+    },
+    {
+      "id": "task-003",
+      "title": "Hermes 리뷰와 수렴 판단",
+      "rationale": "reviewer persona가 초안의 오류, 누락, 사용자 결정 필요성을 판정한다."
+    },
+    {
+      "id": "task-004",
+      "title": "최종 합성 또는 escalation",
+      "rationale": "수렴된 회의 결과를 final synthesis로 정리하거나 사용자 입력 필요성을 구조화한다."
+    }
+  ],
+  "roleRoutes": [
+    {
+      "taskId": "task-001",
+      "role": "openclaw-owner",
+      "responsibility": "요청을 작업 단위로 분해하고 회의 목표를 고정한다."
+    },
+    {
+      "taskId": "task-002",
+      "role": "openclaw-owner",
+      "responsibility": "실행 가능한 초안을 작성하고 Hermes에게 리뷰를 요청한다."
+    },
+    {
+      "taskId": "task-003",
+      "role": "hermes-reviewer",
+      "responsibility": "초안 검토, 리스크 식별, 수렴 여부 또는 사용자 결정 필요성을 판단한다."
+    },
+    {
+      "taskId": "task-004",
+      "role": "openclaw-finalizer",
+      "responsibility": "합의된 내용을 최종 산출물로 합성하거나 escalation artifact를 남긴다."
+    }
+  ],
+  "loopContextSummary": "Loop context:\n- request_summary: 브랜드 영상 제작 회의를 진행하고 최종 산출물을 합성해줘.\n- required_flow: analysis -> routing -> OpenClaw draft -> Hermes review -> final synthesis/escalation\n- storage_boundary: full text stays in SQLite; exposed context uses summaries",
+  "tokenStrategy": {
+    "rawStorage": "SQLite turns.content stores full model outputs and reviewer requests for audit/history.",
+    "exposedLoopContext": "Discord thread messages and loop prompts use bounded summaries from turns.visibleSummary.",
+    "compressionPolicy": "Each round carries request summary, latest draft summary, latest Hermes verdict, accepted feedback, rejected feedback, and escalation reasons instead of replaying full raw text.",
+    "targetReduction": "Reduce exposed loop tokens by at least 40-50% compared with replaying every full turn."
+  },
+  "ambiguitySignals": []
+}

@@ -1,0 +1,1134 @@
+{
+  "schemaVersion": "review-evidence.v1",
+  "inventory": [
+    {
+      "id": "existing:README.md",
+      "relativePath": "README.md",
+      "kind": "doc",
+      "moduleName": "README"
+    },
+    {
+      "id": "existing:docs/automated-validation-commands.md",
+      "relativePath": "docs/automated-validation-commands.md",
+      "kind": "doc",
+      "moduleName": "docs.automated-validation-commands"
+    },
+    {
+      "id": "existing:docs/context-storage-boundary.md",
+      "relativePath": "docs/context-storage-boundary.md",
+      "kind": "doc",
+      "moduleName": "docs.context-storage-boundary"
+    },
+    {
+      "id": "existing:docs/diagnosis-report.md",
+      "relativePath": "docs/diagnosis-report.md",
+      "kind": "doc",
+      "moduleName": "docs.diagnosis-report"
+    },
+    {
+      "id": "existing:docs/environment-dependency-verification.md",
+      "relativePath": "docs/environment-dependency-verification.md",
+      "kind": "doc",
+      "moduleName": "docs.environment-dependency-verification"
+    },
+    {
+      "id": "existing:docs/loop-context-compression-policy.md",
+      "relativePath": "docs/loop-context-compression-policy.md",
+      "kind": "doc",
+      "moduleName": "docs.loop-context-compression-policy"
+    },
+    {
+      "id": "existing:docs/public-api-symbols.json",
+      "relativePath": "docs/public-api-symbols.json",
+      "kind": "doc",
+      "moduleName": "docs.public-api-symbols"
+    },
+    {
+      "id": "existing:docs/refactoring-plan.md",
+      "relativePath": "docs/refactoring-plan.md",
+      "kind": "doc",
+      "moduleName": "docs.refactoring-plan"
+    },
+    {
+      "id": "existing:docs/token-reduction-strategy.md",
+      "relativePath": "docs/token-reduction-strategy.md",
+      "kind": "doc",
+      "moduleName": "docs.token-reduction-strategy"
+    },
+    {
+      "id": "existing:package.json",
+      "relativePath": "package.json",
+      "kind": "config",
+      "moduleName": "package"
+    },
+    {
+      "id": "existing:scripts/check-artifacts.ts",
+      "relativePath": "scripts/check-artifacts.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-artifacts"
+    },
+    {
+      "id": "existing:scripts/check-context-storage-boundary.ts",
+      "relativePath": "scripts/check-context-storage-boundary.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-context-storage-boundary"
+    },
+    {
+      "id": "existing:scripts/check-decision-determinism.ts",
+      "relativePath": "scripts/check-decision-determinism.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-decision-determinism"
+    },
+    {
+      "id": "existing:scripts/check-dry-run-contract.ts",
+      "relativePath": "scripts/check-dry-run-contract.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-dry-run-contract"
+    },
+    {
+      "id": "existing:scripts/check-environment-dependencies.ts",
+      "relativePath": "scripts/check-environment-dependencies.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-environment-dependencies"
+    },
+    {
+      "id": "existing:scripts/check-escalation-serialization.ts",
+      "relativePath": "scripts/check-escalation-serialization.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-escalation-serialization"
+    },
+    {
+      "id": "existing:scripts/check-final-output-schema.ts",
+      "relativePath": "scripts/check-final-output-schema.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-final-output-schema"
+    },
+    {
+      "id": "existing:scripts/check-final-synthesis-artifact.ts",
+      "relativePath": "scripts/check-final-synthesis-artifact.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-final-synthesis-artifact"
+    },
+    {
+      "id": "existing:scripts/check-final-synthesis-stability.ts",
+      "relativePath": "scripts/check-final-synthesis-stability.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-final-synthesis-stability"
+    },
+    {
+      "id": "existing:scripts/check-fixture-harness.ts",
+      "relativePath": "scripts/check-fixture-harness.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-fixture-harness"
+    },
+    {
+      "id": "existing:scripts/check-loop-context-compression-policy.ts",
+      "relativePath": "scripts/check-loop-context-compression-policy.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-loop-context-compression-policy"
+    },
+    {
+      "id": "existing:scripts/check-loop-context-compression-verification.ts",
+      "relativePath": "scripts/check-loop-context-compression-verification.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-loop-context-compression-verification"
+    },
+    {
+      "id": "existing:scripts/check-meeting-loop-artifacts.ts",
+      "relativePath": "scripts/check-meeting-loop-artifacts.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-meeting-loop-artifacts"
+    },
+    {
+      "id": "existing:scripts/check-meeting-loop-routing.ts",
+      "relativePath": "scripts/check-meeting-loop-routing.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-meeting-loop-routing"
+    },
+    {
+      "id": "existing:scripts/check-mvp-completion.ts",
+      "relativePath": "scripts/check-mvp-completion.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-mvp-completion"
+    },
+    {
+      "id": "existing:scripts/check-openclaw-hermes-loop.ts",
+      "relativePath": "scripts/check-openclaw-hermes-loop.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-openclaw-hermes-loop"
+    },
+    {
+      "id": "existing:scripts/check-public-api.ts",
+      "relativePath": "scripts/check-public-api.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-public-api"
+    },
+    {
+      "id": "existing:scripts/check-request-analysis.ts",
+      "relativePath": "scripts/check-request-analysis.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-request-analysis"
+    },
+    {
+      "id": "existing:scripts/check-requirement-gap.ts",
+      "relativePath": "scripts/check-requirement-gap.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-requirement-gap"
+    },
+    {
+      "id": "existing:scripts/check-review-artifact-completeness.ts",
+      "relativePath": "scripts/check-review-artifact-completeness.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-review-artifact-completeness"
+    },
+    {
+      "id": "existing:scripts/check-routing-assignment.ts",
+      "relativePath": "scripts/check-routing-assignment.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-routing-assignment"
+    },
+    {
+      "id": "existing:scripts/check-task-decomposition-stability.ts",
+      "relativePath": "scripts/check-task-decomposition-stability.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-task-decomposition-stability"
+    },
+    {
+      "id": "existing:scripts/check-task-overlap.ts",
+      "relativePath": "scripts/check-task-overlap.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-task-overlap"
+    },
+    {
+      "id": "existing:scripts/check-token-cost-control.ts",
+      "relativePath": "scripts/check-token-cost-control.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-token-cost-control"
+    },
+    {
+      "id": "existing:scripts/check-token-reduction-savings-band.ts",
+      "relativePath": "scripts/check-token-reduction-savings-band.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-token-reduction-savings-band"
+    },
+    {
+      "id": "existing:scripts/check-token-strategy.ts",
+      "relativePath": "scripts/check-token-strategy.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-token-strategy"
+    },
+    {
+      "id": "existing:scripts/check-typecheck.ts",
+      "relativePath": "scripts/check-typecheck.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-typecheck"
+    },
+    {
+      "id": "existing:scripts/check-validation-command-documentation.ts",
+      "relativePath": "scripts/check-validation-command-documentation.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-validation-command-documentation"
+    },
+    {
+      "id": "existing:scripts/check-verification-output.ts",
+      "relativePath": "scripts/check-verification-output.ts",
+      "kind": "script",
+      "moduleName": "scripts.check-verification-output"
+    },
+    {
+      "id": "existing:scripts/count-loc.ts",
+      "relativePath": "scripts/count-loc.ts",
+      "kind": "script",
+      "moduleName": "scripts.count-loc"
+    },
+    {
+      "id": "existing:scripts/dependency-graph.ts",
+      "relativePath": "scripts/dependency-graph.ts",
+      "kind": "script",
+      "moduleName": "scripts.dependency-graph"
+    },
+    {
+      "id": "existing:scripts/dry-run.ts",
+      "relativePath": "scripts/dry-run.ts",
+      "kind": "script",
+      "moduleName": "scripts.dry-run"
+    },
+    {
+      "id": "existing:scripts/generate-diagnosis-report.ts",
+      "relativePath": "scripts/generate-diagnosis-report.ts",
+      "kind": "script",
+      "moduleName": "scripts.generate-diagnosis-report"
+    },
+    {
+      "id": "existing:scripts/generate-loop-context-compression-policy.ts",
+      "relativePath": "scripts/generate-loop-context-compression-policy.ts",
+      "kind": "script",
+      "moduleName": "scripts.generate-loop-context-compression-policy"
+    },
+    {
+      "id": "existing:scripts/generate-token-strategy.ts",
+      "relativePath": "scripts/generate-token-strategy.ts",
+      "kind": "script",
+      "moduleName": "scripts.generate-token-strategy"
+    },
+    {
+      "id": "existing:scripts/health-check.ts",
+      "relativePath": "scripts/health-check.ts",
+      "kind": "script",
+      "moduleName": "scripts.health-check"
+    },
+    {
+      "id": "existing:scripts/inspect-file-tree.ts",
+      "relativePath": "scripts/inspect-file-tree.ts",
+      "kind": "script",
+      "moduleName": "scripts.inspect-file-tree"
+    },
+    {
+      "id": "existing:scripts/review-evidence.ts",
+      "relativePath": "scripts/review-evidence.ts",
+      "kind": "script",
+      "moduleName": "scripts.review-evidence"
+    },
+    {
+      "id": "existing:scripts/run-mvp-tests.ts",
+      "relativePath": "scripts/run-mvp-tests.ts",
+      "kind": "script",
+      "moduleName": "scripts.run-mvp-tests"
+    },
+    {
+      "id": "existing:scripts/run-verification-workflow.ts",
+      "relativePath": "scripts/run-verification-workflow.ts",
+      "kind": "script",
+      "moduleName": "scripts.run-verification-workflow"
+    },
+    {
+      "id": "existing:src/acceptance-evidence.ts",
+      "relativePath": "src/acceptance-evidence.ts",
+      "kind": "source",
+      "moduleName": "src.acceptance-evidence"
+    },
+    {
+      "id": "existing:src/artifact-check.ts",
+      "relativePath": "src/artifact-check.ts",
+      "kind": "source",
+      "moduleName": "src.artifact-check"
+    },
+    {
+      "id": "existing:src/capability-inventory.ts",
+      "relativePath": "src/capability-inventory.ts",
+      "kind": "source",
+      "moduleName": "src.capability-inventory"
+    },
+    {
+      "id": "existing:src/compression-verification.ts",
+      "relativePath": "src/compression-verification.ts",
+      "kind": "source",
+      "moduleName": "src.compression-verification"
+    },
+    {
+      "id": "existing:src/context-storage.ts",
+      "relativePath": "src/context-storage.ts",
+      "kind": "source",
+      "moduleName": "src.context-storage"
+    },
+    {
+      "id": "existing:src/convergence-failure.ts",
+      "relativePath": "src/convergence-failure.ts",
+      "kind": "source",
+      "moduleName": "src.convergence-failure"
+    },
+    {
+      "id": "existing:src/db.ts",
+      "relativePath": "src/db.ts",
+      "kind": "source",
+      "moduleName": "src.db"
+    },
+    {
+      "id": "existing:src/decision-justification-report.ts",
+      "relativePath": "src/decision-justification-report.ts",
+      "kind": "source",
+      "moduleName": "src.decision-justification-report"
+    },
+    {
+      "id": "existing:src/environment-dependency-verification.ts",
+      "relativePath": "src/environment-dependency-verification.ts",
+      "kind": "source",
+      "moduleName": "src.environment-dependency-verification"
+    },
+    {
+      "id": "existing:src/evaluation.ts",
+      "relativePath": "src/evaluation.ts",
+      "kind": "source",
+      "moduleName": "src.evaluation"
+    },
+    {
+      "id": "existing:src/final-output-schema.ts",
+      "relativePath": "src/final-output-schema.ts",
+      "kind": "source",
+      "moduleName": "src.final-output-schema"
+    },
+    {
+      "id": "existing:src/final-synthesis.ts",
+      "relativePath": "src/final-synthesis.ts",
+      "kind": "source",
+      "moduleName": "src.final-synthesis"
+    },
+    {
+      "id": "existing:src/health-check.ts",
+      "relativePath": "src/health-check.ts",
+      "kind": "source",
+      "moduleName": "src.health-check"
+    },
+    {
+      "id": "existing:src/index.ts",
+      "relativePath": "src/index.ts",
+      "kind": "source",
+      "moduleName": "src.index"
+    },
+    {
+      "id": "existing:src/inspection.ts",
+      "relativePath": "src/inspection.ts",
+      "kind": "source",
+      "moduleName": "src.inspection"
+    },
+    {
+      "id": "existing:src/inventory-orchestration.ts",
+      "relativePath": "src/inventory-orchestration.ts",
+      "kind": "source",
+      "moduleName": "src.inventory-orchestration"
+    },
+    {
+      "id": "existing:src/loop-context-compression-policy.ts",
+      "relativePath": "src/loop-context-compression-policy.ts",
+      "kind": "source",
+      "moduleName": "src.loop-context-compression-policy"
+    },
+    {
+      "id": "existing:src/meeting-transcript.ts",
+      "relativePath": "src/meeting-transcript.ts",
+      "kind": "source",
+      "moduleName": "src.meeting-transcript"
+    },
+    {
+      "id": "existing:src/orchestrator.ts",
+      "relativePath": "src/orchestrator.ts",
+      "kind": "source",
+      "moduleName": "src.orchestrator"
+    },
+    {
+      "id": "existing:src/output-normalization.ts",
+      "relativePath": "src/output-normalization.ts",
+      "kind": "source",
+      "moduleName": "src.output-normalization"
+    },
+    {
+      "id": "existing:src/planning.ts",
+      "relativePath": "src/planning.ts",
+      "kind": "source",
+      "moduleName": "src.planning"
+    },
+    {
+      "id": "existing:src/policies.ts",
+      "relativePath": "src/policies.ts",
+      "kind": "source",
+      "moduleName": "src.policies"
+    },
+    {
+      "id": "existing:src/public.ts",
+      "relativePath": "src/public.ts",
+      "kind": "source",
+      "moduleName": "src.public"
+    },
+    {
+      "id": "existing:src/review-artifact-completeness.ts",
+      "relativePath": "src/review-artifact-completeness.ts",
+      "kind": "source",
+      "moduleName": "src.review-artifact-completeness"
+    },
+    {
+      "id": "existing:src/role-routing.ts",
+      "relativePath": "src/role-routing.ts",
+      "kind": "source",
+      "moduleName": "src.role-routing"
+    },
+    {
+      "id": "existing:src/runtime-data.ts",
+      "relativePath": "src/runtime-data.ts",
+      "kind": "source",
+      "moduleName": "src.runtime-data"
+    },
+    {
+      "id": "existing:src/summarization.ts",
+      "relativePath": "src/summarization.ts",
+      "kind": "source",
+      "moduleName": "src.summarization"
+    },
+    {
+      "id": "existing:src/token-baseline.ts",
+      "relativePath": "src/token-baseline.ts",
+      "kind": "source",
+      "moduleName": "src.token-baseline"
+    },
+    {
+      "id": "existing:src/token-strategy-artifact.ts",
+      "relativePath": "src/token-strategy-artifact.ts",
+      "kind": "source",
+      "moduleName": "src.token-strategy-artifact"
+    },
+    {
+      "id": "existing:src/types.ts",
+      "relativePath": "src/types.ts",
+      "kind": "source",
+      "moduleName": "src.types"
+    },
+    {
+      "id": "existing:src/user-input-required.ts",
+      "relativePath": "src/user-input-required.ts",
+      "kind": "source",
+      "moduleName": "src.user-input-required"
+    },
+    {
+      "id": "existing:src/validation-command-documentation.ts",
+      "relativePath": "src/validation-command-documentation.ts",
+      "kind": "source",
+      "moduleName": "src.validation-command-documentation"
+    },
+    {
+      "id": "existing:src/verification-output.ts",
+      "relativePath": "src/verification-output.ts",
+      "kind": "source",
+      "moduleName": "src.verification-output"
+    },
+    {
+      "id": "existing:src/verification-workflow-runner.ts",
+      "relativePath": "src/verification-workflow-runner.ts",
+      "kind": "source",
+      "moduleName": "src.verification-workflow-runner"
+    },
+    {
+      "id": "existing:tests/artifact-check.test.ts",
+      "relativePath": "tests/artifact-check.test.ts",
+      "kind": "test",
+      "moduleName": "tests.artifact-check.test"
+    },
+    {
+      "id": "existing:tests/capability-inventory.test.ts",
+      "relativePath": "tests/capability-inventory.test.ts",
+      "kind": "test",
+      "moduleName": "tests.capability-inventory.test"
+    },
+    {
+      "id": "existing:tests/cli-command-entry-modules-success-paths.test.ts",
+      "relativePath": "tests/cli-command-entry-modules-success-paths.test.ts",
+      "kind": "test",
+      "moduleName": "tests.cli-command-entry-modules-success-paths.test"
+    },
+    {
+      "id": "existing:tests/command-entry-success-paths.test.ts",
+      "relativePath": "tests/command-entry-success-paths.test.ts",
+      "kind": "test",
+      "moduleName": "tests.command-entry-success-paths.test"
+    },
+    {
+      "id": "existing:tests/context-storage-boundary.test.ts",
+      "relativePath": "tests/context-storage-boundary.test.ts",
+      "kind": "test",
+      "moduleName": "tests.context-storage-boundary.test"
+    },
+    {
+      "id": "existing:tests/convergence-failure.test.ts",
+      "relativePath": "tests/convergence-failure.test.ts",
+      "kind": "test",
+      "moduleName": "tests.convergence-failure.test"
+    },
+    {
+      "id": "existing:tests/core-mvp-meeting-behavior.test.ts",
+      "relativePath": "tests/core-mvp-meeting-behavior.test.ts",
+      "kind": "test",
+      "moduleName": "tests.core-mvp-meeting-behavior.test"
+    },
+    {
+      "id": "existing:tests/db.test.ts",
+      "relativePath": "tests/db.test.ts",
+      "kind": "test",
+      "moduleName": "tests.db.test"
+    },
+    {
+      "id": "existing:tests/decision-determinism.test.ts",
+      "relativePath": "tests/decision-determinism.test.ts",
+      "kind": "test",
+      "moduleName": "tests.decision-determinism.test"
+    },
+    {
+      "id": "existing:tests/decision-justification-report.test.ts",
+      "relativePath": "tests/decision-justification-report.test.ts",
+      "kind": "test",
+      "moduleName": "tests.decision-justification-report.test"
+    },
+    {
+      "id": "existing:tests/diagnosis-report-command.test.ts",
+      "relativePath": "tests/diagnosis-report-command.test.ts",
+      "kind": "test",
+      "moduleName": "tests.diagnosis-report-command.test"
+    },
+    {
+      "id": "existing:tests/dry-run.test.ts",
+      "relativePath": "tests/dry-run.test.ts",
+      "kind": "test",
+      "moduleName": "tests.dry-run.test"
+    },
+    {
+      "id": "existing:tests/environment-dependency-verification.test.ts",
+      "relativePath": "tests/environment-dependency-verification.test.ts",
+      "kind": "test",
+      "moduleName": "tests.environment-dependency-verification.test"
+    },
+    {
+      "id": "existing:tests/escalation-policy.test.ts",
+      "relativePath": "tests/escalation-policy.test.ts",
+      "kind": "test",
+      "moduleName": "tests.escalation-policy.test"
+    },
+    {
+      "id": "existing:tests/evaluation.test.ts",
+      "relativePath": "tests/evaluation.test.ts",
+      "kind": "test",
+      "moduleName": "tests.evaluation.test"
+    },
+    {
+      "id": "existing:tests/final-output-schema.test.ts",
+      "relativePath": "tests/final-output-schema.test.ts",
+      "kind": "test",
+      "moduleName": "tests.final-output-schema.test"
+    },
+    {
+      "id": "existing:tests/final-synthesis.test.ts",
+      "relativePath": "tests/final-synthesis.test.ts",
+      "kind": "test",
+      "moduleName": "tests.final-synthesis.test"
+    },
+    {
+      "id": "existing:tests/fixture-harness.test.ts",
+      "relativePath": "tests/fixture-harness.test.ts",
+      "kind": "test",
+      "moduleName": "tests.fixture-harness.test"
+    },
+    {
+      "id": "existing:tests/fixtures/dry-run-harness-fixtures.json",
+      "relativePath": "tests/fixtures/dry-run-harness-fixtures.json",
+      "kind": "test",
+      "moduleName": "tests.fixtures.dry-run-harness-fixtures"
+    },
+    {
+      "id": "existing:tests/fixtures/request-analysis-output.json",
+      "relativePath": "tests/fixtures/request-analysis-output.json",
+      "kind": "test",
+      "moduleName": "tests.fixtures.request-analysis-output"
+    },
+    {
+      "id": "existing:tests/fixtures/token-baseline-fixture.json",
+      "relativePath": "tests/fixtures/token-baseline-fixture.json",
+      "kind": "test",
+      "moduleName": "tests.fixtures.token-baseline-fixture"
+    },
+    {
+      "id": "existing:tests/generated-artifact-reproducibility.test.ts",
+      "relativePath": "tests/generated-artifact-reproducibility.test.ts",
+      "kind": "test",
+      "moduleName": "tests.generated-artifact-reproducibility.test"
+    },
+    {
+      "id": "existing:tests/health-check.test.ts",
+      "relativePath": "tests/health-check.test.ts",
+      "kind": "test",
+      "moduleName": "tests.health-check.test"
+    },
+    {
+      "id": "existing:tests/inspection.test.ts",
+      "relativePath": "tests/inspection.test.ts",
+      "kind": "test",
+      "moduleName": "tests.inspection.test"
+    },
+    {
+      "id": "existing:tests/inventory-orchestration.test.ts",
+      "relativePath": "tests/inventory-orchestration.test.ts",
+      "kind": "test",
+      "moduleName": "tests.inventory-orchestration.test"
+    },
+    {
+      "id": "existing:tests/loop-context-compression-policy.test.ts",
+      "relativePath": "tests/loop-context-compression-policy.test.ts",
+      "kind": "test",
+      "moduleName": "tests.loop-context-compression-policy.test"
+    },
+    {
+      "id": "existing:tests/loop-context-compression-verification.test.ts",
+      "relativePath": "tests/loop-context-compression-verification.test.ts",
+      "kind": "test",
+      "moduleName": "tests.loop-context-compression-verification.test"
+    },
+    {
+      "id": "existing:tests/meeting-loop-routing.test.ts",
+      "relativePath": "tests/meeting-loop-routing.test.ts",
+      "kind": "test",
+      "moduleName": "tests.meeting-loop-routing.test"
+    },
+    {
+      "id": "existing:tests/mvp-completion-check.test.ts",
+      "relativePath": "tests/mvp-completion-check.test.ts",
+      "kind": "test",
+      "moduleName": "tests.mvp-completion-check.test"
+    },
+    {
+      "id": "existing:tests/mvp-test-suite-entrypoint.test.ts",
+      "relativePath": "tests/mvp-test-suite-entrypoint.test.ts",
+      "kind": "test",
+      "moduleName": "tests.mvp-test-suite-entrypoint.test"
+    },
+    {
+      "id": "existing:tests/orchestrator.test.ts",
+      "relativePath": "tests/orchestrator.test.ts",
+      "kind": "test",
+      "moduleName": "tests.orchestrator.test"
+    },
+    {
+      "id": "existing:tests/output-normalization.test.ts",
+      "relativePath": "tests/output-normalization.test.ts",
+      "kind": "test",
+      "moduleName": "tests.output-normalization.test"
+    },
+    {
+      "id": "existing:tests/planning.test.ts",
+      "relativePath": "tests/planning.test.ts",
+      "kind": "test",
+      "moduleName": "tests.planning.test"
+    },
+    {
+      "id": "existing:tests/public-api-entry-modules.test.ts",
+      "relativePath": "tests/public-api-entry-modules.test.ts",
+      "kind": "test",
+      "moduleName": "tests.public-api-entry-modules.test"
+    },
+    {
+      "id": "existing:tests/public-api.test.ts",
+      "relativePath": "tests/public-api.test.ts",
+      "kind": "test",
+      "moduleName": "tests.public-api.test"
+    },
+    {
+      "id": "existing:tests/readme-mvp-requirements.test.ts",
+      "relativePath": "tests/readme-mvp-requirements.test.ts",
+      "kind": "test",
+      "moduleName": "tests.readme-mvp-requirements.test"
+    },
+    {
+      "id": "existing:tests/recommendation-decision-independence.test.ts",
+      "relativePath": "tests/recommendation-decision-independence.test.ts",
+      "kind": "test",
+      "moduleName": "tests.recommendation-decision-independence.test"
+    },
+    {
+      "id": "existing:tests/refactoring-plan-artifact.test.ts",
+      "relativePath": "tests/refactoring-plan-artifact.test.ts",
+      "kind": "test",
+      "moduleName": "tests.refactoring-plan-artifact.test"
+    },
+    {
+      "id": "existing:tests/requirement-gap-check.test.ts",
+      "relativePath": "tests/requirement-gap-check.test.ts",
+      "kind": "test",
+      "moduleName": "tests.requirement-gap-check.test"
+    },
+    {
+      "id": "existing:tests/review-artifact-completeness.test.ts",
+      "relativePath": "tests/review-artifact-completeness.test.ts",
+      "kind": "test",
+      "moduleName": "tests.review-artifact-completeness.test"
+    },
+    {
+      "id": "existing:tests/review-evidence-command.test.ts",
+      "relativePath": "tests/review-evidence-command.test.ts",
+      "kind": "test",
+      "moduleName": "tests.review-evidence-command.test"
+    },
+    {
+      "id": "existing:tests/role-routing.test.ts",
+      "relativePath": "tests/role-routing.test.ts",
+      "kind": "test",
+      "moduleName": "tests.role-routing.test"
+    },
+    {
+      "id": "existing:tests/routing-public-api.test.ts",
+      "relativePath": "tests/routing-public-api.test.ts",
+      "kind": "test",
+      "moduleName": "tests.routing-public-api.test"
+    },
+    {
+      "id": "existing:tests/ruff-check.test.ts",
+      "relativePath": "tests/ruff-check.test.ts",
+      "kind": "test",
+      "moduleName": "tests.ruff-check.test"
+    },
+    {
+      "id": "existing:tests/runtime-data.test.ts",
+      "relativePath": "tests/runtime-data.test.ts",
+      "kind": "test",
+      "moduleName": "tests.runtime-data.test"
+    },
+    {
+      "id": "existing:tests/summarization.test.ts",
+      "relativePath": "tests/summarization.test.ts",
+      "kind": "test",
+      "moduleName": "tests.summarization.test"
+    },
+    {
+      "id": "existing:tests/token-baseline.test.ts",
+      "relativePath": "tests/token-baseline.test.ts",
+      "kind": "test",
+      "moduleName": "tests.token-baseline.test"
+    },
+    {
+      "id": "existing:tests/token-cost-control-public-api.test.ts",
+      "relativePath": "tests/token-cost-control-public-api.test.ts",
+      "kind": "test",
+      "moduleName": "tests.token-cost-control-public-api.test"
+    },
+    {
+      "id": "existing:tests/token-reduction-strategy-integration.test.ts",
+      "relativePath": "tests/token-reduction-strategy-integration.test.ts",
+      "kind": "test",
+      "moduleName": "tests.token-reduction-strategy-integration.test"
+    },
+    {
+      "id": "existing:tests/token-strategy-artifact.test.ts",
+      "relativePath": "tests/token-strategy-artifact.test.ts",
+      "kind": "test",
+      "moduleName": "tests.token-strategy-artifact.test"
+    },
+    {
+      "id": "existing:tests/typecheck-command.test.ts",
+      "relativePath": "tests/typecheck-command.test.ts",
+      "kind": "test",
+      "moduleName": "tests.typecheck-command.test"
+    },
+    {
+      "id": "existing:tests/user-input-required.test.ts",
+      "relativePath": "tests/user-input-required.test.ts",
+      "kind": "test",
+      "moduleName": "tests.user-input-required.test"
+    },
+    {
+      "id": "existing:tests/validation-command-documentation.test.ts",
+      "relativePath": "tests/validation-command-documentation.test.ts",
+      "kind": "test",
+      "moduleName": "tests.validation-command-documentation.test"
+    },
+    {
+      "id": "existing:tests/verification-output.test.ts",
+      "relativePath": "tests/verification-output.test.ts",
+      "kind": "test",
+      "moduleName": "tests.verification-output.test"
+    },
+    {
+      "id": "existing:tests/verification-workflow-runner.test.ts",
+      "relativePath": "tests/verification-workflow-runner.test.ts",
+      "kind": "test",
+      "moduleName": "tests.verification-workflow-runner.test"
+    }
+  ],
+  "findings": [
+    {
+      "id": "finding:existing:docs/environment-dependency-verification.md:missing-escalation-doc",
+      "sourceId": "existing:docs/environment-dependency-verification.md",
+      "relativePath": "docs/environment-dependency-verification.md",
+      "moduleName": "docs.environment-dependency-verification",
+      "severity": "low",
+      "category": "feature_completeness",
+      "title": "MVP documentation omits escalation behavior",
+      "evidence": "Document mentions MVP meeting roles but no escalation or user-decision behavior was detected.",
+      "recommendation": "Document how ambiguous or insufficiently converged requests produce an escalation artifact."
+    },
+    {
+      "id": "finding:existing:src/acceptance-evidence.ts:missing-test",
+      "sourceId": "existing:src/acceptance-evidence.ts",
+      "relativePath": "src/acceptance-evidence.ts",
+      "moduleName": "src.acceptance-evidence",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/compression-verification.ts:missing-test",
+      "sourceId": "existing:src/compression-verification.ts",
+      "relativePath": "src/compression-verification.ts",
+      "moduleName": "src.compression-verification",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/context-storage.ts:missing-test",
+      "sourceId": "existing:src/context-storage.ts",
+      "relativePath": "src/context-storage.ts",
+      "moduleName": "src.context-storage",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/context-storage.ts:raw-content-exposure",
+      "sourceId": "existing:src/context-storage.ts",
+      "relativePath": "src/context-storage.ts",
+      "moduleName": "src.context-storage",
+      "severity": "medium",
+      "category": "token_cost",
+      "title": "Raw content handling needs explicit summary boundary",
+      "evidence": "The inspected source handles raw or full content and requires an explicit summary boundary: rawTextHiddenFromLoopContext: boolean;",
+      "recommendation": "Keep full text in durable storage and expose only bounded summaries to loop prompts, logs, and thread messages."
+    },
+    {
+      "id": "finding:existing:src/convergence-failure.ts:missing-test",
+      "sourceId": "existing:src/convergence-failure.ts",
+      "relativePath": "src/convergence-failure.ts",
+      "moduleName": "src.convergence-failure",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/db.ts:missing-test",
+      "sourceId": "existing:src/db.ts",
+      "relativePath": "src/db.ts",
+      "moduleName": "src.db",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/decision-justification-report.ts:missing-test",
+      "sourceId": "existing:src/decision-justification-report.ts",
+      "relativePath": "src/decision-justification-report.ts",
+      "moduleName": "src.decision-justification-report",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/evaluation.ts:missing-test",
+      "sourceId": "existing:src/evaluation.ts",
+      "relativePath": "src/evaluation.ts",
+      "moduleName": "src.evaluation",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/final-output-schema.ts:raw-content-exposure",
+      "sourceId": "existing:src/final-output-schema.ts",
+      "relativePath": "src/final-output-schema.ts",
+      "moduleName": "src.final-output-schema",
+      "severity": "medium",
+      "category": "token_cost",
+      "title": "Raw content handling needs explicit summary boundary",
+      "evidence": "The inspected source handles raw or full content and requires an explicit summary boundary: fullContent?: never;",
+      "recommendation": "Keep full text in durable storage and expose only bounded summaries to loop prompts, logs, and thread messages."
+    },
+    {
+      "id": "finding:existing:src/final-synthesis.ts:missing-test",
+      "sourceId": "existing:src/final-synthesis.ts",
+      "relativePath": "src/final-synthesis.ts",
+      "moduleName": "src.final-synthesis",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/final-synthesis.ts:raw-content-exposure",
+      "sourceId": "existing:src/final-synthesis.ts",
+      "relativePath": "src/final-synthesis.ts",
+      "moduleName": "src.final-synthesis",
+      "severity": "medium",
+      "category": "token_cost",
+      "title": "Raw content handling needs explicit summary boundary",
+      "evidence": "The inspected source handles raw or full content and requires an explicit summary boundary: fullContent?: never;",
+      "recommendation": "Keep full text in durable storage and expose only bounded summaries to loop prompts, logs, and thread messages."
+    },
+    {
+      "id": "finding:existing:src/health-check.ts:missing-test",
+      "sourceId": "existing:src/health-check.ts",
+      "relativePath": "src/health-check.ts",
+      "moduleName": "src.health-check",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/index.ts:missing-test",
+      "sourceId": "existing:src/index.ts",
+      "relativePath": "src/index.ts",
+      "moduleName": "src.index",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/inspection.ts:open-marker",
+      "sourceId": "existing:src/inspection.ts",
+      "relativePath": "src/inspection.ts",
+      "moduleName": "src.inspection",
+      "severity": "medium",
+      "category": "maintainability",
+      "title": "Open implementation marker remains in inspected code",
+      "evidence": "The inspected module still contains an open implementation marker: if (/\\b(to-be-defined|to-do|n\\/a|no-value|un-known|place-holder|fix-in-follow-up|thin evidence)\\b/i.test(normalized)) {",
+      "recommendation": "Resolve or convert the marker into a tracked finding with owner, risk, and next action."
+    },
+    {
+      "id": "finding:existing:src/inspection.ts:raw-content-exposure",
+      "sourceId": "existing:src/inspection.ts",
+      "relativePath": "src/inspection.ts",
+      "moduleName": "src.inspection",
+      "severity": "medium",
+      "category": "token_cost",
+      "title": "Raw content handling needs explicit summary boundary",
+      "evidence": "The inspected source handles raw or full content and requires an explicit summary boundary: if (input.kind === \"source\" && /full(Content|Text)|raw(Content|Text)|content:\\s*fullContent/.test(content)) {",
+      "recommendation": "Keep full text in durable storage and expose only bounded summaries to loop prompts, logs, and thread messages."
+    },
+    {
+      "id": "finding:existing:src/meeting-transcript.ts:missing-test",
+      "sourceId": "existing:src/meeting-transcript.ts",
+      "relativePath": "src/meeting-transcript.ts",
+      "moduleName": "src.meeting-transcript",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/orchestrator.ts:missing-test",
+      "sourceId": "existing:src/orchestrator.ts",
+      "relativePath": "src/orchestrator.ts",
+      "moduleName": "src.orchestrator",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/orchestrator.ts:raw-content-exposure",
+      "sourceId": "existing:src/orchestrator.ts",
+      "relativePath": "src/orchestrator.ts",
+      "moduleName": "src.orchestrator",
+      "severity": "medium",
+      "category": "token_cost",
+      "title": "Raw content handling needs explicit summary boundary",
+      "evidence": "The inspected source handles raw or full content and requires an explicit summary boundary: fullContent = visibleContent,",
+      "recommendation": "Keep full text in durable storage and expose only bounded summaries to loop prompts, logs, and thread messages."
+    },
+    {
+      "id": "finding:existing:src/public.ts:missing-test",
+      "sourceId": "existing:src/public.ts",
+      "relativePath": "src/public.ts",
+      "moduleName": "src.public",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/token-strategy-artifact.ts:missing-test",
+      "sourceId": "existing:src/token-strategy-artifact.ts",
+      "relativePath": "src/token-strategy-artifact.ts",
+      "moduleName": "src.token-strategy-artifact",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/types.ts:missing-test",
+      "sourceId": "existing:src/types.ts",
+      "relativePath": "src/types.ts",
+      "moduleName": "src.types",
+      "severity": "high",
+      "category": "error_frequency",
+      "title": "Source module has no observable test coverage",
+      "evidence": "No test reference was detected for this source module.",
+      "recommendation": "Add a focused runnable test before using this module as part of the MVP diagnosis or meeting loop."
+    },
+    {
+      "id": "finding:existing:src/types.ts:raw-content-exposure",
+      "sourceId": "existing:src/types.ts",
+      "relativePath": "src/types.ts",
+      "moduleName": "src.types",
+      "severity": "medium",
+      "category": "token_cost",
+      "title": "Raw content handling needs explicit summary boundary",
+      "evidence": "The inspected source handles raw or full content and requires an explicit summary boundary: postThread(input: { threadId: string; content: string; fullContent?: string }): Promise<void>;",
+      "recommendation": "Keep full text in durable storage and expose only bounded summaries to loop prompts, logs, and thread messages."
+    },
+    {
+      "id": "finding:existing:src/verification-workflow-runner.ts:raw-content-exposure",
+      "sourceId": "existing:src/verification-workflow-runner.ts",
+      "relativePath": "src/verification-workflow-runner.ts",
+      "moduleName": "src.verification-workflow-runner",
+      "severity": "medium",
+      "category": "token_cost",
+      "title": "Raw content handling needs explicit summary boundary",
+      "evidence": "The inspected source handles raw or full content and requires an explicit summary boundary: threadFullContentPreserved: discord.threadPosts.some((post) => post.fullContent?.includes(rawStorageSentinel)),",
+      "recommendation": "Keep full text in durable storage and expose only bounded summaries to loop prompts, logs, and thread messages."
+    },
+    {
+      "id": "finding:existing:tests/inspection.test.ts:open-marker",
+      "sourceId": "existing:tests/inspection.test.ts",
+      "relativePath": "tests/inspection.test.ts",
+      "moduleName": "tests.inspection.test",
+      "severity": "medium",
+      "category": "maintainability",
+      "title": "Open implementation marker remains in inspected code",
+      "evidence": "The inspected module still contains an open implementation marker: assert.doesNotMatch(capability.gapDescription, /\\b(to-be-defined|to-do|n\\/a|place-holder)\\b/i);",
+      "recommendation": "Resolve or convert the marker into a tracked finding with owner, risk, and next action."
+    }
+  ],
+  "summary": {
+    "inspectedModules": 139,
+    "findingCount": 25,
+    "findingsBySeverity": {
+      "critical": 0,
+      "high": 15,
+      "medium": 9,
+      "low": 1
+    },
+    "findingsByCategory": {
+      "error_frequency": 15,
+      "maintainability": 2,
+      "token_cost": 7,
+      "architecture_fit": 0,
+      "feature_completeness": 1
+    },
+    "recommendation": "partial_redesign"
+  }
+}

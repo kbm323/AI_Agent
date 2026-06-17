@@ -1,0 +1,111 @@
+# Seed: AI Company - Remaining ACs (8-14, 16-18, 20-26)
+# Based on seed_08605bf07c22
+# ACs 1-7, 15, 19 already implemented with 2,050+ passing tests
+
+goal: >-
+  Complete the remaining acceptance criteria for the AI Virtual Entertainment
+  Company meeting system. ACs 1-7, 15, and 19 are already implemented on disk
+  with passing tests. Focus only on unimplemented ACs 8-14, 16-18, 20-26.
+
+task_type: code
+
+constraints:
+  - "ACs 1-7, 15, 19 are already implemented - do NOT recreate them"
+  - "Before implementing any AC, check if src/ or tests/ files already exist for it"
+  - "If an AC has existing implementation files, run tests first, only fix if failing"
+  - "Hermes Core modification minimized"
+  - "All Coordinator-Worker contracts use filesystem-based JSON I/O"
+  - "Rate limit detection: Before any LLM call, check quota. If above 97 percent, pause with state saved"
+  - "Rate limit backoff: On 429 error, wait 60s and retry once. If still failing, save state and exit"
+  - "Maximum 15 concurrent sub-ACs per Deliver phase"
+  - "Execution is resumable from manifest after rate-limit pause"
+  - "All LLM-calling sub-ACs must trap rate-limit errors as non-fatal, resumable events"
+
+acceptance_criteria:
+  - "Codex dual-validation resolves conflicts by domain (tech/security/data vs legal/budget/brand vs factual)"
+  - "P0-P1-P2-P3 priority queue with FIFO within same priority, max 2 concurrent meetings"
+  - "P0 meetings may pause lower-priority meetings, resume from manifest.completed_step"
+  - "Cancel command cancels meeting with cancelled state, output preserved"
+  - "Worker failures follow retry, fallback, quorum reassessment, escalation/fail sequence"
+  - "Required roles must complete with retry and fallback, optional roles may skip with degradation"
+  - "Coordinator crash recovery resumes from manifest.json completed_step"
+  - "OpenClaw short tasks 30s or less execute synchronously, long tasks over 30s execute asynchronously"
+  - "OpenClaw high-risk actions require human-in-the-loop approval before execution"
+  - "OpenClaw supports cancel-only intervention, semantic retune equals cancel plus new execution_id"
+  - "Coordinator dynamically retrieves relevant past knowledge per meeting, not blanket injection"
+  - "Meeting records and decision logs are append-only, superseded decisions use metadata"
+  - "Coordinator generates periodic summaries (Weekly, Monthly, Quarterly) and Self-Reflection Reports"
+  - "Agent persona specs use agent.yaml plus persona.md in agents per team per role_id with Git versioning"
+  - "6-7 persistent team-leader Discord bots, internal specialists exist as workers only"
+  - "Meeting responses delivered in original Discord thread, summary cross-posted to results or briefing channels"
+  - "Same-thread follow-up questions extend existing meeting_id"
+
+evaluation_principles:
+  - name: requirements_fit
+    weight: 0.25
+    description: "Degree to which output addresses the remaining ACs without duplicating existing work"
+  - name: logical_consistency
+    weight: 0.2
+    description: "Internal coherence with already-implemented ACs 1-7, 15, 19"
+  - name: factual_grounding
+    weight: 0.2
+    description: "Accuracy of claims and reuse of existing implementations"
+  - name: feasibility
+    weight: 0.15
+    description: "Practical implementability of remaining features"
+  - name: risk_policy
+    weight: 0.2
+    description: "Risk identification and rate-limit awareness"
+
+exit_conditions:
+  - name: all_remaining_acs_complete
+    description: "All remaining ACs implemented with passing tests"
+    criteria: "state transitions to completed"
+  - name: rate_limit_paused
+    description: "Rate limit detected above 97 percent or 429 received. State saved to manifest."
+    criteria: "state transitions to paused, resumable after quota reset"
+  - name: user_cancelled
+    description: "User issues cancel command"
+    criteria: "state transitions to cancelled"
+  - name: resource_exhausted
+    description: "System resources depleted"
+    criteria: "state transitions to failed with partial results"
+
+ontology_schema:
+  name: AIVirtualCompanyRemainingACs
+  description: "Remaining acceptance criteria for the AI Virtual Entertainment Company system"
+  fields:
+    - name: meeting_id
+      type: string
+      description: "Unique meeting identifier"
+      required: true
+    - name: state
+      type: string
+      description: "Current lifecycle state"
+      required: true
+    - name: priority
+      type: string
+      description: "Priority level P0 P1 P2 P3"
+      required: true
+    - name: execution_id
+      type: string
+      description: "Unique execution identifier"
+      required: true
+    - name: execution_status
+      type: string
+      description: "Execution status"
+      required: true
+    - name: error_log
+      type: array
+      description: "All errors fallbacks and degradation events"
+      required: true
+
+metadata:
+  seed_id: seed_08605bf07c22_remaining
+  version: "2.0.0"
+  created_at: "2026-06-11T18:55:00Z"
+  ambiguity_score: 0.10
+  interview_id: interview_20260610_070847
+  parent_seed_id: seed_08605bf07c22
+  generation_mode: normal
+  degraded: false

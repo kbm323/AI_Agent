@@ -1,0 +1,26 @@
+# Invalid: missing 'version' and 'metadata' sections
+teams:
+  content-production:
+    name: "Content"
+    display_emoji: "C"
+    description: "desc"
+  art-design:
+    name: "Art"
+    display_emoji: "A"
+    description: "desc"
+  tech-engineering:
+    name: "Tech"
+    display_emoji: "T"
+    description: "desc"
+  marketing:
+    name: "Marketing"
+    display_emoji: "M"
+    description: "desc"
+  validation:
+    name: "Validation"
+    display_emoji: "V"
+    description: "desc"
+  execution:
+    name: "Execution"
+    display_emoji: "E"
+    description: "desc"

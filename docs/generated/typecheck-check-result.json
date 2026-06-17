@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "typecheck-proof-artifact.v1",
+  "command": "ai-agent check:typecheck",
+  "status": "failed",
+  "typecheck": {
+    "scriptName": "typecheck",
+    "configuredCommand": "node --check src/*.ts && node --check scripts/*.ts && node --check tests/*.ts && node scripts/typecheck-python.mjs",
+    "invokedCommand": "node --check src/*.ts && node --check scripts/*.ts && node --check tests/*.ts && node scripts/typecheck-python.mjs",
+    "exitCode": 1,
+    "exitsWithCodeZero": false
+  },
+  "capturedResult": {
+    "exitCode": 1,
+    "stdout": {
+      "parseableJson": true,
+      "json": {
+        "command": "ai-agent check:typecheck",
+        "status": "failed",
+        "typecheck": {
+          "artifactPath": "<path>",
+          "configuredCommand": "node --check src/*.ts && node --check scripts/*.ts && node --check tests/*.ts && node scripts/typecheck-python.mjs",
+          "exitCode": 1,
+          "exitsWithCodeZero": false,
+          "invokedCommand": "node --check src/*.ts && node --check scripts/*.ts && node --check tests/*.ts && node scripts/typecheck-python.mjs",
+          "schemaVersion": "typecheck-command-check.v1",
+          "scriptName": "typecheck"
+        }
+      }
+    },
+    "stderr": {
+      "parseableJson": false,
+      "text": ""
+    }
+  }
+}

@@ -1,0 +1,106 @@
+# Seed ID: seed_08605bf07c22
+# Interview ID: interview_20260610_070847
+# Ambiguity Score: 0.19
+# Generated: 2026-06-10T12:39:13Z
+# Version: 1.0.0
+
+goal: Build a Hermes-first multi-agent meeting system that simulates an AI virtual
+  entertainment company — Discord-based meeting initiation with 6–7 persistent team-leader
+  personas, 29 specialized roles across 6 teams, per-role multi-model LLM workers
+  executed via opencode-go CLI, structured context-packet-based round progression,
+  GLM-5.1 primary + Codex GPT-5.5 conditional dual validation, OpenClaw tool-use execution
+  with human-in-the-loop for high-risk actions, priority-queue concurrent meeting
+  handling, crash-resilient manifest-based state recovery, and 4-layer knowledge accumulation
+  across meetings.
+
+task_type: code
+
+constraints:
+- Hermes Core modification minimized (no fork, no custom PR to delegate_task)
+- opencode-go CLI for all per-role model-diverse worker execution (delegate_task not used for workers)
+- All Coordinator↔Worker/Validator/OpenClaw contracts use filesystem-based JSON I/O (--prompt inline forbidden)
+- Maximum 3 meeting rounds + 1 tie-break round (infinite loops forbidden)
+- Maximum 2 concurrent meetings
+- Maximum 4 concurrent opencode-go CLI calls
+- Maximum 7 agents per meeting
+- Context packet token limits: normal worker 12k, validator 20k, Codex 30k
+- GLM-5.1 primary validator, Codex GPT-5.5 conditional secondary (never same-model re-validation)
+- All state transitions must persist to manifest.json before external calls
+- Discord single-interface — Coordinator is sole user-facing response channel, OpenClaw never responds directly to users
+- Silent fail forbidden — all failures logged to manifest with missing roles, fallback usage, and escalation status explicitly recorded
+- meeting_id-based complete directory isolation (meetings/{meeting_id}/)
+- All execution is permissioned, auditable, reversible — OpenClaw acts, Coordinator decides, Validator checks, User approves irreversible actions
+- Persona over Model — Discord exposes roles not models; internal model changes are transparent
+- Append-only immutable records for meeting outputs, decision logs, and Google Drive sources — deletions forbidden, superseded relationships use metadata
+- Meta-cognition proposals require human approval before policy promotion — no auto-application
+
+acceptance_criteria:
+- Users initiate meetings via Discord slash command (/meeting agenda:"...") or bot mention (@AI_Company)
+- System classifies meeting topic using Qwen LLM primary router producing agenda_type, tags, risk_tags, required_roles, optional_roles, validator_required, codex_required
+- Static routing_rules.yaml serves as fallback/guardrail only (not primary router)
+- Meetings progress through full lifecycle state machine: created→queued→routing→context_retrieval→in_meeting→consensus_building→validating→executing(optional)→finalizing→completed
+- Round 1 delivers independent opinion context packets to all required roles
+- Round 2 delivers conflict-resolution context packets
+- Round 3 delivers convergence context packets
+- Tie-break round delivers deadlock context packets when consensus fails after 3 rounds
+- Internal validation evaluates 5 areas (requirements_fit, logical_consistency, factual_grounding, feasibility, risk_policy) with 5-level verdict (pass/conditional_pass/revision_required/escalate/fail)
+- GLM-5.1 serves as default validator; Codex GPT-5.5 escalates on 7 triggers
+- Codex dual-validation resolves conflicts by domain: tech/security/data→Codex priority, legal/budget/brand→user escalation, factual→re-search then re-validate
+- Concurrent meetings handled via P0>P1>P2>P3 priority queue with FIFO within same priority
+- P0 meetings may pause lower-priority meetings; paused meetings resume from manifest.completed_step
+- /cancel {meeting_id} cancels meeting with cancelled state in manifest, output preserved
+- Worker failures follow retry(1×)→fallback(1×)→quorum reassessment→escalation/fail sequence
+- Required roles must complete (retry+fallback mandatory); optional roles may skip with degradation note
+- Coordinator crash recovery resumes from manifest.json completed_step
+- OpenClaw executes tool-use actions via REST/API·MCP primary with file-based JSON queue fallback
+- OpenClaw short tasks (≤30s) execute synchronously; long tasks (>30s) execute asynchronously with callback(primary)/file-watch(fallback)/polling(recovery) notification
+- OpenClaw high-risk actions require human-in-the-loop approval before execution
+- OpenClaw supports cancel-only intervention; semantic retune = cancel + new execution_id
+- Knowledge system: L0 Google Drive (immutable), L1 Obsidian vault, L2 context-mode FTS5, L3 Coordinator (dynamic retrieval)
+- Coordinator dynamically retrieves relevant past knowledge per meeting
+- Meeting records and decision logs are append-only; superseded decisions use metadata
+- Coordinator generates periodic summaries and Self-Reflection Reports
+- Agent persona specs: agent.yaml + persona.md in agents/{team}/{role_id}/ with Git versioning
+- Discord persona architecture: 6–7 persistent team-leader bots, internal specialists as workers only
+- Meeting responses delivered in original Discord thread; summary cross-posted to #회의-결과 or #일일-브리핑
+- Same-thread follow-up questions extend existing meeting_id
+
+evaluation_principles:
+- name: requirements_fit
+  weight: 0.25
+  description: Degree to which meeting output addresses original user agenda and all constraints
+- name: logical_consistency
+  weight: 0.2
+  description: Internal coherence across all role opinions within and across rounds
+- name: factual_grounding
+  weight: 0.2
+  description: Accuracy of factual claims, data citations, and external references
+- name: feasibility
+  weight: 0.15
+  description: Practical implementability of proposed solutions
+- name: risk_policy
+  weight: 0.2
+  description: Completeness of risk identification, severity assessment, and mitigation strategies
+
+exit_conditions:
+- name: consensus_reached
+  description: All required roles agree + validation passes with overall_score >= 0.85 + no high-risk
+  criteria: state transitions to completed
+- name: conditional_pass_accepted
+  description: Validation returns conditional_pass + Coordinator applies fixes + re-validates
+  criteria: state transitions to completed
+- name: deadlock_unresolvable
+  description: Consensus impossible after 3+1 rounds AND chair/Codex cannot resolve
+  criteria: escalation based on domain
+- name: validation_failed_irrecoverable
+  description: Validation fails beyond repair cycles (max 2 validations, 1 re-meeting, 1 Codex)
+  criteria: state transitions to failed or escalated
+- name: user_cancelled
+  description: User issues /cancel command
+  criteria: state transitions to cancelled, outputs preserved
+- name: resource_exhausted
+  description: System resources depleted beyond degradation threshold
+  criteria: state transitions to failed with partial results
+- name: coordinator_crash_unrecoverable
+  description: Manifest corrupted or raw_outputs lost with no backup
+  criteria: state transitions to failed

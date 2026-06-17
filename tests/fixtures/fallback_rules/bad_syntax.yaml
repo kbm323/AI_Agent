@@ -1,0 +1,4 @@
+# Invalid: syntactically broken YAML
+version: "1.0.0
+metadata:
+  key: value

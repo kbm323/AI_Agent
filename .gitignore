@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / TS
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local runtime artifacts
+meetings/
+.runtime/
+logs/
+*.log
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Hermes/local tool state
+.hermes/
+.ouroboros/
+.ouroboros_monitor_state

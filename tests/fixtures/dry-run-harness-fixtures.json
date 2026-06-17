@@ -1,0 +1,35 @@
+[
+  {
+    "name": "clear_request_from_file",
+    "invocation": "api",
+    "args": ["--request-file", "tests/fixtures/final-output-request.txt"],
+    "repetitions": 3,
+    "expected": {
+      "exitCode": 0,
+      "stream": "stdout",
+      "jsonStatus": "finalized"
+    }
+  },
+  {
+    "name": "ambiguous_request_inline",
+    "invocation": "api",
+    "args": ["--request", "대충 좋은 후보 여러 개 추천만 해줘."],
+    "repetitions": 2,
+    "expected": {
+      "exitCode": 0,
+      "stream": "stdout",
+      "jsonStatus": "waiting_for_user"
+    }
+  },
+  {
+    "name": "invalid_input_inline",
+    "invocation": "api",
+    "args": ["--request", "   "],
+    "repetitions": 2,
+    "expected": {
+      "exitCode": 2,
+      "stream": "stderr",
+      "jsonError": "invalid_input"
+    }
+  }
+]

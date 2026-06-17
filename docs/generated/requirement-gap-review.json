@@ -1,0 +1,372 @@
+{
+  "schemaVersion": "requirement-gap-review.v1",
+  "source": {
+    "mappingArtifactPath": "/home/kbm/F:ai-projects/AI_Agent/docs/generated/requirement-gap-mapping.json",
+    "diagnosisReportPath": "/home/kbm/F:ai-projects/AI_Agent/docs/diagnosis-report.md",
+    "readmePath": "/home/kbm/F:ai-projects/AI_Agent/README.md"
+  },
+  "observedGaps": [
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:execution_command:001",
+      "requirementId": "execution_command:001",
+      "requirementText": "npm test",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:execution_command:002",
+      "requirementId": "execution_command:002",
+      "requirementText": "npm run dry-run -- --request \"뮤직비디오 오프닝 아이디어를 회의해줘.\"",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:mvp_goal_flow:003",
+      "requirementId": "mvp_goal_flow:003",
+      "requirementText": "-> Discord thread 생성",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:mvp_goal_flow:004",
+      "requirementId": "mvp_goal_flow:004",
+      "requirementText": "-> parent에는 \"Agent discussion started -> <thread>\"만 게시",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:operating_principle:001",
+      "requirementId": "operating_principle:001",
+      "requirementText": "Channel = project",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:operating_principle:002",
+      "requirementId": "operating_principle:002",
+      "requirementText": "Thread = task",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:001",
+      "requirementId": "public_api_symbol:001",
+      "requirementText": "AiAgentDatabase",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:002",
+      "requirementId": "public_api_symbol:002",
+      "requirementText": "CompanyOrchestrator",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:003",
+      "requirementId": "public_api_symbol:003",
+      "requirementText": "ExecPersona",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:004",
+      "requirementId": "public_api_symbol:004",
+      "requirementText": "ReviewPersona",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:005",
+      "requirementId": "public_api_symbol:005",
+      "requirementText": "analyzeUserRequest",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:006",
+      "requirementId": "public_api_symbol:006",
+      "requirementText": "archive_thread",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:007",
+      "requirementId": "public_api_symbol:007",
+      "requirementText": "buildCompressedLoopContextArtifact",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:008",
+      "requirementId": "public_api_symbol:008",
+      "requirementText": "buildDefaultTokenStrategy",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:010",
+      "requirementId": "public_api_symbol:010",
+      "requirementText": "buildRoleRoutes",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:011",
+      "requirementId": "public_api_symbol:011",
+      "requirementText": "buildTaskGraph",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:012",
+      "requirementId": "public_api_symbol:012",
+      "requirementText": "buildThreadName",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:013",
+      "requirementId": "public_api_symbol:013",
+      "requirementText": "connect",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:014",
+      "requirementId": "public_api_symbol:014",
+      "requirementText": "create_thread",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:015",
+      "requirementId": "public_api_symbol:015",
+      "requirementText": "decomposeUserRequest",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:016",
+      "requirementId": "public_api_symbol:016",
+      "requirementText": "disconnect",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:017",
+      "requirementId": "public_api_symbol:017",
+      "requirementText": "format_message",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:018",
+      "requirementId": "public_api_symbol:018",
+      "requirementText": "get_client",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:019",
+      "requirementId": "public_api_symbol:019",
+      "requirementText": "get_thread",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:020",
+      "requirementId": "public_api_symbol:020",
+      "requirementText": "load_config",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:021",
+      "requirementId": "public_api_symbol:021",
+      "requirementText": "on_message",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:022",
+      "requirementId": "public_api_symbol:022",
+      "requirementText": "register_handler",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:023",
+      "requirementId": "public_api_symbol:023",
+      "requirementText": "run_execution",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:024",
+      "requirementId": "public_api_symbol:024",
+      "requirementText": "run_review",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:025",
+      "requirementId": "public_api_symbol:025",
+      "requirementText": "send_message",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:027",
+      "requirementId": "public_api_symbol:027",
+      "requirementText": "summarizeForThread",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "kind": "classified_requirement_gap",
+      "id": "classified:public_api_symbol:028",
+      "requirementId": "public_api_symbol:028",
+      "requirementText": "validate_token",
+      "status": "missing",
+      "missingCapabilityIds": [],
+      "matchedCapabilityIds": [],
+      "coverageKeys": [],
+      "evidenceSourceIds": []
+    }
+  ],
+  "summary": {
+    "observedGapCount": 32,
+    "capabilityGapCount": 0,
+    "readmeRequirementGapCount": 32,
+    "nonOverlappingRequirementCoverage": true,
+    "duplicateCoverageKeys": [],
+    "overlappingRequirementIds": [],
+    "sourceCapabilityCount": 6,
+    "sourceReadmeRequirementCount": 45
+  }
+}

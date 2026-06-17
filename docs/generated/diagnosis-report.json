@@ -1,0 +1,998 @@
+     1|{
+     2|  "schemaVersion": "diagnosis-report-generation.v1",
+     3|  "diagnosisReport": {
+     4|    "schemaVersion": "diagnosis-report.v1",
+     5|    "source": {
+     6|      "readmePath": "README.md",
+     7|      "diagnosisReportPath": "docs/diagnosis-report.md",
+     8|      "externalReadmePath": "C:\\Users\\KBM\\Downloads\\260526_README.md",
+     9|      "externalReadmeAccessible": false
+    10|    },
+    11|    "readmeDerivedMvpRequirements": {
+    12|      "mvpGoalFlow": [
+    13|        "parent channel user request",
+    14|        "-> task 생성",
+    15|        "-> Discord thread 생성",
+    16|        "-> parent에는 \"Agent discussion started -> <thread>\"만 게시",
+    17|        "-> OpenClaw owner draft",
+    18|        "-> Hermes reviewer request",
+    19|        "-> Hermes review",
+    20|        "-> OpenClaw final synthesis",
+    21|        "-> thread timeline 게시"
+    22|      ],
+    23|      "operatingPrinciples": [
+    24|        "Channel = project",
+    25|        "Thread = task",
+    26|        "OpenClaw = orchestrator / owner / finalizer",
+    27|        "Hermes = reviewer-only, mention/reply when requested",
+    28|        "Thread에는 요약 timeline을 남기고, 전문은 SQLite에 저장한다.",
+    29|        "사용자 결정이 필요한 경우에는 진행을 멈추고 escalation을 남긴다."
+    30|      ],
+    31|      "executionCommands": [
+    32|        "npm test",
+    33|        "npm run dry-run -- --request \"뮤직비디오 오프닝 아이디어를 회의해줘.\""
+    34|      ],
+    35|      "publicApiSymbols": [
+    36|        "AiAgentDatabase",
+    37|        "CompanyOrchestrator",
+    38|        "analyzeUserRequest",
+    39|        "buildCompressedLoopContextArtifact",
+    40|        "buildDefaultTokenStrategy",
+    41|        "buildReviewerRequest",
+    42|        "buildRoleRoutes",
+    43|        "decomposeUserRequest",
+    44|        "serializeEscalationResult",
+    45|        "summarizeForThread"
+    46|      ]
+    47|    },
+    48|    "diagnosis": {
+    49|      "decision": "partial_redesign",
+    50|      "decisionEvidenceArtifact": "docs/review-evidence.json"
+    51|    },
+    52|    "requirementToGapMappingArtifact": {
+    53|      "schemaVersion": "implementation-capabilities.v1",
+    54|      "capabilities": [
+    55|        {
+    56|          "id": "request-analysis-work-breakdown",
+    57|          "requirement": "Analyze user request and decompose it into task_breakdown items.",
+    58|          "readmeRequirementIds": [
+    59|            "mvp_goal_flow:001",
+    60|            "mvp_goal_flow:002"
+    61|          ],
+    62|          "gapDescription": "Gap exists when the implementation cannot turn a user request into stable, inspectable task_breakdown items.",
+    63|          "gapDetected": false,
+    64|          "status": "implemented",
+    65|          "evidenceSourceIds": [
+    66|            "existing:src/planning.ts"
+    67|          ]
+    68|        },
+    69|        {
+    70|          "id": "role-based-routing",
+    71|          "requirement": "Route work items to OpenClaw owner/finalizer and Hermes reviewer personas.",
+    72|          "readmeRequirementIds": [
+    73|            "mvp_goal_flow:005",
+    74|            "mvp_goal_flow:006",
+    75|            "mvp_goal_flow:007",
+    76|            "mvp_goal_flow:008",
+    77|            "operating_principle:003",
+    78|            "operating_principle:004",
+    79|            "public_api_symbol:006"
+    80|          ],
+    81|          "gapDescription": "Gap exists when work items are not assigned to explicit job roles for OpenClaw execution and Hermes review.",
+    82|          "gapDetected": false,
+    83|          "status": "implemented",
+    84|          "evidenceSourceIds": [
+    85|            "existing:src/planning.ts",
+    86|            "existing:src/types.ts"
+    87|          ]
+    88|        },
+    89|        {
+    90|          "id": "openclaw-hermes-meeting-loop",
+    91|          "requirement": "Preserve OpenClaw execution and Hermes review turns in a meeting loop.",
+    92|          "readmeRequirementIds": [
+    93|            "mvp_goal_flow:005",
+    94|            "mvp_goal_flow:006",
+    95|            "mvp_goal_flow:007",
+    96|            "mvp_goal_flow:009"
+    97|          ],
+    98|          "gapDescription": "Gap exists when meeting turns are not durably preserved across OpenClaw draft and Hermes review iterations.",
+    99|          "gapDetected": false,
+   100|          "status": "implemented",
+   101|          "evidenceSourceIds": [
+   102|            "existing:src/db.ts",
+   103|            "existing:src/orchestrator.ts"
+   104|          ]
+   105|        },
+   106|        {
+   107|          "id": "final-synthesis",
+   108|          "requirement": "Produce final synthesis after reviewer convergence.",
+   109|          "readmeRequirementIds": [
+   110|            "mvp_goal_flow:008"
+   111|          ],
+   112|          "gapDescription": "Gap exists when converged review feedback cannot be converted into one final synthesized output artifact.",
+   113|          "gapDetected": false,
+   114|          "status": "implemented",
+   115|          "evidenceSourceIds": [
+   116|            "existing:src/orchestrator.ts"
+   117|          ]
+   118|        },
+   119|        {
+   120|          "id": "escalation-artifact",
+   121|          "requirement": "Surface convergence failure or user-decision needs as escalation artifacts.",
+   122|          "readmeRequirementIds": [
+   123|            "operating_principle:006",
+   124|            "public_api_symbol:009"
+   125|          ],
+   126|          "gapDescription": "Gap exists when ambiguity, failed convergence, or required user decisions do not produce a structured escalation artifact.",
+   127|          "gapDetected": false,
+   128|          "status": "implemented",
+   129|          "evidenceSourceIds": [
+   130|            "existing:src/orchestrator.ts",
+   131|            "existing:src/policies.ts"
+   132|          ]
+   133|        },
+   134|        {
+   135|          "id": "raw-storage-summary-context",
+   136|          "requirement": "Separate raw full-text storage from exposed loop summaries and compressed context.",
+   137|          "readmeRequirementIds": [
+   138|            "mvp_goal_flow:009",
+   139|            "operating_principle:005"
+   140|          ],
+   141|          "gapDescription": "Gap exists when raw full text is exposed directly to loop context instead of bounded summaries and compressed context.",
+   142|          "gapDetected": false,
+   143|          "status": "implemented",
+   144|          "evidenceSourceIds": [
+   145|            "existing:src/db.ts",
+   146|            "existing:src/planning.ts",
+   147|            "existing:src/policies.ts"
+   148|          ]
+   149|        }
+   150|      ],
+   151|      "readmeRequirementMappings": [
+   152|        {
+   153|          "id": "mvp_goal_flow:001",
+   154|          "category": "mvp_goal_flow",
+   155|          "sourceSection": "## MVP 목표",
+   156|          "order": 1,
+   157|          "text": "parent channel user request",
+   158|          "status": "covered",
+   159|          "capabilityIds": [
+   160|            "request-analysis-work-breakdown"
+   161|          ],
+   162|          "evidenceSourceIds": [
+   163|            "existing:src/planning.ts"
+   164|          ]
+   165|        },
+   166|        {
+   167|          "id": "mvp_goal_flow:002",
+   168|          "category": "mvp_goal_flow",
+   169|          "sourceSection": "## MVP 목표",
+   170|          "order": 2,
+   171|          "text": "-> task 생성",
+   172|          "status": "covered",
+   173|          "capabilityIds": [
+   174|            "request-analysis-work-breakdown"
+   175|          ],
+   176|          "evidenceSourceIds": [
+   177|            "existing:src/planning.ts"
+   178|          ]
+   179|        },
+   180|        {
+   181|          "id": "mvp_goal_flow:003",
+   182|          "category": "mvp_goal_flow",
+   183|          "sourceSection": "## MVP 목표",
+   184|          "order": 3,
+   185|          "text": "-> Discord thread 생성",
+   186|          "status": "unknown",
+   187|          "capabilityIds": [],
+   188|          "evidenceSourceIds": []
+   189|        },
+   190|        {
+   191|          "id": "mvp_goal_flow:004",
+   192|          "category": "mvp_goal_flow",
+   193|          "sourceSection": "## MVP 목표",
+   194|          "order": 4,
+   195|          "text": "-> parent에는 \"Agent discussion started -> <thread>\"만 게시",
+   196|          "status": "unknown",
+   197|          "capabilityIds": [],
+   198|          "evidenceSourceIds": []
+   199|        },
+   200|        {
+   201|          "id": "mvp_goal_flow:005",
+   202|          "category": "mvp_goal_flow",
+   203|          "sourceSection": "## MVP 목표",
+   204|          "order": 5,
+   205|          "text": "-> OpenClaw owner draft",
+   206|          "status": "covered",
+   207|          "capabilityIds": [
+   208|            "openclaw-hermes-meeting-loop",
+   209|            "role-based-routing"
+   210|          ],
+   211|          "evidenceSourceIds": [
+   212|            "existing:src/db.ts",
+   213|            "existing:src/orchestrator.ts",
+   214|            "existing:src/planning.ts",
+   215|            "existing:src/types.ts"
+   216|          ]
+   217|        },
+   218|        {
+   219|          "id": "mvp_goal_flow:006",
+   220|          "category": "mvp_goal_flow",
+   221|          "sourceSection": "## MVP 목표",
+   222|          "order": 6,
+   223|          "text": "-> Hermes reviewer request",
+   224|          "status": "covered",
+   225|          "capabilityIds": [
+   226|            "openclaw-hermes-meeting-loop",
+   227|            "role-based-routing"
+   228|          ],
+   229|          "evidenceSourceIds": [
+   230|            "existing:src/db.ts",
+   231|            "existing:src/orchestrator.ts",
+   232|            "existing:src/planning.ts",
+   233|            "existing:src/types.ts"
+   234|          ]
+   235|        },
+   236|        {
+   237|          "id": "mvp_goal_flow:007",
+   238|          "category": "mvp_goal_flow",
+   239|          "sourceSection": "## MVP 목표",
+   240|          "order": 7,
+   241|          "text": "-> Hermes review",
+   242|          "status": "covered",
+   243|          "capabilityIds": [
+   244|            "openclaw-hermes-meeting-loop",
+   245|            "role-based-routing"
+   246|          ],
+   247|          "evidenceSourceIds": [
+   248|            "existing:src/db.ts",
+   249|            "existing:src/orchestrator.ts",
+   250|            "existing:src/planning.ts",
+   251|            "existing:src/types.ts"
+   252|          ]
+   253|        },
+   254|        {
+   255|          "id": "mvp_goal_flow:008",
+   256|          "category": "mvp_goal_flow",
+   257|          "sourceSection": "## MVP 목표",
+   258|          "order": 8,
+   259|          "text": "-> OpenClaw final synthesis",
+   260|          "status": "covered",
+   261|          "capabilityIds": [
+   262|            "final-synthesis",
+   263|            "role-based-routing"
+   264|          ],
+   265|          "evidenceSourceIds": [
+   266|            "existing:src/orchestrator.ts",
+   267|            "existing:src/planning.ts",
+   268|            "existing:src/types.ts"
+   269|          ]
+   270|        },
+   271|        {
+   272|          "id": "mvp_goal_flow:009",
+   273|          "category": "mvp_goal_flow",
+   274|          "sourceSection": "## MVP 목표",
+   275|          "order": 9,
+   276|          "text": "-> thread timeline 게시",
+   277|          "status": "covered",
+   278|          "capabilityIds": [
+   279|            "openclaw-hermes-meeting-loop",
+   280|            "raw-storage-summary-context"
+   281|          ],
+   282|          "evidenceSourceIds": [
+   283|            "existing:src/db.ts",
+   284|            "existing:src/orchestrator.ts",
+   285|            "existing:src/planning.ts",
+   286|            "existing:src/policies.ts"
+   287|          ]
+   288|        },
+   289|        {
+   290|          "id": "operating_principle:001",
+   291|          "category": "operating_principle",
+   292|          "sourceSection": "## 운영 원칙",
+   293|          "order": 1,
+   294|          "text": "Channel = project",
+   295|          "status": "unknown",
+   296|          "capabilityIds": [],
+   297|          "evidenceSourceIds": []
+   298|        },
+   299|        {
+   300|          "id": "operating_principle:002",
+   301|          "category": "operating_principle",
+   302|          "sourceSection": "## 운영 원칙",
+   303|          "order": 2,
+   304|          "text": "Thread = task",
+   305|          "status": "unknown",
+   306|          "capabilityIds": [],
+   307|          "evidenceSourceIds": []
+   308|        },
+   309|        {
+   310|          "id": "operating_principle:003",
+   311|          "category": "operating_principle",
+   312|          "sourceSection": "## 운영 원칙",
+   313|          "order": 3,
+   314|          "text": "OpenClaw = orchestrator / owner / finalizer",
+   315|          "status": "covered",
+   316|          "capabilityIds": [
+   317|            "role-based-routing"
+   318|          ],
+   319|          "evidenceSourceIds": [
+   320|            "existing:src/planning.ts",
+   321|            "existing:src/types.ts"
+   322|          ]
+   323|        },
+   324|        {
+   325|          "id": "operating_principle:004",
+   326|          "category": "operating_principle",
+   327|          "sourceSection": "## 운영 원칙",
+   328|          "order": 4,
+   329|          "text": "Hermes = reviewer-only, mention/reply when requested",
+   330|          "status": "covered",
+   331|          "capabilityIds": [
+   332|            "role-based-routing"
+   333|          ],
+   334|          "evidenceSourceIds": [
+   335|            "existing:src/planning.ts",
+   336|            "existing:src/types.ts"
+   337|          ]
+   338|        },
+   339|        {
+   340|          "id": "operating_principle:005",
+   341|          "category": "operating_principle",
+   342|          "sourceSection": "## 운영 원칙",
+   343|          "order": 5,
+   344|          "text": "Thread에는 요약 timeline을 남기고, 전문은 SQLite에 저장한다.",
+   345|          "status": "covered",
+   346|          "capabilityIds": [
+   347|            "raw-storage-summary-context"
+   348|          ],
+   349|          "evidenceSourceIds": [
+   350|            "existing:src/db.ts",
+   351|            "existing:src/planning.ts",
+   352|            "existing:src/policies.ts"
+   353|          ]
+   354|        },
+   355|        {
+   356|          "id": "operating_principle:006",
+   357|          "category": "operating_principle",
+   358|          "sourceSection": "## 운영 원칙",
+   359|          "order": 6,
+   360|          "text": "사용자 결정이 필요한 경우에는 진행을 멈추고 escalation을 남긴다.",
+   361|          "status": "covered",
+   362|          "capabilityIds": [
+   363|            "escalation-artifact"
+   364|          ],
+   365|          "evidenceSourceIds": [
+   366|            "existing:src/orchestrator.ts",
+   367|            "existing:src/policies.ts"
+   368|          ]
+   369|        },
+   370|        {
+   371|          "id": "execution_command:001",
+   372|          "category": "execution_command",
+   373|          "sourceSection": "## 실행",
+   374|          "order": 1,
+   375|          "text": "npm test",
+   376|          "status": "unknown",
+   377|          "capabilityIds": [],
+   378|          "evidenceSourceIds": []
+   379|        },
+   380|        {
+   381|          "id": "execution_command:002",
+   382|          "category": "execution_command",
+   383|          "sourceSection": "## 실행",
+   384|          "order": 2,
+   385|          "text": "npm run dry-run -- --request \"뮤직비디오 오프닝 아이디어를 회의해줘.\"",
+   386|          "status": "unknown",
+   387|          "capabilityIds": [],
+   388|          "evidenceSourceIds": []
+   389|        },
+   390|        {
+   391|          "id": "public_api_symbol:001",
+   392|          "category": "public_api_symbol",
+   393|          "sourceSection": "## Public API",
+   394|          "order": 1,
+   395|          "text": "AiAgentDatabase",
+   396|          "status": "unknown",
+   397|          "capabilityIds": [],
+   398|          "evidenceSourceIds": []
+   399|        },
+   400|        {
+   401|          "id": "public_api_symbol:002",
+   402|          "category": "public_api_symbol",
+   403|          "sourceSection": "## Public API",
+   404|          "order": 2,
+   405|          "text": "CompanyOrchestrator",
+   406|          "status": "unknown",
+   407|          "capabilityIds": [],
+   408|          "evidenceSourceIds": []
+   409|        },
+   410|        {
+   411|          "id": "public_api_symbol:003",
+   412|          "category": "public_api_symbol",
+   413|          "sourceSection": "## Public API",
+   414|          "order": 3,
+   415|          "text": "analyzeUserRequest",
+   416|          "status": "unknown",
+   417|          "capabilityIds": [],
+   418|          "evidenceSourceIds": []
+   419|        },
+   420|        {
+   421|          "id": "public_api_symbol:004",
+   422|          "category": "public_api_symbol",
+   423|          "sourceSection": "## Public API",
+   424|          "order": 4,
+   425|          "text": "buildCompressedLoopContextArtifact",
+   426|          "status": "unknown",
+   427|          "capabilityIds": [],
+   428|          "evidenceSourceIds": []
+   429|        },
+   430|        {
+   431|          "id": "public_api_symbol:005",
+   432|          "category": "public_api_symbol",
+   433|          "sourceSection": "## Public API",
+   434|          "order": 5,
+   435|          "text": "buildDefaultTokenStrategy",
+   436|          "status": "unknown",
+   437|          "capabilityIds": [],
+   438|          "evidenceSourceIds": []
+   439|        },
+   440|        {
+   441|          "id": "public_api_symbol:006",
+   442|          "category": "public_api_symbol",
+   443|          "sourceSection": "## Public API",
+   444|          "order": 6,
+   445|          "text": "buildReviewerRequest",
+   446|          "status": "covered",
+   447|          "capabilityIds": [
+   448|            "role-based-routing"
+   449|          ],
+   450|          "evidenceSourceIds": [
+   451|            "existing:src/planning.ts",
+   452|            "existing:src/types.ts"
+   453|          ]
+   454|        },
+   455|        {
+   456|          "id": "public_api_symbol:007",
+   457|          "category": "public_api_symbol",
+   458|          "sourceSection": "## Public API",
+   459|          "order": 7,
+   460|          "text": "buildRoleRoutes",
+   461|          "status": "unknown",
+   462|          "capabilityIds": [],
+   463|          "evidenceSourceIds": []
+   464|        },
+   465|        {
+   466|          "id": "public_api_symbol:008",
+   467|          "category": "public_api_symbol",
+   468|          "sourceSection": "## Public API",
+   469|          "order": 8,
+   470|          "text": "decomposeUserRequest",
+   471|          "status": "unknown",
+   472|          "capabilityIds": [],
+   473|          "evidenceSourceIds": []
+   474|        },
+   475|        {
+   476|          "id": "public_api_symbol:009",
+   477|          "category": "public_api_symbol",
+   478|          "sourceSection": "## Public API",
+   479|          "order": 9,
+   480|          "text": "serializeEscalationResult",
+   481|          "status": "covered",
+   482|          "capabilityIds": [
+   483|            "escalation-artifact"
+   484|          ],
+   485|          "evidenceSourceIds": [
+   486|            "existing:src/orchestrator.ts",
+   487|            "existing:src/policies.ts"
+   488|          ]
+   489|        },
+   490|        {
+   491|          "id": "public_api_symbol:010",
+   492|          "category": "public_api_symbol",
+   493|          "sourceSection": "## Public API",
+   494|          "order": 10,
+   495|          "text": "summarizeForThread",
+   496|          "status": "unknown",
+   497|          "capabilityIds": [],
+   498|          "evidenceSourceIds": []
+   499|        }
+   500|      ],
+   501|      "requirementCapabilityMatches": [
+   502|        {
+   503|          "id": "requirement-capability-match:mvp_goal_flow:001",
+   504|          "requirementId": "mvp_goal_flow:001",
+   505|          "requirementText": "parent channel user request",
+   506|          "capabilityIds": [
+   507|            "request-analysis-work-breakdown"
+   508|          ],
+   509|          "status": "matched",
+   510|          "evidenceSourceIds": [
+   511|            "existing:src/planning.ts"
+   512|          ]
+   513|        },
+   514|        {
+   515|          "id": "requirement-capability-match:mvp_goal_flow:002",
+   516|          "requirementId": "mvp_goal_flow:002",
+   517|          "requirementText": "-> task 생성",
+   518|          "capabilityIds": [
+   519|            "request-analysis-work-breakdown"
+   520|          ],
+   521|          "status": "matched",
+   522|          "evidenceSourceIds": [
+   523|            "existing:src/planning.ts"
+   524|          ]
+   525|        },
+   526|        {
+   527|          "id": "requirement-capability-match:mvp_goal_flow:003",
+   528|          "requirementId": "mvp_goal_flow:003",
+   529|          "requirementText": "-> Discord thread 생성",
+   530|          "capabilityIds": [],
+   531|          "status": "missing",
+   532|          "evidenceSourceIds": []
+   533|        },
+   534|        {
+   535|          "id": "requirement-capability-match:mvp_goal_flow:004",
+   536|          "requirementId": "mvp_goal_flow:004",
+   537|          "requirementText": "-> parent에는 \"Agent discussion started -> <thread>\"만 게시",
+   538|          "capabilityIds": [],
+   539|          "status": "missing",
+   540|          "evidenceSourceIds": []
+   541|        },
+   542|        {
+   543|          "id": "requirement-capability-match:mvp_goal_flow:005",
+   544|          "requirementId": "mvp_goal_flow:005",
+   545|          "requirementText": "-> OpenClaw owner draft",
+   546|          "capabilityIds": [
+   547|            "openclaw-hermes-meeting-loop",
+   548|            "role-based-routing"
+   549|          ],
+   550|          "status": "matched",
+   551|          "evidenceSourceIds": [
+   552|            "existing:src/db.ts",
+   553|            "existing:src/orchestrator.ts",
+   554|            "existing:src/planning.ts",
+   555|            "existing:src/types.ts"
+   556|          ]
+   557|        },
+   558|        {
+   559|          "id": "requirement-capability-match:mvp_goal_flow:006",
+   560|          "requirementId": "mvp_goal_flow:006",
+   561|          "requirementText": "-> Hermes reviewer request",
+   562|          "capabilityIds": [
+   563|            "openclaw-hermes-meeting-loop",
+   564|            "role-based-routing"
+   565|          ],
+   566|          "status": "matched",
+   567|          "evidenceSourceIds": [
+   568|            "existing:src/db.ts",
+   569|            "existing:src/orchestrator.ts",
+   570|            "existing:src/planning.ts",
+   571|            "existing:src/types.ts"
+   572|          ]
+   573|        },
+   574|        {
+   575|          "id": "requirement-capability-match:mvp_goal_flow:007",
+   576|          "requirementId": "mvp_goal_flow:007",
+   577|          "requirementText": "-> Hermes review",
+   578|          "capabilityIds": [
+   579|            "openclaw-hermes-meeting-loop",
+   580|            "role-based-routing"
+   581|          ],
+   582|          "status": "matched",
+   583|          "evidenceSourceIds": [
+   584|            "existing:src/db.ts",
+   585|            "existing:src/orchestrator.ts",
+   586|            "existing:src/planning.ts",
+   587|            "existing:src/types.ts"
+   588|          ]
+   589|        },
+   590|        {
+   591|          "id": "requirement-capability-match:mvp_goal_flow:008",
+   592|          "requirementId": "mvp_goal_flow:008",
+   593|          "requirementText": "-> OpenClaw final synthesis",
+   594|          "capabilityIds": [
+   595|            "final-synthesis",
+   596|            "role-based-routing"
+   597|          ],
+   598|          "status": "matched",
+   599|          "evidenceSourceIds": [
+   600|            "existing:src/orchestrator.ts",
+   601|            "existing:src/planning.ts",
+   602|            "existing:src/types.ts"
+   603|          ]
+   604|        },
+   605|        {
+   606|          "id": "requirement-capability-match:mvp_goal_flow:009",
+   607|          "requirementId": "mvp_goal_flow:009",
+   608|          "requirementText": "-> thread timeline 게시",
+   609|          "capabilityIds": [
+   610|            "openclaw-hermes-meeting-loop",
+   611|            "raw-storage-summary-context"
+   612|          ],
+   613|          "status": "matched",
+   614|          "evidenceSourceIds": [
+   615|            "existing:src/db.ts",
+   616|            "existing:src/orchestrator.ts",
+   617|            "existing:src/planning.ts",
+   618|            "existing:src/policies.ts"
+   619|          ]
+   620|        },
+   621|        {
+   622|          "id": "requirement-capability-match:operating_principle:001",
+   623|          "requirementId": "operating_principle:001",
+   624|          "requirementText": "Channel = project",
+   625|          "capabilityIds": [],
+   626|          "status": "missing",
+   627|          "evidenceSourceIds": []
+   628|        },
+   629|        {
+   630|          "id": "requirement-capability-match:operating_principle:002",
+   631|          "requirementId": "operating_principle:002",
+   632|          "requirementText": "Thread = task",
+   633|          "capabilityIds": [],
+   634|          "status": "missing",
+   635|          "evidenceSourceIds": []
+   636|        },
+   637|        {
+   638|          "id": "requirement-capability-match:operating_principle:003",
+   639|          "requirementId": "operating_principle:003",
+   640|          "requirementText": "OpenClaw = orchestrator / owner / finalizer",
+   641|          "capabilityIds": [
+   642|            "role-based-routing"
+   643|          ],
+   644|          "status": "matched",
+   645|          "evidenceSourceIds": [
+   646|            "existing:src/planning.ts",
+   647|            "existing:src/types.ts"
+   648|          ]
+   649|        },
+   650|        {
+   651|          "id": "requirement-capability-match:operating_principle:004",
+   652|          "requirementId": "operating_principle:004",
+   653|          "requirementText": "Hermes = reviewer-only, mention/reply when requested",
+   654|          "capabilityIds": [
+   655|            "role-based-routing"
+   656|          ],
+   657|          "status": "matched",
+   658|          "evidenceSourceIds": [
+   659|            "existing:src/planning.ts",
+   660|            "existing:src/types.ts"
+   661|          ]
+   662|        },
+   663|        {
+   664|          "id": "requirement-capability-match:operating_principle:005",
+   665|          "requirementId": "operating_principle:005",
+   666|          "requirementText": "Thread에는 요약 timeline을 남기고, 전문은 SQLite에 저장한다.",
+   667|          "capabilityIds": [
+   668|            "raw-storage-summary-context"
+   669|          ],
+   670|          "status": "matched",
+   671|          "evidenceSourceIds": [
+   672|            "existing:src/db.ts",
+   673|            "existing:src/planning.ts",
+   674|            "existing:src/policies.ts"
+   675|          ]
+   676|        },
+   677|        {
+   678|          "id": "requirement-capability-match:operating_principle:006",
+   679|          "requirementId": "operating_principle:006",
+   680|          "requirementText": "사용자 결정이 필요한 경우에는 진행을 멈추고 escalation을 남긴다.",
+   681|          "capabilityIds": [
+   682|            "escalation-artifact"
+   683|          ],
+   684|          "status": "matched",
+   685|          "evidenceSourceIds": [
+   686|            "existing:src/orchestrator.ts",
+   687|            "existing:src/policies.ts"
+   688|          ]
+   689|        },
+   690|        {
+   691|          "id": "requirement-capability-match:execution_command:001",
+   692|          "requirementId": "execution_command:001",
+   693|          "requirementText": "npm test",
+   694|          "capabilityIds": [],
+   695|          "status": "missing",
+   696|          "evidenceSourceIds": []
+   697|        },
+   698|        {
+   699|          "id": "requirement-capability-match:execution_command:002",
+   700|          "requirementId": "execution_command:002",
+   701|          "requirementText": "npm run dry-run -- --request \"뮤직비디오 오프닝 아이디어를 회의해줘.\"",
+   702|          "capabilityIds": [],
+   703|          "status": "missing",
+   704|          "evidenceSourceIds": []
+   705|        },
+   706|        {
+   707|          "id": "requirement-capability-match:public_api_symbol:001",
+   708|          "requirementId": "public_api_symbol:001",
+   709|          "requirementText": "AiAgentDatabase",
+   710|          "capabilityIds": [],
+   711|          "status": "missing",
+   712|          "evidenceSourceIds": []
+   713|        },
+   714|        {
+   715|          "id": "requirement-capability-match:public_api_symbol:002",
+   716|          "requirementId": "public_api_symbol:002",
+   717|          "requirementText": "CompanyOrchestrator",
+   718|          "capabilityIds": [],
+   719|          "status": "missing",
+   720|          "evidenceSourceIds": []
+   721|        },
+   722|        {
+   723|          "id": "requirement-capability-match:public_api_symbol:003",
+   724|          "requirementId": "public_api_symbol:003",
+   725|          "requirementText": "analyzeUserRequest",
+   726|          "capabilityIds": [],
+   727|          "status": "missing",
+   728|          "evidenceSourceIds": []
+   729|        },
+   730|        {
+   731|          "id": "requirement-capability-match:public_api_symbol:004",
+   732|          "requirementId": "public_api_symbol:004",
+   733|          "requirementText": "buildCompressedLoopContextArtifact",
+   734|          "capabilityIds": [],
+   735|          "status": "missing",
+   736|          "evidenceSourceIds": []
+   737|        },
+   738|        {
+   739|          "id": "requirement-capability-match:public_api_symbol:005",
+   740|          "requirementId": "public_api_symbol:005",
+   741|          "requirementText": "buildDefaultTokenStrategy",
+   742|          "capabilityIds": [],
+   743|          "status": "missing",
+   744|          "evidenceSourceIds": []
+   745|        },
+   746|        {
+   747|          "id": "requirement-capability-match:public_api_symbol:006",
+   748|          "requirementId": "public_api_symbol:006",
+   749|          "requirementText": "buildReviewerRequest",
+   750|          "capabilityIds": [
+   751|            "role-based-routing"
+   752|          ],
+   753|          "status": "matched",
+   754|          "evidenceSourceIds": [
+   755|            "existing:src/planning.ts",
+   756|            "existing:src/types.ts"
+   757|          ]
+   758|        },
+   759|        {
+   760|          "id": "requirement-capability-match:public_api_symbol:007",
+   761|          "requirementId": "public_api_symbol:007",
+   762|          "requirementText": "buildRoleRoutes",
+   763|          "capabilityIds": [],
+   764|          "status": "missing",
+   765|          "evidenceSourceIds": []
+   766|        },
+   767|        {
+   768|          "id": "requirement-capability-match:public_api_symbol:008",
+   769|          "requirementId": "public_api_symbol:008",
+   770|          "requirementText": "decomposeUserRequest",
+   771|          "capabilityIds": [],
+   772|          "status": "missing",
+   773|          "evidenceSourceIds": []
+   774|        },
+   775|        {
+   776|          "id": "requirement-capability-match:public_api_symbol:009",
+   777|          "requirementId": "public_api_symbol:009",
+   778|          "requirementText": "serializeEscalationResult",
+   779|          "capabilityIds": [
+   780|            "escalation-artifact"
+   781|          ],
+   782|          "status": "matched",
+   783|          "evidenceSourceIds": [
+   784|            "existing:src/orchestrator.ts",
+   785|            "existing:src/policies.ts"
+   786|          ]
+   787|        },
+   788|        {
+   789|          "id": "requirement-capability-match:public_api_symbol:010",
+   790|          "requirementId": "public_api_symbol:010",
+   791|          "requirementText": "summarizeForThread",
+   792|          "capabilityIds": [],
+   793|          "status": "missing",
+   794|          "evidenceSourceIds": []
+   795|        }
+   796|      ],
+   797|      "summary": {
+   798|        "implementedCount": 6,
+   799|        "missingCount": 0,
+   800|        "readmeRequirementCount": 27,
+   801|        "readmeRequirementStatusCounts": {
+   802|          "covered": 13,
+   803|          "partial": 0,
+   804|          "missing": 0,
+   805|          "unknown": 14
+   806|        },
+   807|        "requirementCapabilityMatchStatusCounts": {
+   808|          "matched": 13,
+   809|          "partial": 0,
+   810|          "missing": 14
+   811|        }
+   812|      }
+   813|    }
+   814|  },
+   815|  "requirementGapMapping": {
+   816|    "artifactPath": "docs/generated/requirement-gap-mapping.json",
+   817|    "schemaVersion": "implementation-capabilities.v1",
+   818|    "implementedCount": 6,
+   819|    "missingCount": 0,
+   820|    "readmeRequirementCount": 27
+   821|  },
+   822|  "reviewEvidence": {
+   823|    "artifactPath": "docs/review-evidence.json",
+   824|    "schemaVersion": "review-evidence.v1",
+   825|    "recommendation": "partial_redesign",
+   826|    "inspectedModules": 139,
+   827|    "findingCount": 25
+   828|  },
+   829|  "inventoryOrchestration": {
+   830|    "artifactPath": "docs/generated/inventory-orchestration-report.json",
+   831|    "schemaVersion": "inventory-orchestration.v1",
+   832|    "sourceFileCount": 126,
+   833|    "runnableEntryPointCount": 129,
+   834|    "testFileCount": 52,
+   835|    "configFileCount": 2,
+   836|    "verification": {
+   837|      "generated": true,
+   838|      "valid": true,
+   839|      "reportPath": "docs/generated/inventory-orchestration-report.json",
+   840|      "schemaVersion": "inventory-orchestration.v1",
+   841|      "missingFields": [],
+   842|      "inconsistentFields": [],
+   843|      "summary": {
+   844|        "sourceFileCount": 126,
+   845|        "runnableEntryPointCount": 129,
+   846|        "testFileCount": 52,
+   847|        "configFileCount": 2,
+   848|        "normalizedPathSeparator": "/"
+   849|      }
+   850|    }
+   851|  },
+   852|  "decisionGate": {
+   853|    "accepted": true,
+   854|    "reasons": [],
+   855|    "reviewRequired": false,
+   856|    "reviewReasons": [],
+   857|    "missingFields": [],
+   858|    "insufficientContent": []
+   859|  },
+   860|  "reviewArtifactCompleteness": {
+   861|    "command": "ai-agent check-review-artifact-completeness",
+   862|    "status": "passed",
+   863|    "deterministic": true,
+   864|    "schemaVersion": "review-artifact-completeness.v1",
+   865|    "summary": {
+   866|      "requiredArtifactCount": 6,
+   867|      "presentArtifactCount": 6,
+   868|      "completeArtifactCount": 6,
+   869|      "missingArtifactIds": [],
+   870|      "incompleteArtifactIds": []
+   871|    },
+   872|    "artifacts": [
+   873|      {
+   874|        "id": "diagnosis_report_markdown",
+   875|        "path": "docs/diagnosis-report.md",
+   876|        "present": true,
+   877|        "requiredFields": [],
+   878|        "missingFields": [],
+   879|        "requiredContent": [
+   880|          "prior-review-artifact-section",
+   881|          "decision-section",
+   882|          "priority-assessment-section",
+   883|          "requirement-gap-mapping-section",
+   884|          "token-strategy-section",
+   885|          "decision-evidence-artifact",
+   886|          "partial-redesign-recommendation",
+   887|          "seed-priority-order"
+   888|        ],
+   889|        "missingContent": [],
+   890|        "validJson": true
+   891|      },
+   892|      {
+   893|        "id": "refactoring_plan_markdown",
+   894|        "path": "docs/refactoring-plan.md",
+   895|        "present": true,
+   896|        "requiredFields": [],
+   897|        "missingFields": [],
+   898|        "requiredContent": [
+   899|          "decision-basis",
+   900|          "phase-1",
+   901|          "phase-2",
+   902|          "phase-3",
+   903|          "phase-4",
+   904|          "phase-5",
+   905|          "phase-6",
+   906|          "implemented-status",
+   907|          "compressed-context"
+   908|        ],
+   909|        "missingContent": [],
+   910|        "validJson": true
+   911|      },
+   912|      {
+   913|        "id": "review_evidence",
+   914|        "path": "docs/review-evidence.json",
+   915|        "present": true,
+   916|        "requiredFields": [
+   917|          "schemaVersion",
+   918|          "inventory",
+   919|          "findings",
+   920|          "findings.0.evidence",
+   921|          "findings.0.recommendation",
+   922|          "summary.inspectedModules",
+   923|          "summary.findingCount",
+   924|          "summary.findingsBySeverity",
+   925|          "summary.findingsByCategory",
+   926|          "summary.recommendation"
+   927|        ],
+   928|        "missingFields": [],
+   929|        "requiredContent": [],
+   930|        "missingContent": [],
+   931|        "validJson": true,
+   932|        "schemaVersion": "review-evidence.v1"
+   933|      },
+   934|      {
+   935|        "id": "generated_diagnosis_report",
+   936|        "path": "docs/generated/diagnosis-report.json",
+   937|        "present": true,
+   938|        "requiredFields": [
+   939|          "schemaVersion",
+   940|          "diagnosisReport.schemaVersion",
+   941|          "diagnosisReport.diagnosis.decision",
+   942|          "diagnosisReport.diagnosis.decisionEvidenceArtifact",
+   943|          "diagnosisReport.requirementToGapMappingArtifact.summary",
+   944|          "reviewEvidence.schemaVersion",
+   945|          "reviewEvidence.recommendation",
+   946|          "inventoryOrchestration.schemaVersion",
+   947|          "decisionGate.accepted"
+   948|        ],
+   949|        "missingFields": [],
+   950|        "requiredContent": [],
+   951|        "missingContent": [],
+   952|        "validJson": true,
+   953|        "schemaVersion": "diagnosis-report-generation.v1"
+   954|      },
+   955|      {
+   956|        "id": "requirement_gap_mapping",
+   957|        "path": "docs/generated/requirement-gap-mapping.json",
+   958|        "present": true,
+   959|        "requiredFields": [
+   960|          "schemaVersion",
+   961|          "capabilities",
+   962|          "readmeRequirementMappings",
+   963|          "summary.implementedCount",
+   964|          "summary.missingCount",
+   965|          "summary.readmeRequirementCount"
+   966|        ],
+   967|        "missingFields": [],
+   968|        "requiredContent": [],
+   969|        "missingContent": [],
+   970|        "validJson": true,
+   971|        "schemaVersion": "implementation-capabilities.v1"
+   972|      },
+   973|      {
+   974|        "id": "inventory_orchestration_report",
+   975|        "path": "docs/generated/inventory-orchestration-report.json",
+   976|        "present": true,
+   977|        "requiredFields": [
+   978|          "schemaVersion",
+   979|          "sourceFiles",
+   980|          "runnableEntryPoints",
+   981|          "testFiles",
+   982|          "configFiles",
+   983|          "moduleFeatureSummary.schemaVersion",
+   984|          "summary.sourceFileCount",
+   985|          "summary.runnableEntryPointCount",
+   986|          "summary.testFileCount",
+   987|          "summary.configFileCount"
+   988|        ],
+   989|        "missingFields": [],
+   990|        "requiredContent": [],
+   991|        "missingContent": [],
+   992|        "validJson": true,
+   993|        "schemaVersion": "inventory-orchestration.v1"
+   994|      }
+   995|    ]
+   996|  }
+   997|}
+   998|

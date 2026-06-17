@@ -1,0 +1,62 @@
+goal: Verify existing recovery pieces and add only missing quorum/role-completion
+  glue with structured failure metadata.
+task_type: code
+constraints:
+- Do not recreate implemented ACs. Inspect matching src/ and tests/ first.
+- If implementation and tests already exist, run tests and mark verified instead of
+  editing.
+- 'Use strict TDD for any missing behavior: failing test first, then minimal implementation.'
+- All Coordinator-Worker contracts use filesystem-based JSON I/O.
+- No Hermes Core modifications.
+- 'Keep token use low: read only target files; do not load full original seed unless
+  necessary.'
+- 'Rate-limit safe: no live LLM calls in tests; mock or pure-function only.'
+- 'Target packet only: packet_03_failure_recovery. Do not implement other packets.'
+acceptance_criteria:
+- AC12 Worker retry/fallback/quorum/escalation/fail sequence
+- AC13 Required roles complete with retry/fallback; optional roles may skip with degradation
+- AC14 Coordinator crash recovery resumes from manifest.completed_step
+target_files:
+- src/retry_executor.py
+- src/fallback_activation_gate.py
+- src/router_failure_classifier.py
+- src/escalation_router.py
+- src/crash_recovery.py
+- src/recovery_handler.py
+- tests/test_retry_executor.py
+- tests/test_fallback_activation_gate.py
+- tests/test_crash_recovery.py
+- tests/test_recovery_handler.py
+verification_commands:
+- pytest tests/test_retry_executor.py tests/test_fallback_activation_gate.py tests/test_crash_recovery.py
+  tests/test_recovery_handler.py -q
+evaluation_principles:
+- name: no_duplicate_work
+  weight: 0.3
+  description: Existing implementation is verified before creating new files
+- name: targeted_scope
+  weight: 0.25
+  description: Only packet target files/ACs are touched
+- name: test_evidence
+  weight: 0.25
+  description: Behavior is proven by focused tests
+- name: seed_alignment
+  weight: 0.2
+  description: Behavior satisfies parent remaining seed constraints
+exit_conditions:
+- name: packet_verified
+  description: All packet verification commands pass
+  criteria: state transitions to completed
+- name: already_complete
+  description: Existing code/tests already satisfy packet
+  criteria: no edits; evidence recorded
+- name: blocked
+  description: Missing prerequisite outside packet scope
+  criteria: stop and report blocker without broadening scope
+metadata:
+  seed_id: packet_03_failure_recovery
+  title: Worker failure, quorum, role completion, crash recovery
+  parent_seed_id: seed_08605bf07c22_remaining
+  created_at: '2026-06-16T14:19:55Z'
+  generation_mode: manual_slim_split
+  token_strategy: targeted-files-only; verify-before-edit; no full-seed rerun

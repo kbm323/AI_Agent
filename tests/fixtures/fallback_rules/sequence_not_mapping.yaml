@@ -1,0 +1,3 @@
+# Invalid: not a YAML mapping (sequence instead)
+- item1
+- item2

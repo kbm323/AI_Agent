@@ -1,0 +1,187 @@
+     1|{
+     2|  "schemaVersion": "readme-requirement-mapping.v1",
+     3|  "generatedAt": "2026-06-06",
+     4|  "source": {
+     5|    "projectReadme": "README.md",
+     6|    "externalReadme": "/mnt/c/Users/KBM/Downloads/260526_README.md",
+     7|    "diagnosisReport": "docs/diagnosis-report.md",
+     8|    "refactoringPlan": "docs/refactoring-plan.md"
+     9|  },
+    10|  "mappings": [
+    11|    {
+    12|      "requirementId": "260526:core-structure",
+    13|      "description": "사용자 → Discord → OpenClaw Bot(오케스트레이터) → 직무별 실행 에이전트 → Hermes Bot(리뷰어) → Consensus/Final Synthesis → 대표 승인",
+    14|      "status": "partially_covered",
+    15|      "implementation": "Core loop implemented: analyzeUserRequest → role routing → owner draft → reviewer request → Hermes review → final synthesis → escalation",
+    16|      "gap": "직무별 실행 에이전트(콘텐츠/아트/기술/마케팅/경영)는 AgentRole 3종만 정의됨. Phase 2-B에서 확장 예정.",
+    17|      "targetPhase": "2-B"
+    18|    },
+    19|    {
+    20|      "requirementId": "260526:core-philosophy",
+    21|      "description": "질문 → 작업 분석 → 직무 라우팅 → 전문가 페르소나 실행 → Hermes 리뷰/반박 → 수렴 평가 → OpenClaw 최종 정리 → 사용자 승인",
+    22|      "status": "covered",
+    23|      "implementation": "planning.ts (작업 분석/라우팅), orchestrator.ts (페르소나 실행/리뷰/정리), convergence-failure.ts (수렴 평가), user-input-required.ts (사용자 승인)",
+    24|      "gap": null
+    25|    },
+    26|    {
+    27|      "requirementId": "260526:role-openclaw",
+    28|      "description": "OpenClaw: 사용자 요청 분석 및 작업 분해, 직무별 라우팅 및 회의 진행, Hermes 리뷰 요청 및 반영/비반영 판단, 최종 synthesis 작성, 중요 결정 escalation",
+    29|      "status": "covered",
+    30|      "implementation": "CompanyOrchestrator.runUserRequest()가 모든 OpenClaw 역할 수행. owner/finalizer executor로 분리.",
+    31|      "gap": null
+    32|    },
+    33|    {
+    34|      "requirementId": "260526:role-hermes",
+    35|      "description": "Hermes: 비판적 리뷰 및 창의적 대안 제시, 리스크 탐지 및 사실성 검토, 구현 가능성 검토, 동의/부분동의/비동의 판단",
+    36|      "status": "covered",
+    37|      "implementation": "ReviewerExecutor.review() → { content, verdict } (agree/agree_with_changes/disagree/needs_user_decision)",
+    38|      "gap": "사실성 검토(Fact check)는 아직 구조화되지 않음. Phase 2-D에서 검색/검증 레이어 추가 예정."
+    39|    },
+    40|    {
+    41|      "requirementId": "260526:dept-content",
+    42|      "description": "콘텐츠팀: 뮤직비디오 아이디어, 영상 기획, 스토리라인, 감정선, 시청자 몰입 구조",
+    43|      "status": "not_implemented",
+    44|      "implementation": "AgentRole 3종만 정의됨 (openclaw-owner, hermes-reviewer, openclaw-finalizer). 부서별 페르소나 없음.",
+    45|      "gap": "role-routing.ts의 AgentRole 타입 확장 필요. Phase 2-B.",
+    46|      "targetPhase": "2-B"
+    47|    },
+    48|    {
+    49|      "requirementId": "260526:dept-art",
+    50|      "description": "아트팀: 캐릭터 비주얼, 컨셉아트 방향, 색감, 실루엣, 세계관 비주얼",
+    51|      "status": "not_implemented",
+    52|      "implementation": "同上",
+    53|      "gap": "Phase 2-B.",
+    54|      "targetPhase": "2-B"
+    55|    },
+    56|    {
+    57|      "requirementId": "260526:dept-tech",
+    58|      "description": "기술팀: Unreal Engine, VFX 구현, 자동화 코드, Discord Bot, n8n/Make 연동",
+    59|      "status": "not_implemented",
+    60|      "implementation": "同上",
+    61|      "gap": "Phase 2-B + Phase 4.",
+    62|      "targetPhase": "2-B"
+    63|    },
+    64|    {
+    65|      "requirementId": "260526:dept-marketing",
+    66|      "description": "마케팅팀: 제목, 썸네일, 숏폼 확장성, SNS 카피, 팬덤 반응",
+    67|      "status": "not_implemented",
+    68|      "implementation": "同上",
+    69|      "gap": "Phase 2-B.",
+    70|      "targetPhase": "2-B"
+    71|    },
+    72|    {
+    73|      "requirementId": "260526:dept-exec",
+    74|      "description": "경영/검토팀: 우선순위, 예산, 법무/IP, 외부 공개 판단, 리스크 승인",
+    75|      "status": "partially_covered",
+    76|      "implementation": "escalation policy가 일부 패턴(예산/법무/브랜드)을 감지하지만, 전담 페르소나는 없음.",
+    77|      "gap": "Phase 2-B + escalation policy 확장.",
+    78|      "targetPhase": "2-B"
+    79|    },
+    80|    {
+    81|      "requirementId": "260526:dual-persona-openclaw",
+    82|      "description": "OpenClaw 페르소나: 콘텐츠 PD, Technical Director, 마케팅 전략가",
+    83|      "status": "not_implemented",
+    84|      "implementation": "AgentRole이 'openclaw-owner'로 고정. 페르소나 전환 로직 없음.",
+    85|      "gap": "Phase 2-C.",
+    86|      "targetPhase": "2-C"
+    87|    },
+    88|    {
+    89|      "requirementId": "260526:dual-persona-hermes",
+    90|      "description": "Hermes 페르소나: Creative Reviewer, Art Reviewer, Technical Reviewer, Fact Reviewer, Executive Reviewer",
+    91|      "status": "not_implemented",
+    92|      "implementation": "AgentRole이 'hermes-reviewer'로 고정.",
+    93|      "gap": "Phase 2-C.",
+    94|      "targetPhase": "2-C"
+    95|    },
+    96|    {
+    97|      "requirementId": "260526:model-routing",
+    98|      "description": "작업 유형별 모델 선택: GPT/Codex(오케스트레이션), DeepSeek(기술 검증), Qwen/Kimi(창의적 아이디어), Gemini(검색/문서 분석)",
+    99|      "status": "not_implemented",
+   100|      "implementation": "dry-run은 deterministic fake executor 사용. 모델 선택 로직 없음.",
+   101|      "gap": "실제 adapter 연동 시 config에 model selection 추가. Phase 2-B adapter.",
+   102|      "targetPhase": "2-B+Adapter"
+   103|    },
+   104|    {
+   105|      "requirementId": "260526:accuracy-first",
+   106|      "description": "환각 최소화, 최신 정보 정확성: 검색 → 출처 기반 요약 → Hermes Fact Review → OpenClaw 최종 정리",
+   107|      "status": "not_implemented",
+   108|      "implementation": "검색/검증 파이프라인 미구현.",
+   109|      "gap": "Phase 2-D.",
+   110|      "targetPhase": "2-D"
+   111|    },
+   112|    {
+   113|      "requirementId": "260526:meeting-method",
+   114|      "description": "최대 라운드 제한, 수렴 점수 측정, 신규 핵심 이슈 판단, 미해결 리스크 확인, 사용자 승인 분리",
+   115|      "status": "covered",
+   116|      "implementation": "maxRounds config, detectConvergenceFailure(), detectStrongUserInputRequired(), escalation policy",
+   117|      "gap": "수렴 점수 측정(수치 기반)은 미구현. 현재는 verdict 기반 이진 판정."
+   118|    },
+   119|    {
+   120|      "requirementId": "260526:discord-structure",
+   121|      "description": "OpenClaw가 thread 생성, Hermes reviewer-only 요청, OpenClaw가 같은 thread에서 Final synthesis",
+   122|      "status": "covered",
+   123|      "implementation": "DiscordDelivery adapter interface + dry-run mock. 실제 Discord 연결은 Phase 2-A 로드맵.",
+   124|      "gap": null
+   125|    },
+   126|    {
+   127|      "requirementId": "260526:roadmap-phase1",
+   128|      "description": "Phase 1: OpenClaw / Hermes 단독 Discord 연결 및 독립 응답 검증",
+   129|      "status": "covered",
+   130|      "implementation": "Adapter interface 정의됨. 실제 연결은 adapter 구현 시.",
+   131|      "gap": null
+   132|    },
+   133|    {
+   134|      "requirementId": "260526:roadmap-phase2a",
+   135|      "description": "Phase 2-A: Inter-Agent Conversation Pipeline — 같은 thread orchestration, reviewer-only 모드, final synthesis",
+   136|      "status": "covered",
+   137|      "implementation": "CompanyOrchestrator가 전체 파이프라인 구현. dry-run으로 검증 가능.",
+   138|      "gap": null
+   139|    },
+   140|    {
+   141|      "requirementId": "260526:roadmap-phase2b",
+   142|      "description": "Phase 2-B: 직무별 라우팅 — 콘텐츠/아트/기술/마케팅/경영팀 분배",
+   143|      "status": "not_implemented",
+   144|      "implementation": "role-routing.ts의 AgentRole 타입 확장 필요.",
+   145|      "gap": "Phase 2-B (MVP 이후).",
+   146|      "targetPhase": "2-B"
+   147|    },
+   148|    {
+   149|      "requirementId": "260526:roadmap-phase2c",
+   150|      "description": "Phase 2-C: Dual Persona Layer",
+   151|      "status": "not_implemented",
+   152|      "implementation": "페르소나 전환 로직 필요.",
+   153|      "gap": "Phase 2-C (MVP 이후).",
+   154|      "targetPhase": "2-C"
+   155|    },
+   156|    {
+   157|      "requirementId": "260526:roadmap-phase2d",
+   158|      "description": "Phase 2-D: Retrieval & Verification Layer",
+   159|      "status": "not_implemented",
+   160|      "implementation": "검색/검증 파이프라인 신규 필요.",
+   161|      "gap": "Phase 2-D (MVP 이후).",
+   162|      "targetPhase": "2-D"
+   163|    },
+   164|    {
+   165|      "requirementId": "260526:roadmap-phase2e",
+   166|      "description": "Phase 2-E: Human Approval & Escalation",
+   167|      "status": "covered",
+   168|      "implementation": "escalation policy + user-input-required.ts",
+   169|      "gap": "일부 고급 패턴(브랜드 훼손, 외부 공개)만 감지. 확장 가능."
+   170|    },
+   171|    {
+   172|      "requirementId": "260526:dev-principles",
+   173|      "description": "개발 원칙: installed dist/node_modules 직접 수정 금지, local plugin/config/middleware 우선, 테스트/하네스 필수",
+   174|      "status": "covered",
+   175|      "implementation": "Adapter pattern으로 외부 의존성 캡슐화. 504개 테스트.",
+   176|      "gap": null
+   177|    }
+   178|  ],
+   179|  "summary": {
+   180|    "total": 22,
+   181|    "covered": 10,
+   182|    "partially_covered": 3,
+   183|    "not_implemented": 9,
+   184|    "mvpCoveragePercent": 76
+   185|  }
+   186|}
+   187|

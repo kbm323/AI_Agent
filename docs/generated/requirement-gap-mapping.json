@@ -1,0 +1,762 @@
+{
+  "schemaVersion": "implementation-capabilities.v1",
+  "capabilities": [
+    {
+      "id": "request-analysis-work-breakdown",
+      "requirement": "Analyze user request and decompose it into task_breakdown items.",
+      "readmeRequirementIds": [
+        "mvp_goal_flow:001",
+        "mvp_goal_flow:002"
+      ],
+      "gapDescription": "Gap exists when the implementation cannot turn a user request into stable, inspectable task_breakdown items.",
+      "gapDetected": false,
+      "status": "implemented",
+      "evidenceSourceIds": [
+        "existing:src/planning.ts"
+      ]
+    },
+    {
+      "id": "role-based-routing",
+      "requirement": "Route work items to OpenClaw owner/finalizer and Hermes reviewer personas.",
+      "readmeRequirementIds": [
+        "mvp_goal_flow:005",
+        "mvp_goal_flow:006",
+        "mvp_goal_flow:007",
+        "mvp_goal_flow:008",
+        "operating_principle:003",
+        "operating_principle:004",
+        "public_api_symbol:006"
+      ],
+      "gapDescription": "Gap exists when work items are not assigned to explicit job roles for OpenClaw execution and Hermes review.",
+      "gapDetected": false,
+      "status": "implemented",
+      "evidenceSourceIds": [
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "openclaw-hermes-meeting-loop",
+      "requirement": "Preserve OpenClaw execution and Hermes review turns in a meeting loop.",
+      "readmeRequirementIds": [
+        "mvp_goal_flow:005",
+        "mvp_goal_flow:006",
+        "mvp_goal_flow:007",
+        "mvp_goal_flow:009"
+      ],
+      "gapDescription": "Gap exists when meeting turns are not durably preserved across OpenClaw draft and Hermes review iterations.",
+      "gapDetected": false,
+      "status": "implemented",
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/orchestrator.ts"
+      ]
+    },
+    {
+      "id": "final-synthesis",
+      "requirement": "Produce final synthesis after reviewer convergence.",
+      "readmeRequirementIds": [
+        "mvp_goal_flow:008"
+      ],
+      "gapDescription": "Gap exists when converged review feedback cannot be converted into one final synthesized output artifact.",
+      "gapDetected": false,
+      "status": "implemented",
+      "evidenceSourceIds": [
+        "existing:src/orchestrator.ts"
+      ]
+    },
+    {
+      "id": "escalation-artifact",
+      "requirement": "Surface convergence failure or user-decision needs as escalation artifacts.",
+      "readmeRequirementIds": [
+        "operating_principle:006",
+        "public_api_symbol:009"
+      ],
+      "gapDescription": "Gap exists when ambiguity, failed convergence, or required user decisions do not produce a structured escalation artifact.",
+      "gapDetected": false,
+      "status": "implemented",
+      "evidenceSourceIds": [
+        "existing:src/orchestrator.ts",
+        "existing:src/policies.ts"
+      ]
+    },
+    {
+      "id": "raw-storage-summary-context",
+      "requirement": "Separate raw full-text storage from exposed loop summaries and compressed context.",
+      "readmeRequirementIds": [
+        "mvp_goal_flow:009",
+        "operating_principle:005"
+      ],
+      "gapDescription": "Gap exists when raw full text is exposed directly to loop context instead of bounded summaries and compressed context.",
+      "gapDetected": false,
+      "status": "implemented",
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/planning.ts",
+        "existing:src/policies.ts"
+      ]
+    }
+  ],
+  "readmeRequirementMappings": [
+    {
+      "id": "mvp_goal_flow:001",
+      "category": "mvp_goal_flow",
+      "sourceSection": "## MVP 목표",
+      "order": 1,
+      "text": "parent channel user request",
+      "status": "covered",
+      "capabilityIds": [
+        "request-analysis-work-breakdown"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/planning.ts"
+      ]
+    },
+    {
+      "id": "mvp_goal_flow:002",
+      "category": "mvp_goal_flow",
+      "sourceSection": "## MVP 목표",
+      "order": 2,
+      "text": "-> task 생성",
+      "status": "covered",
+      "capabilityIds": [
+        "request-analysis-work-breakdown"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/planning.ts"
+      ]
+    },
+    {
+      "id": "mvp_goal_flow:003",
+      "category": "mvp_goal_flow",
+      "sourceSection": "## MVP 목표",
+      "order": 3,
+      "text": "-> Discord thread 생성",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "mvp_goal_flow:004",
+      "category": "mvp_goal_flow",
+      "sourceSection": "## MVP 목표",
+      "order": 4,
+      "text": "-> parent에는 \"Agent discussion started -> <thread>\"만 게시",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "mvp_goal_flow:005",
+      "category": "mvp_goal_flow",
+      "sourceSection": "## MVP 목표",
+      "order": 5,
+      "text": "-> OpenClaw owner draft",
+      "status": "covered",
+      "capabilityIds": [
+        "openclaw-hermes-meeting-loop",
+        "role-based-routing"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/orchestrator.ts",
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "mvp_goal_flow:006",
+      "category": "mvp_goal_flow",
+      "sourceSection": "## MVP 목표",
+      "order": 6,
+      "text": "-> Hermes reviewer request",
+      "status": "covered",
+      "capabilityIds": [
+        "openclaw-hermes-meeting-loop",
+        "role-based-routing"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/orchestrator.ts",
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "mvp_goal_flow:007",
+      "category": "mvp_goal_flow",
+      "sourceSection": "## MVP 목표",
+      "order": 7,
+      "text": "-> Hermes review",
+      "status": "covered",
+      "capabilityIds": [
+        "openclaw-hermes-meeting-loop",
+        "role-based-routing"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/orchestrator.ts",
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "mvp_goal_flow:008",
+      "category": "mvp_goal_flow",
+      "sourceSection": "## MVP 목표",
+      "order": 8,
+      "text": "-> OpenClaw final synthesis",
+      "status": "covered",
+      "capabilityIds": [
+        "final-synthesis",
+        "role-based-routing"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/orchestrator.ts",
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "mvp_goal_flow:009",
+      "category": "mvp_goal_flow",
+      "sourceSection": "## MVP 목표",
+      "order": 9,
+      "text": "-> thread timeline 게시",
+      "status": "covered",
+      "capabilityIds": [
+        "openclaw-hermes-meeting-loop",
+        "raw-storage-summary-context"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/orchestrator.ts",
+        "existing:src/planning.ts",
+        "existing:src/policies.ts"
+      ]
+    },
+    {
+      "id": "operating_principle:001",
+      "category": "operating_principle",
+      "sourceSection": "## 운영 원칙",
+      "order": 1,
+      "text": "Channel = project",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "operating_principle:002",
+      "category": "operating_principle",
+      "sourceSection": "## 운영 원칙",
+      "order": 2,
+      "text": "Thread = task",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "operating_principle:003",
+      "category": "operating_principle",
+      "sourceSection": "## 운영 원칙",
+      "order": 3,
+      "text": "OpenClaw = orchestrator / owner / finalizer",
+      "status": "covered",
+      "capabilityIds": [
+        "role-based-routing"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "operating_principle:004",
+      "category": "operating_principle",
+      "sourceSection": "## 운영 원칙",
+      "order": 4,
+      "text": "Hermes = reviewer-only, mention/reply when requested",
+      "status": "covered",
+      "capabilityIds": [
+        "role-based-routing"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "operating_principle:005",
+      "category": "operating_principle",
+      "sourceSection": "## 운영 원칙",
+      "order": 5,
+      "text": "Thread에는 요약 timeline을 남기고, 전문은 SQLite에 저장한다.",
+      "status": "covered",
+      "capabilityIds": [
+        "raw-storage-summary-context"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/planning.ts",
+        "existing:src/policies.ts"
+      ]
+    },
+    {
+      "id": "operating_principle:006",
+      "category": "operating_principle",
+      "sourceSection": "## 운영 원칙",
+      "order": 6,
+      "text": "사용자 결정이 필요한 경우에는 진행을 멈추고 escalation을 남긴다.",
+      "status": "covered",
+      "capabilityIds": [
+        "escalation-artifact"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/orchestrator.ts",
+        "existing:src/policies.ts"
+      ]
+    },
+    {
+      "id": "execution_command:001",
+      "category": "execution_command",
+      "sourceSection": "## 실행",
+      "order": 1,
+      "text": "npm test",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "execution_command:002",
+      "category": "execution_command",
+      "sourceSection": "## 실행",
+      "order": 2,
+      "text": "npm run dry-run -- --request \"뮤직비디오 오프닝 아이디어를 회의해줘.\"",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "public_api_symbol:001",
+      "category": "public_api_symbol",
+      "sourceSection": "## Public API",
+      "order": 1,
+      "text": "AiAgentDatabase",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "public_api_symbol:002",
+      "category": "public_api_symbol",
+      "sourceSection": "## Public API",
+      "order": 2,
+      "text": "CompanyOrchestrator",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "public_api_symbol:003",
+      "category": "public_api_symbol",
+      "sourceSection": "## Public API",
+      "order": 3,
+      "text": "analyzeUserRequest",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "public_api_symbol:004",
+      "category": "public_api_symbol",
+      "sourceSection": "## Public API",
+      "order": 4,
+      "text": "buildCompressedLoopContextArtifact",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "public_api_symbol:005",
+      "category": "public_api_symbol",
+      "sourceSection": "## Public API",
+      "order": 5,
+      "text": "buildDefaultTokenStrategy",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "public_api_symbol:006",
+      "category": "public_api_symbol",
+      "sourceSection": "## Public API",
+      "order": 6,
+      "text": "buildReviewerRequest",
+      "status": "covered",
+      "capabilityIds": [
+        "role-based-routing"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "public_api_symbol:007",
+      "category": "public_api_symbol",
+      "sourceSection": "## Public API",
+      "order": 7,
+      "text": "buildRoleRoutes",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "public_api_symbol:008",
+      "category": "public_api_symbol",
+      "sourceSection": "## Public API",
+      "order": 8,
+      "text": "decomposeUserRequest",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "public_api_symbol:009",
+      "category": "public_api_symbol",
+      "sourceSection": "## Public API",
+      "order": 9,
+      "text": "serializeEscalationResult",
+      "status": "covered",
+      "capabilityIds": [
+        "escalation-artifact"
+      ],
+      "evidenceSourceIds": [
+        "existing:src/orchestrator.ts",
+        "existing:src/policies.ts"
+      ]
+    },
+    {
+      "id": "public_api_symbol:010",
+      "category": "public_api_symbol",
+      "sourceSection": "## Public API",
+      "order": 10,
+      "text": "summarizeForThread",
+      "status": "unknown",
+      "capabilityIds": [],
+      "evidenceSourceIds": []
+    }
+  ],
+  "requirementCapabilityMatches": [
+    {
+      "id": "requirement-capability-match:mvp_goal_flow:001",
+      "requirementId": "mvp_goal_flow:001",
+      "requirementText": "parent channel user request",
+      "capabilityIds": [
+        "request-analysis-work-breakdown"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/planning.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:mvp_goal_flow:002",
+      "requirementId": "mvp_goal_flow:002",
+      "requirementText": "-> task 생성",
+      "capabilityIds": [
+        "request-analysis-work-breakdown"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/planning.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:mvp_goal_flow:003",
+      "requirementId": "mvp_goal_flow:003",
+      "requirementText": "-> Discord thread 생성",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:mvp_goal_flow:004",
+      "requirementId": "mvp_goal_flow:004",
+      "requirementText": "-> parent에는 \"Agent discussion started -> <thread>\"만 게시",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:mvp_goal_flow:005",
+      "requirementId": "mvp_goal_flow:005",
+      "requirementText": "-> OpenClaw owner draft",
+      "capabilityIds": [
+        "openclaw-hermes-meeting-loop",
+        "role-based-routing"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/orchestrator.ts",
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:mvp_goal_flow:006",
+      "requirementId": "mvp_goal_flow:006",
+      "requirementText": "-> Hermes reviewer request",
+      "capabilityIds": [
+        "openclaw-hermes-meeting-loop",
+        "role-based-routing"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/orchestrator.ts",
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:mvp_goal_flow:007",
+      "requirementId": "mvp_goal_flow:007",
+      "requirementText": "-> Hermes review",
+      "capabilityIds": [
+        "openclaw-hermes-meeting-loop",
+        "role-based-routing"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/orchestrator.ts",
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:mvp_goal_flow:008",
+      "requirementId": "mvp_goal_flow:008",
+      "requirementText": "-> OpenClaw final synthesis",
+      "capabilityIds": [
+        "final-synthesis",
+        "role-based-routing"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/orchestrator.ts",
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:mvp_goal_flow:009",
+      "requirementId": "mvp_goal_flow:009",
+      "requirementText": "-> thread timeline 게시",
+      "capabilityIds": [
+        "openclaw-hermes-meeting-loop",
+        "raw-storage-summary-context"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/orchestrator.ts",
+        "existing:src/planning.ts",
+        "existing:src/policies.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:operating_principle:001",
+      "requirementId": "operating_principle:001",
+      "requirementText": "Channel = project",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:operating_principle:002",
+      "requirementId": "operating_principle:002",
+      "requirementText": "Thread = task",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:operating_principle:003",
+      "requirementId": "operating_principle:003",
+      "requirementText": "OpenClaw = orchestrator / owner / finalizer",
+      "capabilityIds": [
+        "role-based-routing"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:operating_principle:004",
+      "requirementId": "operating_principle:004",
+      "requirementText": "Hermes = reviewer-only, mention/reply when requested",
+      "capabilityIds": [
+        "role-based-routing"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:operating_principle:005",
+      "requirementId": "operating_principle:005",
+      "requirementText": "Thread에는 요약 timeline을 남기고, 전문은 SQLite에 저장한다.",
+      "capabilityIds": [
+        "raw-storage-summary-context"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/db.ts",
+        "existing:src/planning.ts",
+        "existing:src/policies.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:operating_principle:006",
+      "requirementId": "operating_principle:006",
+      "requirementText": "사용자 결정이 필요한 경우에는 진행을 멈추고 escalation을 남긴다.",
+      "capabilityIds": [
+        "escalation-artifact"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/orchestrator.ts",
+        "existing:src/policies.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:execution_command:001",
+      "requirementId": "execution_command:001",
+      "requirementText": "npm test",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:execution_command:002",
+      "requirementId": "execution_command:002",
+      "requirementText": "npm run dry-run -- --request \"뮤직비디오 오프닝 아이디어를 회의해줘.\"",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:public_api_symbol:001",
+      "requirementId": "public_api_symbol:001",
+      "requirementText": "AiAgentDatabase",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:public_api_symbol:002",
+      "requirementId": "public_api_symbol:002",
+      "requirementText": "CompanyOrchestrator",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:public_api_symbol:003",
+      "requirementId": "public_api_symbol:003",
+      "requirementText": "analyzeUserRequest",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:public_api_symbol:004",
+      "requirementId": "public_api_symbol:004",
+      "requirementText": "buildCompressedLoopContextArtifact",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:public_api_symbol:005",
+      "requirementId": "public_api_symbol:005",
+      "requirementText": "buildDefaultTokenStrategy",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:public_api_symbol:006",
+      "requirementId": "public_api_symbol:006",
+      "requirementText": "buildReviewerRequest",
+      "capabilityIds": [
+        "role-based-routing"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/planning.ts",
+        "existing:src/types.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:public_api_symbol:007",
+      "requirementId": "public_api_symbol:007",
+      "requirementText": "buildRoleRoutes",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:public_api_symbol:008",
+      "requirementId": "public_api_symbol:008",
+      "requirementText": "decomposeUserRequest",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    },
+    {
+      "id": "requirement-capability-match:public_api_symbol:009",
+      "requirementId": "public_api_symbol:009",
+      "requirementText": "serializeEscalationResult",
+      "capabilityIds": [
+        "escalation-artifact"
+      ],
+      "status": "matched",
+      "evidenceSourceIds": [
+        "existing:src/orchestrator.ts",
+        "existing:src/policies.ts"
+      ]
+    },
+    {
+      "id": "requirement-capability-match:public_api_symbol:010",
+      "requirementId": "public_api_symbol:010",
+      "requirementText": "summarizeForThread",
+      "capabilityIds": [],
+      "status": "missing",
+      "evidenceSourceIds": []
+    }
+  ],
+  "summary": {
+    "implementedCount": 6,
+    "missingCount": 0,
+    "readmeRequirementCount": 27,
+    "readmeRequirementStatusCounts": {
+      "covered": 13,
+      "partial": 0,
+      "missing": 0,
+      "unknown": 14
+    },
+    "requirementCapabilityMatchStatusCounts": {
+      "matched": 13,
+      "partial": 0,
+      "missing": 14
+    }
+  }
+}
