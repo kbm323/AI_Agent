@@ -50,6 +50,17 @@ class TestBasicMeetingIntentDetection:
         assert isinstance(result, MeetingIntent)
         assert "캐릭터" in result.topic.lower()
 
+    def test_forced_slash_command_accepts_natural_topic_without_meeting_keyword(self):
+        result = parse_meeting_intent(
+            "버류얼 유튜버 2d기반이걸 3d로 만들어 볼려고해. 추천작업 알려줘",
+            force_meeting=True,
+        )
+
+        assert result.is_meeting
+        assert isinstance(result, MeetingIntent)
+        assert result.topic == "버류얼 유튜버 2d기반이걸 3d로 만들어 볼려고해. 추천작업 알려줘"
+        assert result.meeting_type == "creative_production"
+
     def test_korean_meeting_request_논의(self):
         result = parse_meeting_intent("백엔드 API 리팩토링 논의하자")
         assert result.is_meeting

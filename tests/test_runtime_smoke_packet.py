@@ -31,6 +31,14 @@ def _meeting_payload() -> dict[str, Any]:
     }
 
 
+def _natural_slash_payload() -> dict[str, Any]:
+    payload = _meeting_payload()
+    payload["data"]["options"][0]["value"] = (
+        "버류얼 유튜버 2d기반이걸 3d로 만들어 볼려고해. 추천작업 알려줘"
+    )
+    return payload
+
+
 def test_runtime_smoke_packet_drives_runtime_boundaries(tmp_path: Path):
     posted: list[tuple[str, str, str]] = []
     qwen_calls: list[dict[str, Any]] = []
@@ -97,6 +105,37 @@ def test_runtime_smoke_packet_drives_runtime_boundaries(tmp_path: Path):
     assert result.glm_success
     assert result.openclaw_state == "completed"
     assert openclaw_calls[0]["mode"] == "synchronous"
+
+
+def test_runtime_smoke_packet_treats_slash_topic_as_natural_meeting_request(tmp_path: Path):
+    posted: list[tuple[str, str]] = []
+
+    def post(channel_id: str, content: str) -> dict[str, str]:
+        posted.append((channel_id, content))
+        return {"message_id": f"msg-{len(posted)}"}
+
+    def ok_runner(command, timeout_seconds, env, workdir):
+        return (0, "{}", "")
+
+    result = run_runtime_smoke_packet(
+        payload=_natural_slash_payload(),
+        config=RuntimeSmokeConfig(
+            meetings_root=str(tmp_path / "meetings"),
+            workdir=str(tmp_path),
+            openclaw_risk_level="high",
+        ),
+        dependencies=RuntimeSmokeDependencies(
+            post_thread=post,
+            cross_post=post,
+            qwen_runner=ok_runner,
+            glm_runner=ok_runner,
+            openclaw_executor=lambda action: {"state": "completed"},
+        ),
+    )
+
+    assert result.success
+    assert result.stage == "complete"
+    assert any("버류얼 유튜버" in content for _, content in posted)
 
 
 def test_runtime_smoke_packet_blocks_unapproved_high_risk_action(tmp_path: Path):

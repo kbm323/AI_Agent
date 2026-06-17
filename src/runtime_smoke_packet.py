@@ -265,7 +265,13 @@ def _request_from_discord_payload(payload: dict[str, Any]) -> MeetingPipelineReq
         guild_id=str(payload.get("guild_id") or ""),
         result_channel_id=_extract_option(payload, "result_channel_id") or channel_id,
         created_at=_created_at_from_payload(payload),
+        force_meeting_intent=_is_meeting_slash_command(payload),
     )
+
+
+def _is_meeting_slash_command(payload: dict[str, Any]) -> bool:
+    data = payload.get("data")
+    return isinstance(data, dict) and str(data.get("name") or "").lower() == "meeting"
 
 
 def _extract_option(payload: dict[str, Any], name: str) -> str:

@@ -109,3 +109,27 @@ def test_process_meeting_request_rejects_non_meeting_text_without_side_effects(t
     assert queue.pending_ids == ()
     assert queue.running_ids == ()
     assert decision_log.events == ()
+
+
+def test_process_meeting_request_can_force_slash_command_natural_language_topic(tmp_path):
+    queue = PriorityMeetingQueue(max_concurrent=1)
+
+    result = process_meeting_request(
+        MeetingPipelineRequest(
+            text="버류얼 유튜버 2d기반이걸 3d로 만들어 볼려고해. 추천작업 알려줘",
+            user_id="user-1",
+            channel_id="channel-1",
+            thread_id="thread-1",
+            result_channel_id="results-1",
+            force_meeting_intent=True,
+        ),
+        queue=queue,
+        meetings_root=str(tmp_path),
+    )
+
+    assert result.success
+    assert result.intent is not None
+    assert result.intent.topic.startswith("버류얼 유튜버")
+    assert result.intent.meeting_type == "creative_production"
+    assert result.delivery_plan is not None
+    assert "버류얼 유튜버" in result.delivery_plan.primary.content

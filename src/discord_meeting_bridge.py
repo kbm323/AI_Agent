@@ -52,6 +52,7 @@ def build_meeting_handler(
             guild_id=str(payload.get("guild_id") or ""),
             result_channel_id=result_channel_id,
             created_at=_created_at_from_payload(payload),
+            force_meeting_intent=True,
         )
         result = process_meeting_request(
             request,

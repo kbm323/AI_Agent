@@ -169,6 +169,15 @@ _TYPE_RULES: tuple[tuple[str, str], ...] = (
     ("legal", MEETING_TYPE_RISK),
     ("budget", MEETING_TYPE_RISK),
     # ── creative_production ──
+    ("버추얼", MEETING_TYPE_CREATIVE),
+    ("버츄얼", MEETING_TYPE_CREATIVE),
+    ("버류얼", MEETING_TYPE_CREATIVE),
+    ("vtuber", MEETING_TYPE_CREATIVE),
+    ("v-tuber", MEETING_TYPE_CREATIVE),
+    ("유튜버", MEETING_TYPE_CREATIVE),
+    ("2d", MEETING_TYPE_CREATIVE),
+    ("3d", MEETING_TYPE_CREATIVE),
+    ("모델링", MEETING_TYPE_CREATIVE),
     ("캐릭터", MEETING_TYPE_CREATIVE),
     ("캐릭", MEETING_TYPE_CREATIVE),
     ("일러스트", MEETING_TYPE_CREATIVE),
@@ -444,6 +453,7 @@ def parse_meeting_intent(
     cleaned_text: str,
     *,
     default_meeting_type: str = MEETING_TYPE_PLANNING,
+    force_meeting: bool = False,
 ) -> MeetingIntent | NoMeetingIntent:
     """Parse cleaned message text into a structured meeting intent.
 
@@ -495,11 +505,13 @@ def parse_meeting_intent(
 
     # ── Step 1: detect meeting intent ─────────────────────────────────
     meeting_keyword = _find_meeting_keyword(text_lower)
-    if meeting_keyword is None:
+    if meeting_keyword is None and not force_meeting:
         return NoMeetingIntent(
             is_meeting=False,
             reason="no_meeting_keyword",
         )
+    if meeting_keyword is None:
+        meeting_keyword = ""
 
     # ── Step 2: classify meeting type ─────────────────────────────────
     meeting_type, type_confidence, type_reasoning = _classify_type(
@@ -707,8 +719,10 @@ def _extract_topic(text: str, meeting_keyword: str) -> str:
     # Remove the meeting keyword and common endings
     topic = text
 
-    # Strip the meeting keyword
-    topic = re.sub(re.escape(meeting_keyword), "", topic, flags=re.IGNORECASE)
+    # Strip the meeting keyword when natural text contains one.  Slash-command
+    # topics can be forced as meetings without adding boilerplate keywords.
+    if meeting_keyword:
+        topic = re.sub(re.escape(meeting_keyword), "", topic, flags=re.IGNORECASE)
 
     # Strip common Korean request suffixes
     _REQUEST_SUFFIXES = (

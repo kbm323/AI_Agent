@@ -38,6 +38,7 @@ class MeetingPipelineRequest:
     guild_id: str = ""
     result_channel_id: str = ""
     created_at: int | float = 0
+    force_meeting_intent: bool = False
 
 
 @dataclass(frozen=True)
@@ -77,7 +78,10 @@ def process_meeting_request(
     7. Return a Discord delivery plan for adapter-side posting.
     """
 
-    parsed = parse_meeting_intent(request.text)
+    parsed = parse_meeting_intent(
+        request.text,
+        force_meeting=request.force_meeting_intent,
+    )
     if isinstance(parsed, NoMeetingIntent) or not parsed.is_meeting:
         return MeetingPipelineResult(success=False, error="no meeting intent detected")
 
