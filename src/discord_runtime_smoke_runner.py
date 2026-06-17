@@ -101,6 +101,7 @@ def send_interaction_completion_followup(
     payload: Mapping[str, Any],
     report: Mapping[str, Any],
     *,
+    fallback_application_id: str = "",
     http_json_request: HttpJsonRequest | None = None,
 ) -> dict[str, Any]:
     """Complete Discord's deferred interaction response with a result summary.
@@ -111,7 +112,7 @@ def send_interaction_completion_followup(
     bot Authorization header is required.
     """
 
-    application_id = str(payload.get("application_id") or "")
+    application_id = str(payload.get("application_id") or fallback_application_id or "")
     token = str(payload.get("token") or "")
     if not application_id or not token:
         return {"ok": False, "skipped": True, "error": "missing application_id or token"}

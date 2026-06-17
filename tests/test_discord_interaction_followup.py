@@ -51,6 +51,27 @@ def test_send_interaction_completion_followup_patches_original_response():
     ]
 
 
+
+def test_send_interaction_completion_followup_uses_fallback_application_id():
+    calls: list[dict[str, Any]] = []
+
+    def http_json_request(*, url, method, body, headers, timeout):
+        calls.append({"url": url, "body": json.loads(body.decode("utf-8"))})
+        return 200, {"id": "original-response"}
+
+    result = send_interaction_completion_followup(
+        {"token": "interaction-token"},
+        {"ok": True, "meeting_id": "meeting-1"},
+        fallback_application_id="app-from-env",
+        http_json_request=http_json_request,
+    )
+
+    assert result["ok"] is True
+    assert calls[0]["url"] == (
+        "https://discord.com/api/v10/webhooks/app-from-env/interaction-token/messages/@original"
+    )
+    assert calls[0]["body"]["content"].startswith("회의 실행 완료: meeting-1")
+
 def test_send_interaction_completion_followup_skips_without_token():
     called = False
 

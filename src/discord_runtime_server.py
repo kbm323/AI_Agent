@@ -92,7 +92,11 @@ def _run_and_log_smoke(payload: dict[str, Any], env: dict[str, str] | None) -> N
     except Exception as exc:  # pragma: no cover - defensive boundary
         report = {"ok": False, "stage": "exception", "error": str(exc)}
     print(json.dumps(report, ensure_ascii=False), file=sys.stderr, flush=True)
-    followup_report = send_interaction_completion_followup(payload, report)
+    followup_report = send_interaction_completion_followup(
+        payload,
+        report,
+        fallback_application_id=(env or {}).get("DISCORD_APPLICATION_ID", ""),
+    )
     print(
         json.dumps({"interaction_followup": followup_report}, ensure_ascii=False),
         file=sys.stderr,
