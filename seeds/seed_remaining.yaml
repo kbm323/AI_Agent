@@ -36,7 +36,7 @@ acceptance_criteria:
   - "Meeting records and decision logs are append-only, superseded decisions use metadata"
   - "Coordinator generates periodic summaries (Weekly, Monthly, Quarterly) and Self-Reflection Reports"
   - "Agent persona specs use agent.yaml plus persona.md in agents per team per role_id with Git versioning"
-  - "6-7 persistent team-leader Discord bots, internal specialists exist as workers only"
+  - "Hybrid Discord persona model: 6-7 persistent mentionable team-leader bots; internal specialists exist as opencode-go/Hermes workers and may be rendered via presentation-only webhooks"
   - "Meeting responses delivered in original Discord thread, summary cross-posted to results or briefing channels"
   - "Same-thread follow-up questions extend existing meeting_id"
 

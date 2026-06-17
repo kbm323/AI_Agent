@@ -45,5 +45,5 @@ acceptance_criteria:
 - 4-layer knowledge: L0 Google Drive, L1 Obsidian, L2 FTS5, L3 Coordinator
 - Dynamic knowledge retrieval per meeting, not blanket injection
 - Agent persona specs: agent.yaml + persona.md in agents/{team}/{role_id}/
-- 6-7 persistent team-leader Discord bots, internal specialists as workers only
+- Hybrid Discord persona model: 6-7 persistent mentionable team-leader Discord bots, internal specialists as workers/webhook-rendered specialists
 - Meeting responses in original Discord thread

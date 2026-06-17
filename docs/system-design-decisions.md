@@ -262,16 +262,20 @@
 - New meeting_id: `/meeting new`, complete topic change, team change, final/locked state, long time elapsed
 - meeting_id tracks: user_id, channel_id, thread_id
 
-**Discord Persona Architecture:**
-- Persistent bots (6-7): 👔Coordinator, 🎬ContentPD, 🎨ArtDirector, ⚙️TechDirector, 📈MarketingLead, 🛡️Validator, 🛠️ExecutionTeam(OpenClaw)
-- Internal Workers: detailed specialists exist only as opencode-go Workers
-- Team-lead Persona represents internal Worker opinions
-- Temporary specialist appearance via Webhook rendering — NOT real bot creation
+**Discord Persona Architecture — Hybrid Bot/Webhook Model:**
+- User-approved direction: use the hybrid model, not webhook-only and not one real bot per specialist.
+- Persistent team-leader bots (6-7): 👔Coordinator, 🎬ContentPD, 🎨ArtDirector, ⚙️TechDirector, 📈MarketingLead, 🛡️Validator, 🛠️ExecutionTeam/OpenClaw.
+- Team-leader bots are real Discord bots/users from the user's point of view: they can be mentioned directly (for example `@TechDirector ...`), can own visible team-level responses, and can participate in meeting threads.
+- Internal specialists are not real Discord bots by default; they exist as opencode-go/Hermes workers and are represented through the relevant team leader.
+- Optional specialist appearance uses Discord webhook rendering inside the meeting thread (custom username/avatar per message) for roles like Live2D rigger, 3D modeler, Unity engineer, motion designer, QA analyst.
+- Webhook specialists are presentation-only: they do not receive mentions, DMs, slash commands, or presence. If a specialist must be directly mentionable, promote that role to a persistent bot explicitly.
+- Coordinator owns `/meeting`, thread creation, meeting_id routing, state transitions, and final cross-posts. Team-leader bots own role-specific visible utterances. Webhook specialists only render internal worker outputs.
 
 **Design Principles:**
-- Persona over Model: Discord exposes roles, not models
-- Persistent Leaders, Dynamic Specialists
-- Single User Interface: one AI company, many internal personas
+- Mentionable roles require persistent bots; presentation-only specialist voices use webhooks.
+- Persona over Model: Discord exposes roles, not models.
+- Persistent Leaders, Dynamic Specialists.
+- Single User Interface: one AI company, many internal personas.
 
 ---
 

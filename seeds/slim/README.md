@@ -92,7 +92,7 @@ Verification:
 ACs:
 - AC22 Periodic summaries and self-reflection reports
 - AC23 agent.yaml + persona.md role specs with Git versioning
-- AC24 6-7 persistent team-leader Discord bots; internal specialists as workers only
+- AC24 Hybrid Discord persona model: 6-7 persistent mentionable team-leader Discord bots; internal specialists as workers only, optionally rendered through presentation-only webhooks
 - AC25 Original Discord thread delivery and result/briefing cross-post
 - AC26 Same-thread follow-up extends existing meeting_id
 Target files:
