@@ -30,6 +30,9 @@ constraints:
   - crash recovery와 idempotency를 지원해야 한다.
   - 설계는 MVP 축소가 아니라 최종 운영 상태 기준이어야 한다.
   - 실제 Discord token, provider secret, production credential은 문서에 포함하지 않는다.
+  - Discord command surface는 Hermes-native first여야 한다.
+  - 독립 `/meeting`, `/cancel`, `/status`, `/summon` slash command는 core requirement가 아니라 Hermes Gateway 공식 지원 또는 별도 Discord Adapter가 있을 때만 채택한다.
+  - 기본 발의는 Hermes 기존 Discord 명령 체계, Hermes-supported custom skill/command, 또는 `@Hermes meeting ...` 같은 bot mention 자연어 명령을 우선한다.
 acceptance_criteria:
   schema_completeness:
     - MeetingRun, MeetingPhase, WorkerTask, ValidationCycle, ReportPhase가 필드 단위로 정의되어야 한다.
@@ -64,6 +67,7 @@ acceptance_criteria:
     - 사용자가 직접 @mention 가능한 Bot 범위가 정의되어야 한다.
     - 어떤 내부 발언/결과를 Discord에 projection할지 규칙이 있어야 한다.
     - 최종 보고와 검증 verdict가 사용자에게 구분되어 보여야 한다.
+    - Command Surface는 Hermes-native first로 정의되어야 하며 standalone slash command는 optional adapter feature로 분리되어야 한다.
   quota_model_policy:
     - Qwen/GLM/Codex/opencode-go/기타 모델 사용 기준이 정의되어야 한다.
     - quota 초과/차단/지연 시 fallback 또는 대기 정책이 있어야 한다.

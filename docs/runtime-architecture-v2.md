@@ -38,7 +38,7 @@ MeetingRun은 모든 회의/작업/검증/보고의 장부다.
 
 ```text
 [Discord Gateway]
-  receives mentions / commands / replies
+  receives Hermes-native mentions / supported commands / replies
         |
         v
 [CEO/Coordinator Bot Adapter]
@@ -94,6 +94,56 @@ They are not source-of-truth state holders.
 Internal specialists are workers, not Discord bot accounts.
 Examples: content_pd, script_writer, concept_artist, rigger, pipeline_rd,
 web_app_developer, legal_reviewer, data_analyst.
+
+## 4.1 Command Surface
+
+The command surface is Hermes-native first.
+Standalone Discord slash commands such as `/meeting`, `/cancel`, `/status`,
+or `/summon` are not core requirements unless Hermes Gateway officially
+supports the required custom slash-command surface or a separate Discord
+adapter is deliberately added.
+
+Priority order:
+
+```text
+1. Hermes existing Discord command and gateway behavior
+2. Hermes-supported custom skill/command surface
+3. Bot mention natural-language command
+4. Separate Discord Adapter that implements standalone slash commands
+```
+
+Default meeting initiation:
+
+```text
+@Hermes meeting: 버추얼 아이돌 뮤비 회의 열어줘
+```
+
+If Hermes Gateway supports the needed slash surface:
+
+```text
+/hermes meeting agenda:"버추얼 아이돌 뮤비 회의"
+/hermes cancel meeting_run_id:"mr_..."
+/hermes status meeting_run_id:"mr_..."
+```
+
+Optional standalone adapter commands:
+
+```text
+/meeting
+/cancel
+/status
+/summon
+```
+
+These standalone commands are adapter features, not the core architecture.
+
+Design rule:
+
+```text
+Hermes-first architecture requires Hermes-first Discord UI.
+Command handling must follow what Hermes Gateway actually supports before
+inventing independent Discord slash commands.
+```
 
 ## 5. MeetingRun Top-Level State Machine
 

@@ -287,6 +287,33 @@ class WorkerRunner:
 - final report includes validation block
 - failure alert targets master-control projection
 
+### Task 6.4: Define Hermes-native command surface policy
+
+**Objective:** Ensure Discord interaction design is Hermes-native first and follows Hermes-supported command surfaces before introducing standalone slash commands.
+
+**Files:**
+- Create: `src/runtime_architecture_v2/command_surface.py`
+- Test: `tests/test_runtime_architecture_v2_command_surface.py`
+
+**Priority order:**
+```text
+1. Hermes existing Discord command and gateway behavior
+2. Hermes-supported custom skill/command surface
+3. Bot mention natural-language command, e.g. @Hermes meeting: ...
+4. Separate Discord Adapter for standalone /meeting-style slash commands
+```
+
+**Rules:**
+- `/meeting`, `/cancel`, `/status`, and `/summon` are not core requirements.
+- If slash command support is available through Hermes, prefer `/hermes meeting`, `/hermes cancel`, `/hermes status` style namespacing.
+- If Hermes slash support is unavailable or insufficient, use bot mentions as the default user-facing command surface.
+- Only a deliberate custom Discord Adapter may add standalone `/meeting`-style commands.
+
+**Verification:**
+- policy returns mention fallback when Hermes slash support is unavailable
+- policy marks standalone slash commands as optional adapter features
+- docs/examples do not present `/meeting` as a mandatory core command
+
 ---
 
 ## Phase 7: Orchestrator and Runtime Flows
