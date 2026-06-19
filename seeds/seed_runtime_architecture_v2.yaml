@@ -1,0 +1,74 @@
+goal: AI Virtual Entertainment Company / Hermes-first Multi-Agent Meeting System의 Runtime Architecture v2를 실제 운영 가능한 수준으로 구체화하여 이후 Runtime Architecture v2 문서와 구현 계획을 작성할 수 있는 Seed 요구사항으로 확정한다.
+task_type: code
+metadata:
+  seed_id: seed_176a489b1d25
+  interview_id: interview_20260619_051314
+  ambiguity_score: 0.10
+  created_at: '2026-06-19T05:22:23Z'
+constraints:
+  - Root aggregate는 MeetingRun이어야 한다.
+  - Discord Thread/Message는 source of truth가 아니라 사용자-facing projection이어야 한다.
+  - Queue Job은 실행 단위일 뿐 root aggregate가 아니어야 한다.
+  - Hermes session은 runtime context일 뿐 업무 도메인의 root aggregate가 아니어야 한다.
+  - 모든 packet, worker output, validation verdict, final report, decision log는 meeting_run_id에 연결되어야 한다.
+  - MeetingRun top-level state는 created, classified, routed, queued, active, validating, reporting, completed, failed, cancelled, paused 중 하나여야 한다.
+  - 상세 흐름은 MeetingPhase, WorkerTask, ValidationCycle, ReportPhase 하위 state machine으로 분리해야 한다.
+  - 단순 Q&A는 full meeting round 없이 fast-path로 완료 가능해야 한다.
+  - BPMN급 generic workflow engine은 만들지 않는다.
+  - Discord에는 6~7개 팀장급 실제 Bot이 존재해야 한다.
+  - 사용자가 직접 @mention 가능한 Bot은 기본적으로 6~7개 팀장급 Bot 전체여야 한다.
+  - 일반 사용 흐름의 기본 진입점은 CEO/Coordinator Bot이어야 한다.
+  - 내부 전문가는 실제 Bot이 아니라 opencode-go/Hermes/OpenClaw worker로 실행하고 결과만 팀장 Bot 명의로 projection해야 한다.
+  - 최종 보고 기본 책임자는 CEO/Coordinator Bot이어야 한다.
+  - 검증 결과는 Validation/Audit Bot이 명시적으로 첨부해야 한다.
+  - 29개 직무 전체를 실제 Discord Bot 계정으로 만들지 않는다.
+  - Discord message history를 원본 저장소로 사용하지 않는다.
+  - Hermes Core 수정은 최소화하고 adapter/wrapper/JSON packet 기반으로 연결해야 한다.
+  - delegate_task 중심이 아니라 opencode-go CLI 직접 호출 기반이어야 한다.
+  - Qwen은 1차 라우터, GLM+Codex는 이중 검증, OpenClaw는 필요 시 tool-use/external executor로 사용한다.
+  - Priority Queue와 Limited Parallelism을 포함해야 한다.
+  - crash recovery와 idempotency를 지원해야 한다.
+  - 설계는 MVP 축소가 아니라 최종 운영 상태 기준이어야 한다.
+  - 실제 Discord token, provider secret, production credential은 문서에 포함하지 않는다.
+acceptance_criteria:
+  schema_completeness:
+    - MeetingRun, MeetingPhase, WorkerTask, ValidationCycle, ReportPhase가 필드 단위로 정의되어야 한다.
+    - JSON packet input/output schema가 정의되어야 한다.
+    - validation verdict schema가 정의되어야 한다.
+    - decision log schema가 정의되어야 한다.
+    - Discord projection event schema가 정의되어야 한다.
+    - recovery checkpoint schema가 정의되어야 한다.
+  runtime_flow_coverage:
+    - 단순 Q&A fast-path 시나리오가 sequence로 설명되어야 한다.
+    - 회의형 요청 시나리오가 sequence로 설명되어야 한다.
+    - worker 실행형 요청 시나리오가 sequence로 설명되어야 한다.
+    - dual validation 승인 시나리오가 sequence로 설명되어야 한다.
+    - validation 실패 후 correction loop 시나리오가 sequence로 설명되어야 한다.
+    - crash recovery 재개 시나리오가 sequence로 설명되어야 한다.
+    - timeout/worker failure 시나리오가 sequence로 설명되어야 한다.
+  implementation_readiness:
+    - 실제 runtime process topology가 정의되어야 한다.
+    - 파일/DB/queue 저장 위치와 책임이 정의되어야 한다.
+    - 새로 만들 module, adapter, wrapper가 명시되어야 한다.
+    - Hermes Core 수정 없이 붙이는 경계가 명확해야 한다.
+    - phase별 구현 순서와 검증 방법이 정의되어야 한다.
+  operations_readiness:
+    - Priority Queue 정책이 운영 가능한 수준으로 정의되어야 한다.
+    - Limited Parallelism 정책이 운영 가능한 수준으로 정의되어야 한다.
+    - 권한/보안 등급이 정의되어야 한다.
+    - 로그/메트릭/실패 알림 정책이 정의되어야 한다.
+    - 재시작 후 복구 정책이 정의되어야 한다.
+    - worker timeout/retry policy가 정의되어야 한다.
+  discord_ux_fidelity:
+    - 6~7개 팀장급 실제 Discord Bot 목록과 책임이 명확해야 한다.
+    - 사용자가 직접 @mention 가능한 Bot 범위가 정의되어야 한다.
+    - 어떤 내부 발언/결과를 Discord에 projection할지 규칙이 있어야 한다.
+    - 최종 보고와 검증 verdict가 사용자에게 구분되어 보여야 한다.
+  quota_model_policy:
+    - Qwen/GLM/Codex/opencode-go/기타 모델 사용 기준이 정의되어야 한다.
+    - quota 초과/차단/지연 시 fallback 또는 대기 정책이 있어야 한다.
+    - Codex/GLM은 위험도 기반으로 제한 호출되어야 한다.
+  testability:
+    - Discord 없이도 MeetingRun simulation이 가능해야 한다.
+    - worker를 fake adapter로 대체한 smoke test가 가능해야 한다.
+    - schema validation, routing test, validation verdict test, recovery test가 정의되어야 한다.
