@@ -9,6 +9,19 @@
 
 Runtime Architecture v2의 root aggregate는 `MeetingRun`이다.
 
+The implementation direction is **Hermes-native-first**.
+AI_Agent must reuse Hermes built-in runtime capabilities wherever they already
+exist, and only add domain-specific Coordinator/Adapter/Schema logic that
+Hermes does not provide.
+
+```text
+Hermes provides the platform.
+AI_Agent provides the MeetingRun domain coordinator.
+
+Do not rebuild Hermes Gateway, memory, sessions, skills, provider/auth,
+approvals, cron/background execution, or Kanban unless a verified gap exists.
+```
+
 ```text
 Discord Message / Mention / Command
   -> MeetingRun 생성
@@ -22,6 +35,9 @@ Discord Message / Mention / Command
 Discord thread/message는 source of truth가 아니라 사용자-facing projection이다.
 Queue Job은 실행 단위이고, Hermes session은 runtime context다.
 업무 도메인의 추적/복구/보고 기준은 항상 `meeting_run_id`다.
+Hermes-native resources such as session IDs, cron jobs, background processes,
+Kanban tasks, skills, and memory entries may be referenced by MeetingRun, but
+they are not replaced by AI_Agent-specific duplicates.
 
 ## 2. Design Principle
 
@@ -30,8 +46,15 @@ Discord는 무대다.
 Hermes는 운영본부다.
 opencode-go는 직원 실행 계층이다.
 GLM/Codex는 감사실이다.
-OpenClaw는 외근 실행팀이다.
 MeetingRun은 모든 회의/작업/검증/보고의 장부다.
+```
+
+Implementation principle:
+
+```text
+Use Hermes first.
+Extend with adapters second.
+Create custom infrastructure only when Hermes has no fitting primitive.
 ```
 
 ## 3. Runtime Process Topology
@@ -51,8 +74,9 @@ MeetingRun은 모든 회의/작업/검증/보고의 장부다.
   invokes Qwen Router
         |
         v
-[Priority Queue]
-  schedules MeetingRun by urgency/type/quota
+[Hermes-native Scheduling Layer]
+  prefers Hermes Kanban / background / cron primitives
+  applies MeetingRun priority policy only as domain metadata
         |
         v
 [Runtime Orchestrator]
@@ -63,7 +87,6 @@ MeetingRun은 모든 회의/작업/검증/보고의 장부다.
   - ReportPhase
         |
         +--> [opencode-go Worker Runner]
-        +--> [OpenClaw Executor Adapter]
         +--> [GLM Validator]
         +--> [Codex Auditor]
         |
@@ -73,13 +96,18 @@ MeetingRun은 모든 회의/작업/검증/보고의 장부다.
         |
         v
 [Storage]
-  packets / outputs / decisions / checkpoints / logs
+  project-local MeetingRun artifacts only
+  Hermes-owned memory/session/skill/provider state remains in Hermes
 ```
 
 ## 4. Discord Bot Topology
 
 Actual Discord bots are team-lead level interaction endpoints.
 They are not source-of-truth state holders.
+Hermes Discord Gateway remains the preferred transport layer. Additional bot
+accounts are projection endpoints only; they should not introduce independent
+state, memory, routing, or command infrastructure unless Hermes Gateway cannot
+support the required interaction pattern.
 
 | Bot | Responsibility | User @mention | Projection role |
 |---|---|---:|---|
@@ -94,6 +122,23 @@ They are not source-of-truth state holders.
 Internal specialists are workers, not Discord bot accounts.
 Examples: content_pd, script_writer, concept_artist, rigger, pipeline_rd,
 web_app_developer, legal_reviewer, data_analyst.
+
+Research is a capability delegated to the relevant team, not a separate
+team-lead bot:
+
+```text
+technical research / model-tool-API evaluation -> Tech Lead
+market research / newsletter strategy / audience insight -> Marketing Lead
+content reference research / editorial angle -> Content Lead
+visual reference / style / animation research -> Art Lead
+legal / contract / finance / policy research -> Business Support Lead
+published or decision-critical claims -> Validation/Audit
+```
+
+Personal Assistant is a separate user-support layer, not part of the virtual
+entertainment company org chart and not counted as a team-lead bot. It may use a
+personal Second Brain for schedules, reminders, private notes, and user support,
+while company work remains under the existing team-lead structure.
 
 ## 4.1 Command Surface
 
@@ -143,6 +188,8 @@ Design rule:
 Hermes-first architecture requires Hermes-first Discord UI.
 Command handling must follow what Hermes Gateway actually supports before
 inventing independent Discord slash commands.
+Default command interpretation should be a Hermes skill / natural-language
+intent layer, not a separate Discord command framework.
 ```
 
 ## 5. MeetingRun Top-Level State Machine
@@ -194,7 +241,7 @@ Fast-path requests may skip MeetingPhase.
 
 ### 6.2 WorkerTask
 
-Used for opencode-go, Hermes wrapper, or OpenClaw execution.
+Used for opencode-go or Hermes wrapper execution.
 
 ```text
 created
@@ -281,7 +328,6 @@ Raw meeting logs stay in project storage.
   "roles": ["content_pd", "concept_artist", "marketer"],
   "validators": ["glm_risk", "codex_final"],
   "execution_required": false,
-  "openclaw_required": false,
   "estimated_rounds": 3,
   "projection_policy": "summary_only"
 }
@@ -294,7 +340,7 @@ Raw meeting logs stay in project storage.
   "meeting_run_id": "mr_...",
   "worker_task_id": "wt_...",
   "role": "pipeline_rd",
-  "runner": "opencode_go | hermes_wrapper | openclaw",
+  "runner": "opencode_go | hermes_wrapper",
   "model_policy": {
     "preferred": "deepseek_v4_pro",
     "fallback": ["qwen", "kimi"],
@@ -369,7 +415,20 @@ Raw meeting logs stay in project storage.
 
 ## 8. Storage Policy
 
-Recommended project-local storage:
+Recommended project-local storage is limited to AI_Agent domain artifacts.
+Hermes-owned state remains in Hermes storage and is referenced, not copied.
+
+Hermes-owned storage:
+
+```text
+Hermes sessions / state.db     -> conversation/session history
+Hermes memory                  -> durable user/project facts only
+Hermes skills                  -> reusable procedures, prompts, rubrics
+Hermes cron/background/Kanban  -> generic scheduling/execution primitives
+Hermes provider/auth config    -> model/provider credentials and routing base
+```
+
+AI_Agent-owned project-local storage:
 
 ```text
 runtime/
@@ -384,10 +443,13 @@ runtime/
       final_report.md
   decision_log.jsonl
   audit_log.jsonl
-  queue.db
+  queue_policy.json
 ```
 
-SQLite is appropriate for queue/state.
+Queue/state should use Hermes Kanban, background processes, cron, or Hermes
+session references first. A dedicated `queue.db` is allowed only if simulation
+proves Hermes-native primitives cannot express MeetingRun priority/concurrency
+requirements.
 JSON files are appropriate for packet handoff and debugging.
 Markdown is appropriate for final reports.
 
@@ -448,7 +510,7 @@ Consensus or worker output
 
 ```text
 Process restarts
--> load queue.db + meeting_run.json + latest checkpoint
+-> load Hermes-native execution state + meeting_run.json + latest checkpoint
 -> find non-terminal MeetingRuns
 -> inspect sub states
 -> resume idempotent next action
@@ -467,6 +529,21 @@ WorkerTask running exceeds timeout
 ```
 
 ## 10. Queue and Concurrency Policy
+
+Default queue policy is Hermes-native-first.
+
+Reuse order:
+
+```text
+1. Hermes Kanban for durable task board / assignment / worker dispatch
+2. Hermes background processes for bounded long-running tasks
+3. Hermes cron for scheduled or retryable jobs
+4. Hermes delegation only for short synchronous subtasks
+5. Custom AI_Agent queue.db only after a verified gap
+```
+
+AI_Agent should add only MeetingRun-specific priority metadata and routing
+policy on top of these primitives.
 
 Priority score inputs:
 
@@ -488,7 +565,6 @@ global_meeting_runs_active: small fixed limit
 per_team_active: 1-2
 worker_tasks_active: bounded by provider/quota
 codex_audits_active: very limited
-openclaw_tasks_active: very limited
 ```
 
 Starvation prevention:
@@ -499,15 +575,45 @@ max defer count
 manual promote command
 ```
 
+Implementation rule:
+
+```text
+Do not build a generic queue system first.
+Represent MeetingRun work in Hermes Kanban/background/cron where possible.
+Only add a custom queue store for missing domain-specific semantics.
+```
+
 ## 11. Model and Quota Policy
+
+Hermes provider/auth/model configuration is the base layer. AI_Agent should not
+rebuild provider credential pools, model selection plumbing, or generic fallback
+logic. AI_Agent only decides domain-level model policy: which role, validator,
+or risk class should request which Hermes-configured provider/model.
 
 ```text
 Qwen: first-pass classification/routing
 Kimi/MiniMax/DeepSeek/Qwen: domain worker reasoning by role
-GLM: contradiction, risk, legal/business concern, excessive optimism
-Codex: code audit, critical final approval, system design audit
-opencode-go: worker execution wrapper
-OpenClaw: browser/external tool-use/long external automation only
+opencode-go: unified multi-model worker/validator/auditor execution wrapper
+GLM: default contradiction/risk validator model executed through opencode-go
+Codex: gated code/system auditor executed through opencode-go or Codex CLI
+```
+
+Execution role clarification:
+
+```text
+opencode-go is the default execution wrapper for worker, validator, and auditor
+tasks. GLM and Codex are model/audit roles, not default standalone runtime
+services.
+
+GLM Validator means a validation task executed through opencode-go with a GLM
+model. It handles contradiction, risk, legal/business concern, and excessive
+optimism checks.
+
+Codex Auditor is a gated high-confidence audit role for code, architecture, and
+critical approval. Prefer execution through opencode-go when supported; use a
+separate Codex CLI only when opencode-go cannot provide the required audit path.
+
+Validator/Auditor labels describe execution roles, not independent processes.
 ```
 
 Quota behavior:
@@ -519,7 +625,19 @@ Codex unavailable -> mark codex_audit_pending or use lower-confidence conditiona
 GLM unavailable -> require user-visible warning if risk validation skipped
 ```
 
+Implementation rule:
+
+```text
+Provider credentials live in Hermes config/auth.
+Quota checks may call existing external scripts/services.
+MeetingRun stores only route decisions, quota blockage reasons, and audit refs.
+```
+
 ## 12. Security and Permission Model
+
+Hermes approval, toolset, redaction, profile, and gateway authorization features
+are the base security layer. AI_Agent adds domain-level permission classification
+only; it must not replace Hermes approval or redaction mechanisms.
 
 Permission levels:
 
@@ -535,7 +653,7 @@ L5: delete/deploy/payment/account/security-sensitive action
 Rules:
 
 ```text
-L4-L5 require explicit approval or preconfigured allowlist.
+L4-L5 require Hermes approval or preconfigured allowlist.
 Secrets never appear in Discord projection.
 Worker packets reference secret names, not secret values.
 Discord permissions are bot-specific and least-privilege.
@@ -543,6 +661,18 @@ All destructive actions must be logged with meeting_run_id.
 ```
 
 ## 13. Observability
+
+Hermes-native observability remains the operational base:
+
+```text
+Hermes logs / gateway status / doctor / insights
+Hermes sessions stats and session_search
+Hermes cron status
+Hermes background process poll/log/wait
+Hermes Kanban stats/runs/log/tail when Kanban is used
+```
+
+AI_Agent observability adds only MeetingRun-domain events and metrics.
 
 Minimum events:
 
@@ -581,14 +711,22 @@ runtime/audit_log.jsonl
 ## 14. Implementation Boundaries
 
 Hermes Core should not be modified for the first production-ready version.
+Hermes-native capabilities should be used before creating any AI_Agent-specific
+infrastructure.
 Integrate via:
 
 ```text
+Hermes Discord Gateway
+Hermes skills for meeting/routing/report/validation procedures
+Hermes memory for durable facts only
+Hermes provider/auth/model config
+Hermes approvals/redaction/toolsets
+Hermes Kanban/background/cron where applicable
 adapter modules
 CLI wrappers
 JSON packet files
-SQLite queue/state
-Discord gateway/bot adapters
+project-local MeetingRun artifacts
+Discord projection adapters
 Ouroboros seed/evaluator artifacts
 ```
 
@@ -596,6 +734,10 @@ Prohibited as initial approach:
 
 ```text
 patching Hermes core loop
+reimplementing Hermes Discord Gateway
+reimplementing Hermes memory/session/skill systems
+reimplementing Hermes provider/auth/fallback systems
+building a generic queue before testing Hermes Kanban/background/cron
 making 29 Discord bot accounts
 using Discord history as database
 building generic BPMN engine

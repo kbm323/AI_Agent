@@ -2,11 +2,11 @@
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
-**Goal:** Implement the Hermes-first AI Virtual Entertainment Company runtime architecture around `MeetingRun`, Discord team-lead bot projections, opencode-go worker packets, dual validation, recovery, and simulation tests.
+**Goal:** Implement the Hermes-first AI Virtual Entertainment Company runtime architecture around `MeetingRun`, Discord team-lead bot projections, opencode-go worker/validator/auditor packets, validation, recovery, and simulation tests.
 
-**Architecture:** Keep Hermes Core untouched. Add project-local schema, state, queue, packet, adapter, and simulation modules. Discord is a projection layer; `MeetingRun` storage is the source of truth.
+**Architecture:** Keep Hermes Core untouched. Reuse Hermes-native Gateway, skills, memory, background/cron/Kanban, provider/auth, approvals, and observability wherever possible. Add only project-local schema, MeetingRun state, packet, adapter, policy, and simulation modules. Discord is a projection layer; `MeetingRun` storage is the domain source of truth.
 
-**Tech Stack:** Python, pytest, JSON/YAML packets, SQLite queue/state, Discord adapter wrappers, opencode-go CLI wrapper, optional OpenClaw adapter.
+**Tech Stack:** Python, pytest, JSON/YAML packets, project-local MeetingRun artifacts, Hermes Kanban/background/cron where applicable, Discord projection wrappers, opencode-go CLI wrapper.
 
 ---
 
@@ -137,7 +137,7 @@ runtime/meeting_runs/mr_*/
 
 ---
 
-## Phase 3: Routing and Queue
+## Phase 3: Routing and Scheduling Policy
 
 ### Task 3.1: Define routing adapter interface
 
@@ -156,7 +156,7 @@ runtime/meeting_runs/mr_*/
 
 ### Task 3.2: Create priority queue policy
 
-**Objective:** Implement queue priority calculation and bounded concurrency policy.
+**Objective:** Implement MeetingRun priority calculation and bounded concurrency policy as domain metadata on top of Hermes-native scheduling primitives.
 
 **Files:**
 - Create: `src/runtime_architecture_v2/queue_policy.py`
@@ -166,15 +166,23 @@ runtime/meeting_runs/mr_*/
 - urgency influences priority
 - critical beats normal
 - aging prevents starvation
-- Codex/OpenClaw have smaller concurrency limits
+- Codex audits have smaller concurrency limits
+- Hermes Kanban/background/cron are preferred before any custom queue store
 
-### Task 3.3: Add SQLite queue skeleton
+### Task 3.3: Add Hermes scheduling adapter policy
 
-**Objective:** Persist queued MeetingRuns with priority and status.
+**Objective:** Define how MeetingRun work maps to Hermes Kanban, background processes, cron jobs, or local simulation stubs.
 
 **Files:**
-- Create: `src/runtime_architecture_v2/queue_store.py`
-- Test: `tests/test_runtime_architecture_v2_queue_store.py`
+- Create: `src/runtime_architecture_v2/scheduling_policy.py`
+- Test: `tests/test_runtime_architecture_v2_scheduling_policy.py`
+
+**Rules:**
+- default to Hermes Kanban for durable task-board style work
+- use Hermes background processes for bounded long-running execution
+- use Hermes cron for scheduled/retryable jobs
+- use local fake scheduling only in tests/simulation
+- do not add a dedicated `queue.db` unless simulation proves a verified gap
 
 ---
 
@@ -182,7 +190,7 @@ runtime/meeting_runs/mr_*/
 
 ### Task 4.1: Define WorkerRunner interface
 
-**Objective:** Create a generic runner interface for opencode-go, Hermes wrapper, and OpenClaw.
+**Objective:** Create a generic runner interface for opencode-go and Hermes wrapper execution.
 
 **Files:**
 - Create: `src/runtime_architecture_v2/workers.py`
@@ -228,13 +236,15 @@ class WorkerRunner:
 - Create: `src/runtime_architecture_v2/validation.py`
 - Test: `tests/test_runtime_architecture_v2_validation.py`
 
-### Task 5.2: Add GLM/Codex validator interfaces
+### Task 5.2: Add GLM/Codex validator role interfaces
 
-**Objective:** Separate GLM risk review from Codex audit.
+**Objective:** Separate GLM risk review from Codex audit as execution roles, while keeping opencode-go as the default multi-model execution wrapper.
 
 **Rules:**
-- GLM default for contradiction/risk/legal/business concerns
-- Codex only for code, critical, or final approval routes
+- GLM Validator is a validation task executed through opencode-go with a GLM model
+- Codex Auditor is a gated high-confidence audit role for code, architecture, critical, or final approval routes
+- prefer Codex execution through opencode-go when supported
+- use separate Codex CLI only when opencode-go cannot provide the required audit path
 - unavailable validator produces explicit degraded verdict, not silent pass
 
 ### Task 5.3: Implement correction loop decision
@@ -369,7 +379,7 @@ created -> classified -> routed -> active -> validating? -> reporting -> complet
 
 ### Task 8.2: Add quota/model policy
 
-**Objective:** Encode Qwen/GLM/Codex/opencode-go/OpenClaw use rules and fallback behavior.
+**Objective:** Encode Qwen/GLM/Codex/opencode-go use rules and fallback behavior.
 
 **Files:**
 - Create: `src/runtime_architecture_v2/model_policy.py`
@@ -435,13 +445,14 @@ python scripts/simulate_runtime_architecture_v2.py --scenario worker_failure
 - Start with dry-run and command construction.
 - Then one controlled smoke packet.
 
-### Task 10.3: Wire optional OpenClaw executor
-
-**Objective:** Add OpenClaw only for browser/external tool-use tasks.
-
-### Task 10.4: Wire GLM/Codex validators
+### Task 10.3: Wire GLM/Codex validators through opencode-go-first execution
 
 **Objective:** Add live validators with quota policy guard.
+
+**Rules:**
+- GLM validation runs through opencode-go by default
+- Codex audit runs through opencode-go when supported
+- separate Codex CLI is fallback only
 
 ---
 
@@ -480,5 +491,5 @@ Checklist:
 
 ## Notes
 
-This plan intentionally starts with schema, fake adapters, storage, and simulation before live Discord/opencode-go/OpenClaw wiring.
+This plan intentionally starts with schema, fake adapters, storage, and simulation before live Discord/opencode-go wiring.
 That is not MVP reduction; it is the safest path to the final architecture because it proves the source-of-truth runtime before attaching external systems.
