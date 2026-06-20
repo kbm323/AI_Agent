@@ -1,5 +1,7 @@
 # AI_Agent MVP 진단 보고서 (2026-06-06 업데이트)
 
+> Legacy note: 이 문서는 Runtime Architecture v2 이전 진단 기록이다. OpenClaw/Hermes dual-persona 표현은 과거 상태 설명이며, 현재 기준 설계는 `runtime-architecture-v2.md`와 `system-design-decisions.md`를 따른다.
+
 ## Scope
 
 이 진단 보고서는 `/home/kbm/F:ai-projects/AI_Agent` 구현체(2026-06-06 기준)와

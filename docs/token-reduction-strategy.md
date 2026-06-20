@@ -1,5 +1,7 @@
 # Token Reduction Strategy
 
+> Legacy note: 이 문서는 과거 loop role 명칭을 보존한다. OpenClaw 관련 표현은 Runtime Architecture v2 기준에서는 legacy raw-turn labels로만 해석한다.
+
 Schema: `token-reduction-strategy.v1`
 
 ## 40-50% Savings Target

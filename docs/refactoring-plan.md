@@ -1,5 +1,7 @@
 # AI_Agent 리팩터링 계획 (2026-06-06 업데이트)
 
+> Legacy note: 이 문서는 Runtime Architecture v2 이전 리팩터링 계획이다. OpenClaw adapter 표현은 과거 계획이며, 현재 실행 기준은 opencode-go-first + Hermes-native scheduling이다.
+
 Decision basis: `docs/review-evidence.json` (`review-evidence.v1`, recommendation `partial_redesign`),
 `docs/diagnosis-report.md` (2026-06-06 재진단).
 

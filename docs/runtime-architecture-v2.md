@@ -444,6 +444,35 @@ runtime/
   decision_log.jsonl
   audit_log.jsonl
   queue_policy.json
+
+second_brain/
+  company/
+    AGENTS.md
+    raw/
+    wiki/
+      index.md
+      log.md
+  personal/
+    AGENTS.md
+    raw/
+    wiki/
+      index.md
+      log.md
+```
+
+Second Brain policy:
+
+```text
+Company Second Brain -> strategy, research, market/tech/content knowledge,
+validated meeting decisions, reusable company context.
+
+Personal Second Brain -> schedules, reminders, private notes, personal goals,
+and user-support context for the separate Personal Assistant layer.
+
+raw/ is immutable source material.
+wiki/ is synthesized markdown, Obsidian-compatible, and LLM Wiki style.
+Hermes memory stores only compact durable operating facts.
+context-mode/FTS5 may index markdown for search but is not source of truth.
 ```
 
 Queue/state should use Hermes Kanban, background processes, cron, or Hermes

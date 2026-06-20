@@ -7,7 +7,7 @@
 
 ## Overview
 
-**Goal:** Implement a meeting-first AI Virtual Entertainment Company operating system where a Hermes-based Coordinator dynamically routes user requests to role-specific AI workers, orchestrates multi-agent round-table discussions, builds consensus through structured validation, optionally delegates execution tasks to OpenClaw, and continuously evolves organizational knowledge through a four-layer memory architecture (Google Drive → Obsidian LLM Wiki → FTS5 Retrieval → Coordinator).
+**Goal:** Implement a meeting-first AI Virtual Entertainment Company operating system where a Hermes-based Coordinator dynamically routes user requests to role-specific AI workers, orchestrates multi-agent round-table discussions, builds consensus through structured validation, executes worker/validator/auditor tasks through opencode-go-first adapters, and continuously evolves organizational knowledge through a separated Second Brain architecture for company knowledge and personal assistant knowledge.
 
 ---
 
@@ -135,40 +135,41 @@
 
 ---
 
-## Track 7: OpenClaw Delegation Interface
+## Track 7: Execution Role Interface
 
-**Decision:** OpenClaw = Tool-use Executor (Option B). NOT alternative orchestrator.
+**Decision:** opencode-go is the unified execution wrapper for worker, validator, and auditor tasks. OpenClaw is removed from the default architecture and is not an optional fallback in the current plan.
 
 **Role Boundary:**
-- Hermes Coordinator: thinking, meeting, consensus, validation, routing
-- opencode-go Workers: per-role opinion generation
-- OpenClaw Workers: actual execution and artifact creation
+- Hermes Coordinator: orchestration, meeting, consensus, routing, approvals, memory/skills/session references
+- opencode-go Workers: per-role worker outputs and domain reasoning
+- GLM Validator: contradiction/risk/legal/business validation model executed through opencode-go
+- Codex Auditor: gated high-confidence code/system auditor executed through opencode-go when supported; separate Codex CLI is fallback only when opencode-go cannot provide the required audit path
 
-**Delegation Targets (OpenClaw):**
-- Code generation and large-scale code modification
-- Multi-file editing
-- Git commit/branch/PR creation
-- Build/test/deploy automation
-- CLI-based automation
-- Browser/external tool manipulation
-- Long-running execution workflows
+**Execution Targets:**
+- Role-specific opinion generation
+- Code/system design audit
+- Structured validation and rebuttal
+- Build/test/deploy command construction through approved Hermes/tool boundaries
+- Long-running work through Hermes-native background/Kanban/cron primitives where applicable
 
-**Delegation Exclusions (NOT OpenClaw):**
-- Idea generation, meetings/discussions, opinion gathering, validation/rebuttal, legal/brand/strategy decisions, final decision-making
+**Execution Exclusions:**
+- Worker/validator/auditor roles do not respond directly to users
+- OpenClaw-specific runner contracts are not part of Runtime Architecture v2
+- Browser/external automation requires a separately approved adapter decision if reintroduced later
 
 **Interface Contract:**
-- Same file-based JSON contract as opencode-go
-- Input: meeting_id + Action Plan + Context Packet (JSON)
+- File-based JSON packet contract remains the default
+- Input: meeting_run_id + Context Packet + model/role policy
 - Output: structured JSON (status, summary, artifacts, errors, needs_review)
 - Coordinator collects results → validation layer → final response integration
 
 **Response Ownership:**
-- OpenClaw does NOT respond directly to users
-- User interface: Coordinator single window always
+- User interface remains Coordinator/team-lead projection only
+- Internal worker outputs are projected through the responsible team lead or Validation/Audit Bot
 
 **Design Principles:**
-- Execution Separation: thinking vs doing
-- Pluggable execution layer: OpenClaw replaceable without touching Coordinator
+- Hermes-first: reuse Hermes Gateway, sessions, memory, skills, provider/auth, approvals, background, cron, and Kanban before adding custom infrastructure
+- opencode-go-first: route worker/validator/auditor execution through one multi-model wrapper
 
 ---
 
@@ -207,36 +208,59 @@
 
 ## Track 9: Knowledge Accumulation
 
-**Decision:** 4-layer knowledge system.
+**Decision:** Use a Hermes-minimal-memory + Aiden/Karpathy-style Second Brain architecture. Long-term knowledge is split between company knowledge and personal assistant knowledge.
 
-**Layer 0 — Google Drive (External Knowledge Repository):**
-- Source storage: PDF, SRT, GitHub ZIP/README, images, reference materials, project originals
-- Immutable — never modify or delete originals
+**Level 0 — Hermes Memory:**
+- Compact durable operating facts only
+- User preferences, stable project paths, stable tool quirks
+- NOT raw meeting logs, worker dumps, research notes, or temporary task state
 
-**Layer 1 — Obsidian LLM Wiki:**
-- Structure: Wiki/, Meetings/, Decisions/, Projects/, Agent_Specs/, Summaries/, System_Reviews/
-- AI-generated summaries, links, wikis, decision documents only
-- NOT originals — Obsidian is the AI's working knowledge layer
+**Level 1 — Hermes Skills:**
+- Reusable procedures and rubrics
+- Examples: meeting protocol, validation rubric, quota monitoring, Second Brain ingest/query/lint workflows
 
-**Layer 2 — context-mode FTS5 (Search Engine):**
-- Markdown FTS, Decision Log search, Meeting History search, Wiki search
-- Vector DB is future optional extension
+**Level 2 — AI_Agent Runtime Artifacts:**
+- Source of truth for active execution state
+- Structure: `runtime/meeting_runs/<meeting_run_id>/`
+- Contains meeting_run.json, packets, outputs, checkpoints, decision_log.jsonl, audit_log.jsonl
+- References Hermes sessions/background/Kanban/cron IDs instead of copying Hermes-owned state
 
-**Layer 3 — Hermes Coordinator (Dynamic Retrieval):**
-- Coordinator-driven dynamic retrieval: analyze meeting purpose → search relevant knowledge → Context Packet
-- Past knowledge NOT injected into all meetings by default
-- User explicit request: force reference specific past meetings/documents
+**Level 3 — Company Second Brain:**
+- Long-term company knowledge: strategy, research, market/tech/content knowledge, meeting decisions, validated outputs
+- Aiden-style layout:
+  - `second_brain/company/AGENTS.md`
+  - `second_brain/company/raw/`
+  - `second_brain/company/wiki/index.md`
+  - `second_brain/company/wiki/log.md`
+- Raw sources are immutable; wiki pages are synthesized, cross-linked, and maintained
+
+**Level 4 — Personal Second Brain:**
+- Separate user-support knowledge for the Personal Assistant
+- Schedules, reminders, private notes, personal goals, daily/weekly briefing material
+- Aiden-style layout:
+  - `second_brain/personal/AGENTS.md`
+  - `second_brain/personal/raw/`
+  - `second_brain/personal/wiki/index.md`
+  - `second_brain/personal/wiki/log.md`
+- Not part of the AI company org chart and not counted as a team-lead bot
+
+**Obsidian / LLM Wiki Policy:**
+- The Second Brain directories are plain markdown and Obsidian-compatible
+- Use `[[wikilinks]]`, frontmatter, index.md, and log.md
+- Raw sources live under `raw/`; synthesized pages live under `wiki/`
+- context-mode/FTS5 may index selected markdown for retrieval, but it is a search layer, not the source of truth
 
 **Knowledge Lifecycle:**
-- Immutable: Google Drive Source, Meeting Records, Decision Logs (append-only, permanent)
-- Living: Wiki, Project Summary, Knowledge Summary (AI continuously updates)
-- Stale conclusions: NOT deleted; metadata managed (status: superseded, superseded_by, reason)
-- Auto-summarization: Weekly, Monthly, Quarterly digests
+- Immutable: raw sources, MeetingRun records, decision/audit logs
+- Living: wiki pages, project summaries, knowledge summaries
+- Stale conclusions: NOT deleted; mark metadata such as status: superseded, superseded_by, reason
+- Digests: weekly/monthly/quarterly summaries can be generated into the appropriate Second Brain wiki
 
 **Meta-Cognition:**
-- Collected metrics: Deadlock frequency, Validator disagreement rate, Fallback usage, per-model success/failure, per-role bottlenecks, escalation frequency
+- Collected metrics: deadlock frequency, validator disagreement rate, fallback usage, per-model success/failure, per-role bottlenecks, escalation frequency
 - Self-Reflection Report: Coordinator generates periodic system operations report + improvement proposals
 - CRITICAL: Meta-cognition results NOT auto-applied — user approval required for policy changes
+
 
 ---
 
@@ -264,7 +288,7 @@
 
 **Discord Persona Architecture — Hybrid Bot/Webhook Model:**
 - User-approved direction: use the hybrid model, not webhook-only and not one real bot per specialist.
-- Persistent team-leader bots (6-7): 👔Coordinator, 🎬ContentPD, 🎨ArtDirector, ⚙️TechDirector, 📈MarketingLead, 🛡️Validator, 🛠️ExecutionTeam/OpenClaw.
+- Persistent team-leader bots (7): 👔Coordinator, 🎬Content Lead, 🎨Art Lead, ⚙️Tech Lead, 📈Marketing Lead, 💼Business Support Lead, 🛡️Validation/Audit.
 - Team-leader bots are real Discord bots/users from the user's point of view: they can be mentioned directly (for example `@TechDirector ...`), can own visible team-level responses, and can participate in meeting threads.
 - Internal specialists are not real Discord bots by default; they exist as opencode-go/Hermes workers and are represented through the relevant team leader.
 - Optional specialist appearance uses Discord webhook rendering inside the meeting thread (custom username/avatar per message) for roles like Live2D rigger, 3D modeler, Unity engineer, motion designer, QA analyst.
@@ -316,7 +340,7 @@ paused, deadlocked, escalated, cancelled, failed
 - Deadlock → tie-break 1 → chairperson proposal/escalation
 - GLM failure → GLM fallback/Codex validation
 - GLM/Codex conflict → high-risk escalation, normal → re-meeting
-- OpenClaw failure → retry → record failure → validation/escalation
+- opencode-go worker/auditor failure → retry → fallback/degraded verdict → validation/escalation
 - P0 preemption → lower paused, resume from manifest after P0
 - User cancel → cancelled record, output preserved
 - Coordinator crash → resume from manifest.completed_step
@@ -442,7 +466,7 @@ paused, deadlocked, escalated, cancelled, failed
 
 **Parallelism (Hybrid):**
 - Parallel: Round 1, Round 2 independent opinion gathering
-- Sequential: Consensus writing, Validation, Codex 2nd validation, OpenClaw execution, post-execution re-validation
+- Sequential: Consensus writing, Validation, Codex audit, approved execution, post-execution re-validation
 - Worker failure: does NOT halt entire meeting; Coordinator judges by quorum + required_roles
 
 **Fallback & Retry:**
@@ -456,31 +480,32 @@ paused, deadlocked, escalated, cancelled, failed
 
 ---
 
-## Track G-1: OpenClaw Execution Model
+## Track G-1: opencode-go / Hermes-Native Execution Model
 
-**Hybrid — Short sync, Long async:**
-- ≤30s (code_patch, git_diff, short run_tests): sync call
-- >30s (build_project, create_pr, automation): async job
-- High-risk (deploy, PR create, external publish, bulk file change, data delete/migrate): async + checkpoint + human approval
-- Sync timeout → async job conversion or fallback
+**Hybrid — Short sync, Long Hermes-native background:**
+- ≤30s deterministic checks or small packet validation: synchronous runner call
+- >30s build/test/automation: Hermes background process or Kanban-tracked work item
+- Scheduled/retryable work: Hermes cron
+- High-risk operations (deploy, PR create, external publish, bulk file change, data delete/migrate): explicit Hermes approval + checkpoint + audit log
+- Sync timeout → background process conversion or degraded verdict
 
 ---
 
-## Track G-2: OpenClaw Async Protocol
+## Track G-2: Execution Completion Protocol
 
 **Q1 — Sync vs Async:** Hybrid (above)
 
-**Q2 — Async Notification:** Hybrid (Callback primary + File Watch fallback + Polling recovery)
-- Primary: Callback/Webhook — OpenClaw sends execution_result to Coordinator callback endpoint
-- Fallback: File Watch — execution_result.json creation detection
-- Recovery: Polling — health check only, status endpoint query when callback missing
+**Q2 — Async Notification:** Hermes-native first
+- Primary: Hermes background process completion / Kanban status / cron result
+- Fallback: File Watch — execution_result.json creation detection for project-local adapters
+- Recovery: Polling — health check only, status query when completion signal is missing
 
-**Q3 — Runtime Intervention:** Cancel-Only + Semantic Retune
-- Cancel: user stop, timeout, P0 preemption, risk detection → direct call
-- Pause: cancel + preserve checkpoint/result → paused state
-- Retune: cancel + new execution_id + modified execution_packet
-- Human approval: pre-execution wait state; mid-execution discovery → cancel → approval state
-- All cancel/retune: manifest records original_execution_id, new_execution_id, reason, preserved_artifacts
+**Q3 — Runtime Intervention:** SIGTERM pause preferred over terminal cancel
+- Stop: user stop, timeout, P0 preemption, risk detection → graceful SIGTERM where possible
+- Pause: preserve checkpoint/result → paused or resumable state when supported
+- Retune: create new execution_id + modified execution_packet rather than mutating running scope
+- Human approval: pre-execution wait state; mid-execution discovery → stop → approval state
+- All stop/retune actions: manifest records original_execution_id, new_execution_id, reason, preserved_artifacts
 
 **Design Principle:** External execution immutable once started. Scope/parameter change = new auditable execution, not mutation of running process.
 
@@ -513,7 +538,7 @@ These will be addressed during implementation or via follow-up interview.
 1. **State is centralized, execution is distributed** — Coordinator owns state machine; workers emit events
 2. **Persona over Model** — Discord exposes roles, not models; internal model swaps transparent
 3. **Context is curated, not dumped** — Workers receive role-relevant bounded packets; raw data preserved for audit
-4. **Execution is permissioned, auditable, reversible** — OpenClaw acts; Coordinator decides; Validator checks; User approves irreversible
+4. **Execution is permissioned, auditable, resumable** — opencode-go/Hermes-native runners execute; Coordinator decides; Validator/Auditor checks; User approves irreversible actions
 5. **Validation is structured, bounded, auditable** — Validator emits issues+scores; Coordinator owns transition
 6. **Knowledge Separation** — Source=Fact, Wiki=Interpretation, Decision=Choice, Summary=Compression
 7. **Retrieval First** — Past knowledge injected only when relevant, not by default

@@ -1,5 +1,7 @@
 # Loop Context Compression Policy
 
+> Legacy note: 이 문서는 과거 loop role 명칭을 보존한다. OpenClaw 관련 필드는 Runtime Architecture v2 기준에서는 legacy turn/source labels로만 해석한다.
+
 Schema: `loop-context-compression-policy.v1`
 
 ## Retained Fields
