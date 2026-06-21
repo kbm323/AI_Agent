@@ -44,7 +44,12 @@ class WorkerTaskRunner(StrEnum):
 
 class ValidationVerdictValue(StrEnum):
     PASS = "pass"
+    CONDITIONAL_PASS = "conditional_pass"
     REVISE = "revise"
+    REJECT = "reject"
+    ESCALATE = "escalate"
+    # Legacy compatibility: existing packets may still emit "fail"; Phase 5
+    # policy treats it as reject-equivalent rather than silently passing it.
     FAIL = "fail"
     DEGRADED = "degraded"
 
