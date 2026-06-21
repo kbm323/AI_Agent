@@ -26,6 +26,8 @@ runtime/
 .runtime/
 logs/
 *.log
+_debug_*.py
+.ouroboros_eval_artifact.md
 
 # Secrets / local env
 .env

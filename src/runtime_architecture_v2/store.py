@@ -91,9 +91,17 @@ class MeetingRunStore:
         self._atomic_write_json(path, payload)
         return path
 
-    def load_checkpoint(self, meeting_run_id: str, checkpoint_id: str) -> RecoveryCheckpoint:
+    def load_checkpoint(
+        self,
+        meeting_run_id: str,
+        checkpoint_id: str,
+    ) -> RecoveryCheckpoint:
         self._validate_id(checkpoint_id, "checkpoint_id")
-        path = self.meeting_run_dir(meeting_run_id) / "checkpoints" / f"{checkpoint_id}.json"
+        path = (
+            self.meeting_run_dir(meeting_run_id)
+            / "checkpoints"
+            / f"{checkpoint_id}.json"
+        )
         if not path.exists():
             raise StoreError(
                 code="missing_checkpoint",
@@ -145,8 +153,17 @@ class MeetingRunStore:
     ) -> Path:
         run_dir = self._ensure_run_layout(meeting_run_id)
         path = run_dir / filename
-        payload = {**event, "meeting_run_id": meeting_run_id, "logged_at": self._now_iso()}
-        line = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        payload = {
+            **event,
+            "meeting_run_id": meeting_run_id,
+            "logged_at": self._now_iso(),
+        }
+        line = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         with path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
         return path
@@ -185,7 +202,11 @@ class MeetingRunStore:
                 path=str(path),
             ) from exc
         if not isinstance(payload, dict):
-            raise StoreError(code="invalid_json", message="JSON root must be an object", path=str(path))
+            raise StoreError(
+                code="invalid_json",
+                message="JSON root must be an object",
+                path=str(path),
+            )
         return payload
 
     def _default_checkpoint(self, meeting_run_id: str) -> RecoveryCheckpoint:
@@ -198,7 +219,10 @@ class MeetingRunStore:
 
     def _validate_id(self, value: str, label: str) -> None:
         if not value or not _SAFE_ID_RE.fullmatch(value):
-            raise StoreError(code=f"invalid {label}", message=f"invalid {label}: {value}")
+            raise StoreError(
+                code=f"invalid {label}",
+                message=f"invalid {label}: {value}",
+            )
 
     def _now_iso(self) -> str:
         return datetime.now(UTC).isoformat()

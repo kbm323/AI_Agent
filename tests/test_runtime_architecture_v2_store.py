@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from src.runtime_architecture_v2.schemas import MeetingRun, MeetingRunState, RecoveryCheckpoint
+from src.runtime_architecture_v2.schemas import (
+    MeetingRun,
+    MeetingRunState,
+    RecoveryCheckpoint,
+)
 from src.runtime_architecture_v2.store import MeetingRunStore, StoreError
 
 
@@ -22,7 +26,9 @@ def _meeting_run(meeting_run_id: str = "mr_001") -> MeetingRun:
     )
 
 
-def test_store_saves_meeting_run_with_expected_layout_and_deterministic_json(tmp_path: Path):
+def test_store_saves_meeting_run_with_expected_layout_and_deterministic_json(
+    tmp_path: Path,
+):
     store = MeetingRunStore(tmp_path)
     run = _meeting_run()
 
@@ -53,7 +59,9 @@ def test_store_rejects_path_traversal_meeting_run_ids(tmp_path: Path):
         store.load_meeting_run("mr/escape")
 
 
-def test_store_reports_missing_and_corrupt_meeting_run_as_structured_errors(tmp_path: Path):
+def test_store_reports_missing_and_corrupt_meeting_run_as_structured_errors(
+    tmp_path: Path,
+):
     store = MeetingRunStore(tmp_path)
 
     with pytest.raises(StoreError) as missing:
@@ -97,7 +105,9 @@ def test_checkpoint_round_trip_latest_and_missing_default(tmp_path: Path):
 
     assert first_path.name == "chk_001.json"
     assert second_path.name == "chk_002.json"
-    assert json.loads(second_path.read_text(encoding="utf-8"))["checkpoint_path"] == str(second_path)
+    assert json.loads(second_path.read_text(encoding="utf-8"))[
+        "checkpoint_path"
+    ] == str(second_path)
     assert store.load_checkpoint("mr_001", "chk_001").checkpoint_id == "chk_001"
     assert store.load_latest_checkpoint("mr_001") == RecoveryCheckpoint.from_dict(
         json.loads(second_path.read_text(encoding="utf-8"))
@@ -138,7 +148,14 @@ def test_store_layout_does_not_create_queue_db_or_copy_hermes_state(tmp_path: Pa
 def test_corrupt_checkpoint_is_reported_as_structured_error(tmp_path: Path):
     store = MeetingRunStore(tmp_path)
     store.save_meeting_run(_meeting_run())
-    checkpoint_path = tmp_path / "runtime" / "meeting_runs" / "mr_001" / "checkpoints" / "chk_bad.json"
+    checkpoint_path = (
+        tmp_path
+        / "runtime"
+        / "meeting_runs"
+        / "mr_001"
+        / "checkpoints"
+        / "chk_bad.json"
+    )
     checkpoint_path.write_text("{not json", encoding="utf-8")
 
     with pytest.raises(StoreError) as corrupt:
@@ -153,7 +170,11 @@ def test_append_jsonl_decision_and_audit_events_include_meeting_run_id(tmp_path:
 
     decision_path = store.append_decision_event(
         "mr_001",
-        {"decision": "route_to_tech", "reason": "technical execution", "meeting_run_id": "wrong"},
+        {
+            "decision": "route_to_tech",
+            "reason": "technical execution",
+            "meeting_run_id": "wrong",
+        },
     )
     audit_path = store.append_audit_event(
         "mr_001",
@@ -162,7 +183,9 @@ def test_append_jsonl_decision_and_audit_events_include_meeting_run_id(tmp_path:
 
     assert decision_path.name == "decision_log.jsonl"
     assert audit_path.name == "audit_log.jsonl"
-    decision_event = json.loads(decision_path.read_text(encoding="utf-8").splitlines()[0])
+    decision_event = json.loads(
+        decision_path.read_text(encoding="utf-8").splitlines()[0]
+    )
     audit_event = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[0])
     assert decision_event["meeting_run_id"] == "mr_001"
     assert decision_event["decision"] == "route_to_tech"

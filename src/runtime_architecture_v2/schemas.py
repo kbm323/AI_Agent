@@ -106,7 +106,11 @@ class MeetingRun:
         object.__setattr__(self, "hermes_refs", _dict(self.hermes_refs))
         object.__setattr__(self, "worker_task_ids", _tuple(self.worker_task_ids))
         object.__setattr__(self, "validation_ids", _tuple(self.validation_ids))
-        object.__setattr__(self, "projection_event_ids", _tuple(self.projection_event_ids))
+        object.__setattr__(
+            self,
+            "projection_event_ids",
+            _tuple(self.projection_event_ids),
+        )
         object.__setattr__(self, "checkpoint_ids", _tuple(self.checkpoint_ids))
         object.__setattr__(self, "metadata", _dict(self.metadata))
 
@@ -122,7 +126,7 @@ class MeetingRun:
         guild_id: str = "",
         hermes_session_id: str = "",
         priority: str = "P2",
-    ) -> "MeetingRun":
+    ) -> MeetingRun:
         hermes_refs = {"session_id": hermes_session_id} if hermes_session_id else {}
         return cls(
             meeting_run_id=meeting_run_id,
@@ -162,7 +166,7 @@ class MeetingRun:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "MeetingRun":
+    def from_dict(cls, payload: dict[str, Any]) -> MeetingRun:
         return cls(
             meeting_run_id=payload["meeting_run_id"],
             state=payload.get("state", MeetingRunState.CREATED),
@@ -224,7 +228,7 @@ class RoutingResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "RoutingResult":
+    def from_dict(cls, payload: dict[str, Any]) -> RoutingResult:
         return cls(
             meeting_run_id=payload["meeting_run_id"],
             route_type=payload["route_type"],
@@ -278,7 +282,7 @@ class WorkerTask:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "WorkerTask":
+    def from_dict(cls, payload: dict[str, Any]) -> WorkerTask:
         return cls(
             worker_task_id=payload["worker_task_id"],
             meeting_run_id=payload["meeting_run_id"],
@@ -329,7 +333,7 @@ class ValidationVerdict:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "ValidationVerdict":
+    def from_dict(cls, payload: dict[str, Any]) -> ValidationVerdict:
         return cls(
             validation_id=payload["validation_id"],
             meeting_run_id=payload["meeting_run_id"],
@@ -371,7 +375,7 @@ class DiscordProjectionEvent:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "DiscordProjectionEvent":
+    def from_dict(cls, payload: dict[str, Any]) -> DiscordProjectionEvent:
         return cls(
             event_id=payload["event_id"],
             meeting_run_id=payload["meeting_run_id"],
@@ -426,7 +430,7 @@ class RecoveryCheckpoint:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "RecoveryCheckpoint":
+    def from_dict(cls, payload: dict[str, Any]) -> RecoveryCheckpoint:
         return cls(
             checkpoint_id=payload["checkpoint_id"],
             meeting_run_id=payload["meeting_run_id"],
