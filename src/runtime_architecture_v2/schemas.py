@@ -32,6 +32,7 @@ class WorkerTaskState(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    TIMED_OUT = "timed_out"
     CANCELLED = "cancelled"
     PAUSED = "paused"
 

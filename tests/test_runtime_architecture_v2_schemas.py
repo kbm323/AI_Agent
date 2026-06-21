@@ -107,6 +107,10 @@ def test_worker_task_runner_is_opencode_go_or_hermes_wrapper_only():
     assert payload["model_policy"]["role"] == "validator"
     assert WorkerTask.from_dict(payload) == task
 
+    timed_out = WorkerTask.from_dict({**payload, "state": "timed_out"})
+    assert timed_out.state == WorkerTaskState.TIMED_OUT
+    assert timed_out.to_dict()["state"] == "timed_out"
+
     with pytest.raises(ValueError, match="invalid WorkerTask runner"):
         WorkerTask(
             worker_task_id="wt_002",
