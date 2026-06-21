@@ -1,0 +1,280 @@
+"""Discord projection layer for Runtime Architecture v2.
+
+This module keeps Discord-facing output as an AI_Agent domain projection. It
+formats safe user-facing messages and records fake sink publications without
+reimplementing Hermes Gateway, queues, or Discord interaction infrastructure.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+
+from src.runtime_architecture_v2.schemas import (
+    DiscordProjectionEvent,
+    MeetingRun,
+    MeetingRunState,
+    RoutingResult,
+    ValidationVerdict,
+)
+
+_DISCORD_CONTENT_LIMIT = 2000
+_SAFE_MENTION_BREAK = "\u000b"
+_DEFAULT_ROLE_ORDER = (
+    "ceo_coordinator",
+    "content_lead",
+    "art_lead",
+    "tech_lead",
+    "marketing_lead",
+    "business_support_lead",
+    "validation_audit",
+)
+_FORBIDDEN_ROLE_FRAGMENTS = ("research_lead", "personal_assistant", "openclaw")
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)(\b(?:api[_-]?key|token|password|credential)\b['\"]?\s*[:=]\s*['\"]?)"
+    r"([^\s,'\"}]+)"
+)
+_BEARER_SECRET_RE = re.compile(r"(?i)\bbearer\s+\S+")
+
+
+def _normalize_role_name(role: str) -> str:
+    return role.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _is_forbidden_role(role: str) -> bool:
+    normalized = _normalize_role_name(role)
+    return any(fragment in normalized for fragment in _FORBIDDEN_ROLE_FRAGMENTS)
+
+
+@dataclass(frozen=True)
+class TeamBotTopology:
+    """Stable Discord-facing company bot role mapping."""
+
+    roles: tuple[str, ...]
+    team_to_role: dict[str, str] = field(default_factory=dict)
+    fallback_role: str = "ceo_coordinator"
+
+    def __post_init__(self) -> None:
+        roles = tuple(self.roles)
+        if not roles:
+            raise ValueError("topology requires at least one bot role")
+        mapped_roles = tuple(self.team_to_role.values())
+        candidates = (*roles, self.fallback_role, *mapped_roles)
+        forbidden = [role for role in candidates if _is_forbidden_role(role)]
+        if forbidden:
+            raise ValueError(f"forbidden bot roles: {', '.join(forbidden)}")
+        unknown_mapped_roles = sorted(set(mapped_roles) - set(roles))
+        if unknown_mapped_roles:
+            raise ValueError(
+                f"unknown mapped bot role: {', '.join(unknown_mapped_roles)}"
+            )
+        if self.fallback_role not in roles:
+            raise ValueError(f"unknown fallback bot role: {self.fallback_role}")
+        object.__setattr__(self, "roles", roles)
+        object.__setattr__(self, "team_to_role", dict(self.team_to_role))
+
+    def role_for_team(self, team: str) -> str:
+        """Return the Discord bot role for a routed team."""
+
+        return self.team_to_role.get(team, self.fallback_role)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "roles": list(self.roles),
+            "team_to_role": self.team_to_role,
+            "fallback_role": self.fallback_role,
+        }
+
+
+def default_team_bot_topology() -> TeamBotTopology:
+    """Return the stable 7-bot company projection topology."""
+
+    return TeamBotTopology(
+        roles=_DEFAULT_ROLE_ORDER,
+        team_to_role={role: role for role in _DEFAULT_ROLE_ORDER},
+    )
+
+
+@dataclass(frozen=True)
+class ProjectionPublishResult:
+    """Result of publishing a projection event through a sink."""
+
+    event_id: str
+    status: str
+    discord_message_id: str = ""
+    error: str = ""
+
+
+def _sanitize_discord_content(content: str) -> str:
+    sanitized = _BEARER_SECRET_RE.sub("bearer [redacted]", content)
+    sanitized = _SECRET_ASSIGNMENT_RE.sub(r"\1[redacted]", sanitized)
+    sanitized = sanitized.replace("@everyone", f"@{_SAFE_MENTION_BREAK}everyone")
+    sanitized = sanitized.replace("@here", f"@{_SAFE_MENTION_BREAK}here")
+    return sanitized[:_DISCORD_CONTENT_LIMIT]
+
+
+def _bullet_list(label: str, values: Iterable[str]) -> str:
+    items = tuple(value for value in values if value)
+    if not items:
+        return f"- {label}: none"
+    return f"- {label}: {', '.join(items)}"
+
+
+class DiscordProjectionFormatter:
+    """Build Discord-safe projection events from MeetingRun domain objects."""
+
+    def __init__(self, topology: TeamBotTopology | None = None) -> None:
+        self._topology = topology or default_team_bot_topology()
+
+    def build_summary_event(
+        self,
+        *,
+        event_id: str,
+        run: MeetingRun,
+        state: MeetingRunState | str,
+        routing: RoutingResult | None,
+        verdicts: tuple[ValidationVerdict, ...] = (),
+        target_channel_id: str,
+        target_thread_id: str = "",
+        raw_worker_outputs: tuple[str, ...] = (),
+    ) -> DiscordProjectionEvent:
+        """Build a user-facing MeetingRun summary without raw worker dumps."""
+
+        del raw_worker_outputs
+        state_text = state.value if isinstance(state, MeetingRunState) else str(state)
+        teams = routing.teams if routing else ()
+        validators = routing.validators if routing else ()
+        verdict_values = tuple(str(verdict.verdict) for verdict in verdicts)
+        primary_role = (
+            self._topology.role_for_team(teams[0]) if teams else "ceo_coordinator"
+        )
+        if primary_role != "validation_audit":
+            primary_role = "ceo_coordinator"
+
+        trigger_text = str(run.trigger.get("text") or "")
+        lines = [
+            f"MeetingRun {run.meeting_run_id} projection",
+            f"- state: {state_text}",
+            f"- priority: {run.priority}",
+            f"- trigger: {trigger_text}",
+            _bullet_list("teams", teams),
+            _bullet_list("validators", validators),
+            _bullet_list("verdicts", verdict_values),
+        ]
+        if routing and routing.rationale:
+            lines.append(f"- rationale: {routing.rationale}")
+        lines.append("- raw_worker_outputs: omitted")
+        content = _sanitize_discord_content("\n".join(lines))
+        return DiscordProjectionEvent(
+            event_id=event_id,
+            meeting_run_id=run.meeting_run_id,
+            bot_role=primary_role,
+            target_channel_id=target_channel_id,
+            target_thread_id=target_thread_id,
+            content=content,
+            source="meeting_run",
+            source_id=run.meeting_run_id,
+        )
+
+    def build_validation_event(
+        self,
+        *,
+        event_id: str,
+        verdict: ValidationVerdict,
+        target_channel_id: str,
+        target_thread_id: str = "",
+    ) -> DiscordProjectionEvent:
+        """Build a validation/audit projection event."""
+
+        lines = [
+            f"Validation verdict for {verdict.meeting_run_id}",
+            f"- validator: {verdict.validator_role}",
+            f"- model: {verdict.validator_model}",
+            f"- verdict: {verdict.verdict}",
+            f"- confidence: {verdict.confidence:.2f}",
+            _bullet_list("findings", verdict.findings),
+            _bullet_list("required_actions", verdict.required_actions),
+        ]
+        return DiscordProjectionEvent(
+            event_id=event_id,
+            meeting_run_id=verdict.meeting_run_id,
+            bot_role="validation_audit",
+            target_channel_id=target_channel_id,
+            target_thread_id=target_thread_id,
+            content=_sanitize_discord_content("\n".join(lines)),
+            source="validation_verdict",
+            source_id=verdict.validation_id,
+        )
+
+
+class FakeDiscordProjectionSink:
+    """In-memory idempotent sink for projection tests and fake simulations."""
+
+    def __init__(self) -> None:
+        self._events: dict[str, DiscordProjectionEvent] = {}
+        self._message_ids: dict[str, str] = {}
+
+    @property
+    def events(self) -> tuple[DiscordProjectionEvent, ...]:
+        return tuple(self._events.values())
+
+    def publish(self, event: DiscordProjectionEvent) -> ProjectionPublishResult:
+        if not event.content.strip():
+            return ProjectionPublishResult(
+                event_id=event.event_id,
+                status="rejected",
+                error="content must not be empty",
+            )
+        if event.event_id in self._events:
+            return ProjectionPublishResult(
+                event_id=event.event_id,
+                status="duplicate",
+                discord_message_id=self._message_ids[event.event_id],
+            )
+        message_id = f"fake-discord-message:{event.event_id}"
+        self._events[event.event_id] = event
+        self._message_ids[event.event_id] = message_id
+        return ProjectionPublishResult(
+            event_id=event.event_id,
+            status="published",
+            discord_message_id=message_id,
+        )
+
+
+@dataclass(frozen=True)
+class HermesCommandSurfacePolicy:
+    """Policy documenting that Phase 6 uses Hermes-native command ingress."""
+
+    command_mode: str
+    accepts_mention_trigger: bool
+    accepts_slash_command: bool
+    requires_custom_interaction_endpoint: bool
+    requires_custom_queue_db: bool
+
+    @classmethod
+    def default(cls) -> HermesCommandSurfacePolicy:
+        return cls(
+            command_mode="hermes_native",
+            accepts_mention_trigger=True,
+            accepts_slash_command=False,
+            requires_custom_interaction_endpoint=False,
+            requires_custom_queue_db=False,
+        )
+
+    def describe(self) -> str:
+        return (
+            "Hermes Gateway mention-based command surface; "
+            "AI_Agent owns MeetingRun projection events only. "
+            "Custom Discord interactions and local queue storage are out of scope."
+        )
+
+
+__all__ = [
+    "DiscordProjectionFormatter",
+    "FakeDiscordProjectionSink",
+    "HermesCommandSurfacePolicy",
+    "ProjectionPublishResult",
+    "TeamBotTopology",
+    "default_team_bot_topology",
+]
