@@ -74,5 +74,8 @@ def test_collect_requires_dispatched_task(tmp_path: Path):
     except WorkerRunError as exc:
         assert exc.code == "task_not_running"
         assert exc.worker_task_id == "wt_001"
+        assert str(exc) == (
+            "task_not_running: worker task must be running before collect"
+        )
     else:  # pragma: no cover
         raise AssertionError("collect should reject non-running task")

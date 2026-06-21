@@ -22,6 +22,7 @@ env/
 
 # Local runtime artifacts
 meetings/
+runtime/
 .runtime/
 logs/
 *.log
