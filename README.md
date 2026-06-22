@@ -49,6 +49,7 @@ Phase 5  Validation Layer
 Phase 6  Discord Projection Layer
 Phase 7  Runtime Orchestrator / full fake MeetingRun flow
 Phase 8  Security / quota / observability policies
+Phase 9  End-to-end simulation CLI
 ```
 
 현재 실제 구동 범위:
@@ -65,6 +66,7 @@ Phase 8  Security / quota / observability policies
 - Discord-safe projection formatter / fake projection sink
 - deterministic RuntimeOrchestrator full fake flow
 - deterministic security / quota / observability policy gates
+- deterministic end-to-end simulation CLI
 
 실제 외부 경계 검증 완료:
 - opencode-go CLI discovery
@@ -73,7 +75,6 @@ Phase 8  Security / quota / observability policies
 - opencode-go live smoke 1회 성공
 
 아직 남은 작업:
-- Phase 9 end-to-end simulation CLI
 - Phase 10 live Discord adapter wiring
 - Phase 11 final verification
 ```
@@ -92,6 +93,7 @@ src/runtime_architecture_v2/
   projection.py         # Discord-safe projection formatter, stable bot topology, fake sink
   policies.py           # security, quota, observability policy gates
   orchestrator.py       # deterministic fake MeetingRun full-flow orchestrator
+  simulation_cli.py     # python -m deterministic e2e simulation runner
 ```
 
 ## Validation Policy
@@ -210,11 +212,33 @@ pytest -q
 ruff check src/runtime_architecture_v2 tests/test_runtime_architecture_v2_*.py
 ```
 
-Recent baseline after Phase 8:
+Recent baseline after Phase 9:
 
 ```text
-pytest tests/test_runtime_architecture_v2_*.py -q  -> 72 passed
-pytest -q                                         -> 5353 passed
+pytest tests/test_runtime_architecture_v2_*.py -q  -> 75 passed
+pytest -q                                         -> 5356 passed
+```
+
+## Runtime v2 Simulation CLI
+
+Phase 9 adds a deterministic local CLI that drives the full fake MeetingRun
+flow without live Discord, live model execution, provider dashboards, or Hermes
+runtime API calls.
+
+```bash
+python3 -m src.runtime_architecture_v2.simulation_cli \
+  --root runtime/phase9-simulation \
+  --meeting-run-id mr_demo \
+  --trigger-text "콘셉트 기획과 코드 구현, 마케팅 전략까지 같이 회의해줘" \
+  --user-id user-1 \
+  --channel-id channel-1 \
+  --thread-id thread-1
+```
+
+The CLI prints a JSON report and writes ignored runtime artifacts under:
+
+```text
+runtime/phase9-simulation/runtime/meeting_runs/<meeting_run_id>/
 ```
 
 Known caveat:
