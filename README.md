@@ -215,15 +215,45 @@ ruff check src/runtime_architecture_v2 tests/test_runtime_architecture_v2_*.py
 Recent baseline after Phase 9:
 
 ```text
-pytest tests/test_runtime_architecture_v2_*.py -q  -> 75 passed
-pytest -q                                         -> 5356 passed
+pytest tests/test_runtime_architecture_v2_*.py -q  -> 78 passed
+pytest -q                                         -> 5359 passed
 ```
 
 ## Runtime v2 Simulation CLI
 
-Phase 9 adds a deterministic local CLI that drives the full fake MeetingRun
-flow without live Discord, live model execution, provider dashboards, or Hermes
-runtime API calls.
+Phase 9 adds the plan-required deterministic local simulation script that drives
+MeetingRun scenarios with fake adapters only. It does not call live Discord,
+live model execution, provider dashboards, opencode-go, or Hermes runtime APIs.
+
+```bash
+python3 scripts/simulate_runtime_architecture_v2.py --scenario fast_qa
+python3 scripts/simulate_runtime_architecture_v2.py --scenario meeting
+python3 scripts/simulate_runtime_architecture_v2.py --scenario worker_failure
+python3 scripts/simulate_runtime_architecture_v2.py --scenario all
+```
+
+Supported scenarios:
+
+```text
+fast_qa
+meeting
+worker_execution
+dual_validation_pass
+validation_correction_loop
+crash_recovery
+worker_failure
+all
+```
+
+The script prints a machine-readable JSON report and writes ignored runtime
+artifacts under:
+
+```text
+runtime/phase9-simulation/runtime/meeting_runs/<meeting_run_id>/
+```
+
+The lower-level module entrypoint remains available for a single explicit
+MeetingRun payload:
 
 ```bash
 python3 -m src.runtime_architecture_v2.simulation_cli \
@@ -233,12 +263,6 @@ python3 -m src.runtime_architecture_v2.simulation_cli \
   --user-id user-1 \
   --channel-id channel-1 \
   --thread-id thread-1
-```
-
-The CLI prints a JSON report and writes ignored runtime artifacts under:
-
-```text
-runtime/phase9-simulation/runtime/meeting_runs/<meeting_run_id>/
 ```
 
 Known caveat:

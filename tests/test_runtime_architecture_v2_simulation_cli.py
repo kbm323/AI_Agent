@@ -135,6 +135,74 @@ def test_simulation_cli_quota_snapshot_can_pause_before_workers(tmp_path, capsys
     assert report["used_live_adapters"] is False
 
 
+def test_plan_required_simulation_script_runs_all_acceptance_scenarios(tmp_path):
+    script = REPO_ROOT / "scripts" / "simulate_runtime_architecture_v2.py"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--scenario",
+            "all",
+        ],
+        check=False,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    report = json.loads(result.stdout)
+    assert report["ok"] is True
+    assert report["scenario"] == "all"
+    assert report["scenario_count"] == 7
+    assert [item["scenario"] for item in report["results"]] == [
+        "fast_qa",
+        "meeting",
+        "worker_execution",
+        "dual_validation_pass",
+        "validation_correction_loop",
+        "crash_recovery",
+        "worker_failure",
+    ]
+    assert {item["state"] for item in report["results"]} == {
+        "completed",
+        "active",
+        "failed",
+    }
+    assert all(item["used_live_adapters"] is False for item in report["results"])
+    assert all(item["artifact_dir"] for item in report["results"])
+
+
+def test_plan_required_simulation_script_runs_single_named_scenario(tmp_path):
+    script = REPO_ROOT / "scripts" / "simulate_runtime_architecture_v2.py"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(tmp_path),
+            "--scenario",
+            "meeting",
+        ],
+        check=False,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report["ok"] is True
+    assert report["scenario"] == "meeting"
+    assert report["scenario_count"] == 1
+    assert report["results"][0]["route_type"] == "creative_meeting"
+    assert report["results"][0]["worker_task_count"] == 3
+    assert report["results"][0]["validation_verdicts"] == ["pass"]
+
+
 def test_simulation_cli_module_entrypoint_runs_as_real_subprocess(tmp_path):
     result = subprocess.run(
         [
