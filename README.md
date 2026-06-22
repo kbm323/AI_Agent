@@ -48,6 +48,7 @@ Phase 4.5 opencode-go Live Smoke Boundary
 Phase 5  Validation Layer
 Phase 6  Discord Projection Layer
 Phase 7  Runtime Orchestrator / full fake MeetingRun flow
+Phase 8  Security / quota / observability policies
 ```
 
 현재 실제 구동 범위:
@@ -63,6 +64,7 @@ Phase 7  Runtime Orchestrator / full fake MeetingRun flow
 - validation correction-loop policy
 - Discord-safe projection formatter / fake projection sink
 - deterministic RuntimeOrchestrator full fake flow
+- deterministic security / quota / observability policy gates
 
 실제 외부 경계 검증 완료:
 - opencode-go CLI discovery
@@ -71,7 +73,6 @@ Phase 7  Runtime Orchestrator / full fake MeetingRun flow
 - opencode-go live smoke 1회 성공
 
 아직 남은 작업:
-- Phase 8 Security / quota / observability policies
 - Phase 9 end-to-end simulation CLI
 - Phase 10 live Discord adapter wiring
 - Phase 11 final verification
@@ -89,6 +90,7 @@ src/runtime_architecture_v2/
   workers.py            # FakeWorkerRunner, opencode-go packet/live-smoke boundary
   validation.py         # GLM/Codex role policy, verdict collapse, correction loop
   projection.py         # Discord-safe projection formatter, stable bot topology, fake sink
+  policies.py           # security, quota, observability policy gates
   orchestrator.py       # deterministic fake MeetingRun full-flow orchestrator
 ```
 
@@ -208,11 +210,11 @@ pytest -q
 ruff check src/runtime_architecture_v2 tests/test_runtime_architecture_v2_*.py
 ```
 
-Recent baseline after Phase 7:
+Recent baseline after Phase 8:
 
 ```text
-pytest tests/test_runtime_architecture_v2_*.py -q  -> 65 passed
-pytest -q                                         -> 5346 passed
+pytest tests/test_runtime_architecture_v2_*.py -q  -> 72 passed
+pytest -q                                         -> 5353 passed
 ```
 
 Known caveat:

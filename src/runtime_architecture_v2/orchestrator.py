@@ -11,13 +11,23 @@ import json
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from .policies import (
+    ObservabilityPolicy,
+    PolicyDecision,
+    QuotaPolicy,
+    SecurityPolicy,
+)
 from .projection import (
     DiscordProjectionFormatter,
     FakeDiscordProjectionSink,
     ProjectionPublishResult,
 )
 from .routing import FakeQwenRouter, RoutingAdapter
-from .scheduling_policy import SchedulingDecision, SchedulingPolicy, SchedulingRequest
+from .scheduling_policy import (
+    SchedulingDecision,
+    SchedulingPolicy,
+    SchedulingRequest,
+)
 from .schemas import (
     DiscordProjectionEvent,
     MeetingRun,
@@ -47,6 +57,8 @@ class RuntimeOrchestratorResult:
     projection_event: DiscordProjectionEvent
     projection_publish_result: ProjectionPublishResult
     checkpoint: RecoveryCheckpoint
+    security_decision: PolicyDecision
+    quota_decision: PolicyDecision
 
 
 class RuntimeOrchestrator:
@@ -62,6 +74,10 @@ class RuntimeOrchestrator:
         validation_policy: ValidationPolicy | None = None,
         projection_formatter: DiscordProjectionFormatter | None = None,
         projection_sink: FakeDiscordProjectionSink | None = None,
+        security_policy: SecurityPolicy | None = None,
+        quota_policy: QuotaPolicy | None = None,
+        observability_policy: ObservabilityPolicy | None = None,
+        active_provider: str = "opencode-go",
     ) -> None:
         self.store = MeetingRunStore(root)
         self.router = router or FakeQwenRouter()
@@ -70,6 +86,10 @@ class RuntimeOrchestrator:
         self.validation_policy = validation_policy or ValidationPolicy()
         self.projection_formatter = projection_formatter or DiscordProjectionFormatter()
         self.projection_sink = projection_sink or FakeDiscordProjectionSink()
+        self.security_policy = security_policy or SecurityPolicy()
+        self.quota_policy = quota_policy or QuotaPolicy()
+        self.observability_policy = observability_policy or ObservabilityPolicy()
+        self.active_provider = active_provider
 
     def run(
         self,
@@ -94,6 +114,41 @@ class RuntimeOrchestrator:
             hermes_session_id=hermes_session_id,
             priority=priority,
         )
+        try:
+            security_decision = self.security_policy.evaluate(meeting_run)
+        except Exception:
+            security_decision = PolicyDecision(
+                allowed=False,
+                reason="security_policy_exception",
+                safe_summary="security policy failed closed; input redacted",
+                next_state="paused",
+                severity="warning",
+            )
+        self._append_observability_event(
+            meeting_run,
+            stage="security_gate",
+            outcome=security_decision.reason,
+            severity=security_decision.severity,
+            detail=security_decision.safe_summary,
+        )
+        if not security_decision.allowed:
+            quota_decision = PolicyDecision(
+                allowed=True,
+                reason="quota_not_evaluated_after_security_block",
+                safe_summary="quota gate skipped after security block",
+            )
+            return self._policy_pause_result(
+                meeting_run=meeting_run,
+                channel_id=channel_id,
+                thread_id=thread_id,
+                reason=security_decision.reason,
+                safe_summary=security_decision.safe_summary,
+                gate="security_gate",
+                security_decision=security_decision,
+                quota_decision=quota_decision,
+                simulation=simulation,
+            )
+
         self.store.save_meeting_run(meeting_run)
         self.store.append_decision_event(
             meeting_run_id,
@@ -128,6 +183,40 @@ class RuntimeOrchestrator:
             meeting_run_id,
             {"event": "meeting_run_scheduled", **scheduling_decision.to_dict()},
         )
+
+        try:
+            quota_decision = self.quota_policy.evaluate(
+                active_provider=self.active_provider
+            )
+        except Exception:
+            quota_decision = PolicyDecision(
+                allowed=False,
+                reason="quota_policy_exception",
+                safe_summary="quota policy failed closed before worker dispatch",
+                next_state="paused",
+                severity="warning",
+            )
+        self._append_observability_event(
+            meeting_run,
+            stage="quota_gate",
+            outcome=quota_decision.reason,
+            severity=quota_decision.severity,
+            detail=quota_decision.safe_summary,
+        )
+        if not quota_decision.allowed:
+            return self._policy_pause_result(
+                meeting_run=meeting_run,
+                channel_id=channel_id,
+                thread_id=thread_id,
+                reason=quota_decision.reason,
+                safe_summary=quota_decision.safe_summary,
+                gate="quota_gate",
+                security_decision=security_decision,
+                quota_decision=quota_decision,
+                simulation=simulation,
+                routing_result=routing_result,
+                scheduling_decision=scheduling_decision,
+            )
 
         worker_tasks = self._run_workers(meeting_run_id, routing_result)
         validation_verdicts = self._build_validation_verdicts(
@@ -215,6 +304,148 @@ class RuntimeOrchestrator:
             projection_event=projection_event,
             projection_publish_result=projection_publish_result,
             checkpoint=checkpoint,
+            security_decision=security_decision,
+            quota_decision=quota_decision,
+        )
+
+    def _policy_pause_result(
+        self,
+        *,
+        meeting_run: MeetingRun,
+        channel_id: str,
+        thread_id: str,
+        reason: str,
+        safe_summary: str,
+        gate: str,
+        security_decision: PolicyDecision,
+        quota_decision: PolicyDecision,
+        simulation: bool,
+        routing_result: RoutingResult | None = None,
+        scheduling_decision: SchedulingDecision | None = None,
+    ) -> RuntimeOrchestratorResult:
+        routing_result = routing_result or RoutingResult(
+            meeting_run_id=meeting_run.meeting_run_id,
+            route_type="policy_blocked",
+            validators=("glm_validator",),
+            execution_required=False,
+            projection_policy="validation_audit_only",
+            confidence=1.0,
+            rationale=reason,
+        )
+        scheduling_decision = scheduling_decision or self.scheduling_policy.decide(
+            SchedulingRequest(
+                meeting_run_id=meeting_run.meeting_run_id,
+                route_type="policy_blocked",
+                long_running=False,
+                simulation=simulation,
+            )
+        )
+        safe_trigger = dict(meeting_run.trigger)
+        safe_trigger["text"] = safe_summary
+        paused_run = replace(
+            meeting_run,
+            state=MeetingRunState.PAUSED,
+            trigger=safe_trigger,
+            routing_result=routing_result.to_dict(),
+        )
+        verdict = ValidationVerdict(
+            validation_id=f"val_{meeting_run.meeting_run_id}_{gate}",
+            meeting_run_id=meeting_run.meeting_run_id,
+            validator_role="runtime_policy",
+            validator_model="deterministic_policy",
+            verdict="degraded",
+            confidence=1.0,
+            findings=(f"{gate}: {safe_summary}",),
+            required_actions=(reason,),
+            degraded_reason=reason,
+        )
+        validation_verdicts = (verdict,)
+        validation_decision = self.validation_policy.decide(
+            meeting_run_id=meeting_run.meeting_run_id,
+            verdicts=validation_verdicts,
+        )
+        projection_event = self.projection_formatter.build_validation_event(
+            event_id=f"proj_{meeting_run.meeting_run_id}",
+            verdict=verdict,
+            target_channel_id=channel_id,
+            target_thread_id=thread_id,
+        )
+        projection_publish_result = self.projection_sink.publish(projection_event)
+        self._save_projection_event(projection_event)
+        checkpoint = RecoveryCheckpoint(
+            checkpoint_id=f"chk_{meeting_run.meeting_run_id}_paused",
+            meeting_run_id=meeting_run.meeting_run_id,
+            state=MeetingRunState.PAUSED,
+            idempotency_key=f"{meeting_run.meeting_run_id}:paused:{gate}",
+            note=validation_decision.rationale,
+        )
+        self.store.save_checkpoint(checkpoint)
+        paused_run = replace(
+            paused_run,
+            validation_ids=(verdict.validation_id,),
+            projection_event_ids=(projection_event.event_id,),
+            checkpoint_ids=(checkpoint.checkpoint_id,),
+        )
+        self.store.save_meeting_run(paused_run)
+        self.store.append_audit_event(
+            meeting_run.meeting_run_id,
+            {
+                "event": "policy_gate_paused",
+                "gate": gate,
+                "reason": reason,
+                "safe_summary": safe_summary,
+            },
+        )
+        self.store.append_audit_event(
+            meeting_run.meeting_run_id,
+            {
+                "event": "validation_decided",
+                "kind": str(validation_decision.kind),
+                "next_state": validation_decision.next_state,
+                "validation_ids": [verdict.validation_id],
+            },
+        )
+        self.store.append_decision_event(
+            meeting_run.meeting_run_id,
+            {
+                "event": "meeting_run_paused",
+                "state": MeetingRunState.PAUSED.value,
+                "gate": gate,
+                "projection_event_id": projection_event.event_id,
+            },
+        )
+        return RuntimeOrchestratorResult(
+            meeting_run=paused_run,
+            routing_result=routing_result,
+            scheduling_decision=scheduling_decision,
+            worker_tasks=(),
+            validation_verdicts=validation_verdicts,
+            validation_decision=validation_decision,
+            projection_event=projection_event,
+            projection_publish_result=projection_publish_result,
+            checkpoint=checkpoint,
+            security_decision=security_decision,
+            quota_decision=quota_decision,
+        )
+
+    def _append_observability_event(
+        self,
+        run: MeetingRun,
+        *,
+        stage: str,
+        outcome: str,
+        severity: str,
+        detail: str,
+    ) -> None:
+        self.store.append_audit_event(
+            run.meeting_run_id,
+            self.observability_policy.event(
+                run,
+                stage=stage,
+                outcome=outcome,
+                severity=severity,
+                detail=detail,
+            ),
         )
 
     def _run_workers(
