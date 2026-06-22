@@ -51,6 +51,7 @@ Phase 7  Runtime Orchestrator / full fake MeetingRun flow
 Phase 8  Security / quota / observability policies
 Phase 9  End-to-end simulation CLI
 Phase 10 Live adapter wiring boundaries
+Phase 11 Final verification
 ```
 
 현재 실제 구동 범위:
@@ -71,6 +72,7 @@ Phase 10 Live adapter wiring boundaries
 - live Discord projection sink behind injected HTTP/env boundary
 - opencode-go WorkerRunner behind injected subprocess boundary
 - quota-gated GLM/Codex validator execution planner
+- Phase 11 final verification record
 
 실제 외부 경계 검증 완료:
 - opencode-go CLI discovery
@@ -79,7 +81,8 @@ Phase 10 Live adapter wiring boundaries
 - opencode-go live smoke 1회 성공
 
 아직 남은 작업:
-- Phase 11 final verification
+- origin/main push (GitHub credential 필요)
+- optional: exposed token reset / bot permission tightening
 ```
 
 ## Runtime v2 Modules
@@ -276,6 +279,24 @@ ruff check .
 
 still reports legacy lint debt in old debug/transition/test files. For phase work, gate the changed v2 files plus full pytest until legacy lint debt is intentionally retired.
 
+## Runtime v2 Final Verification
+
+Phase 11 final verification record:
+
+```text
+docs/runtime-architecture-v2-final-verification.md
+```
+
+Recent baseline after Phase 11:
+
+```text
+pytest tests/test_runtime_architecture_v2_*.py tests/test_quota_scripts_no_hardcoded_secrets.py -q -> 92 passed
+python3 scripts/simulate_runtime_architecture_v2.py --scenario all -> top_ok=True, 7 scenarios
+pytest -q                                                 -> 5373 passed
+ruff check src/runtime_architecture_v2 tests/test_runtime_architecture_v2_*.py tests/test_quota_scripts_no_hardcoded_secrets.py -> no issues
+pytest tests/test_quota_scripts_no_hardcoded_secrets.py -q -> 4 passed
+```
+
 ## Runtime v2 Live Adapter Boundaries
 
 Phase 10 live adapter boundaries are wired behind injected, testable interfaces:
@@ -348,12 +369,14 @@ Legacy docs may mention OpenClaw or MVP. Treat those as historical evidence unle
 
 ## Next Phase
 
-Next implementation phase:
+Next work is no longer a Runtime Architecture v2 implementation phase. Runtime v2
+is verified through Phase 11. Continue with post-v2 operational hardening only
+after selecting scope, for example:
 
 ```text
-Phase 6: Discord Projection Layer
-- bot topology config
-- Discord-safe projection formatter
-- fake Discord projection sink
-- Hermes-native command surface policy
+- GitHub credential repair and origin/main push
+- live Discord projection smoke to #시스템-로그
+- opencode-go live worker smoke under current quota
+- Discord token reset and safer bot permission re-invite
+- #개인-비서 channel creation / assistant UX hardening
 ```

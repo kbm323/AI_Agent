@@ -479,13 +479,19 @@ pytest -q
 ### Task 11.4: Validate acceptance criteria against Seed
 
 Checklist:
-- [ ] schema completeness
-- [ ] runtime flow coverage
-- [ ] implementation readiness
-- [ ] operations readiness
-- [ ] Discord UX fidelity
-- [ ] quota/model policy
-- [ ] testability
+- [x] schema completeness
+- [x] runtime flow coverage
+- [x] implementation readiness
+- [x] operations readiness
+- [x] Discord UX fidelity
+- [x] quota/model policy
+- [x] testability
+
+Evidence is recorded in:
+
+```text
+docs/runtime-architecture-v2-final-verification.md
+```
 
 ---
 
