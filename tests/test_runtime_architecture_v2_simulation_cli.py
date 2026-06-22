@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 from src.runtime_architecture_v2.simulation_cli import main
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_simulation_cli_runs_full_fake_e2e_and_prints_json_report(
@@ -128,3 +133,56 @@ def test_simulation_cli_quota_snapshot_can_pause_before_workers(tmp_path, capsys
     assert report["worker_task_count"] == 0
     assert report["scheduling_kind"] == "hermes_background_process"
     assert report["used_live_adapters"] is False
+
+
+def test_simulation_cli_module_entrypoint_runs_as_real_subprocess(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "src.runtime_architecture_v2.simulation_cli",
+            "--root",
+            str(tmp_path),
+            "--meeting-run-id",
+            "mr_cli_subprocess",
+            "--trigger-text",
+            "콘셉트 기획과 코드 구현, 마케팅 전략까지 같이 회의해줘",
+            "--user-id",
+            "user-1",
+            "--channel-id",
+            "channel-1",
+            "--thread-id",
+            "thread-1",
+        ],
+        check=False,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    report = json.loads(result.stdout)
+    assert set(report) == {
+        "checkpoint_id",
+        "meeting_run_id",
+        "mode",
+        "ok",
+        "projection_event_id",
+        "projection_status",
+        "quota_reason",
+        "requires_custom_queue_store",
+        "route_type",
+        "scheduling_kind",
+        "scheduling_primitive",
+        "security_reason",
+        "state",
+        "used_live_adapters",
+        "validation_decision",
+        "validation_verdicts",
+        "worker_task_count",
+    }
+    assert report["meeting_run_id"] == "mr_cli_subprocess"
+    assert report["ok"] is True
+    assert report["used_live_adapters"] is False
+    assert (tmp_path / "runtime" / "meeting_runs" / "mr_cli_subprocess").exists()
