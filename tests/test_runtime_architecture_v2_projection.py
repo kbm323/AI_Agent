@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from src.runtime_architecture_v2.projection import (
     DiscordProjectionFormatter,
     FakeDiscordProjectionSink,
     HermesCommandSurfacePolicy,
+    LiveDiscordProjectionSink,
     default_team_bot_topology,
 )
 from src.runtime_architecture_v2.schemas import (
@@ -321,3 +324,156 @@ def test_hermes_command_surface_policy_prefers_native_gateway():
     assert policy.requires_custom_queue_db is False
     assert "Hermes Gateway" in policy.describe()
     assert "queue.db" not in policy.describe()
+
+
+def test_live_discord_projection_sink_uses_env_token_and_injected_http_client():
+    calls = []
+
+    def http_post(url, *, headers, json_body, timeout_seconds):  # noqa: ANN001
+        calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "json_body": json_body,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return {"status_code": 200, "json": {"id": "discord-msg-1"}}
+
+    sink = LiveDiscordProjectionSink(
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+        http_post=http_post,
+        api_base_url="https://discord.test/api/v10",
+        timeout_seconds=9,
+    )
+    event = DiscordProjectionEvent(
+        event_id="proj_live",
+        meeting_run_id="mr_live",
+        bot_role="tech_lead",
+        target_channel_id="channel-1",
+        target_thread_id="thread-1",
+        content="hello @everyone token=SECRET_VALUE",
+        source="meeting_run",
+        source_id="mr_live",
+    )
+
+    result = sink.publish(event)
+
+    assert result.status == "published"
+    assert result.discord_message_id == "discord-msg-1"
+    assert calls == [
+        {
+            "url": "https://discord.test/api/v10/channels/thread-1/messages",
+            "headers": {
+                "Authorization": "Bot token-from-env",
+                "Content-Type": "application/json",
+            },
+            "json_body": {
+                "content": "hello @\u000beveryone token=[redacted]",
+                "allowed_mentions": {"parse": []},
+            },
+            "timeout_seconds": 9,
+        }
+    ]
+
+
+def test_live_discord_projection_sink_fails_closed_without_token_or_on_http_error():
+    event = DiscordProjectionEvent(
+        event_id="proj_live_fail",
+        meeting_run_id="mr_live_fail",
+        bot_role="tech_lead",
+        target_channel_id="channel-1",
+        content="hello",
+        source="meeting_run",
+        source_id="mr_live_fail",
+    )
+
+    missing = LiveDiscordProjectionSink(env={}, http_post=lambda *args, **kwargs: None)
+    missing_result = missing.publish(event)
+
+    assert missing_result.status == "blocked"
+    assert missing_result.error == "missing_discord_bot_token"
+
+    failed = LiveDiscordProjectionSink(
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+        http_post=lambda *args, **kwargs: {"status_code": 429, "text": "rate limited"},
+    ).publish(event)
+
+    assert failed.status == "failed"
+    assert failed.error == "discord_http_429"
+    assert failed.discord_message_id == ""
+
+
+def test_live_discord_projection_sink_fails_closed_on_http_exception_or_bad_status():
+    event = DiscordProjectionEvent(
+        event_id="proj_live_exception",
+        meeting_run_id="mr_live_exception",
+        bot_role="tech_lead",
+        target_channel_id="channel-1",
+        content="hello",
+        source="meeting_run",
+        source_id="mr_live_exception",
+    )
+
+    def raising_http_post(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise RuntimeError("network exploded with token-from-env")
+
+    raised = LiveDiscordProjectionSink(
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+        http_post=raising_http_post,
+    ).publish(event)
+
+    assert raised.status == "failed"
+    assert raised.error == "discord_http_exception"
+    assert "token" not in raised.error
+
+    malformed = LiveDiscordProjectionSink(
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+        http_post=lambda *args, **kwargs: {"status_code": "not-an-int"},
+    ).publish(event)
+
+    assert malformed.status == "failed"
+    assert malformed.error == "discord_http_invalid_status"
+
+
+def test_live_discord_projection_sink_respects_explicit_empty_env(monkeypatch):
+    monkeypatch.setitem(os.environ, "DISCORD_BOT_TOKEN", "real-process-token")
+    calls = []
+    event = DiscordProjectionEvent(
+        event_id="proj_env_guard",
+        meeting_run_id="mr_env_guard",
+        bot_role="tech_lead",
+        target_channel_id="channel-1",
+        content="hello",
+        source="meeting_run",
+        source_id="mr_env_guard",
+    )
+
+    result = LiveDiscordProjectionSink(
+        env={},
+        http_post=lambda *args, **kwargs: calls.append((args, kwargs)),
+    ).publish(event)
+
+    assert result.status == "blocked"
+    assert result.error == "missing_discord_bot_token"
+    assert calls == []
+
+
+def test_live_discord_projection_sink_fails_closed_on_malformed_http_response():
+    event = DiscordProjectionEvent(
+        event_id="proj_malformed_response",
+        meeting_run_id="mr_malformed_response",
+        bot_role="tech_lead",
+        target_channel_id="channel-1",
+        content="hello",
+        source="meeting_run",
+        source_id="mr_malformed_response",
+    )
+
+    result = LiveDiscordProjectionSink(
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+        http_post=lambda *args, **kwargs: None,
+    ).publish(event)
+
+    assert result.status == "failed"
+    assert result.error == "discord_http_invalid_response"

@@ -166,6 +166,13 @@ class OpenCodeGoPacketWrapper:
         return str(payload.get("prompt") or "")
 
 
+def _prompt_for_task(task: WorkerTask) -> str:
+    return (
+        f"Execute Runtime Architecture v2 worker task {task.worker_task_id} "
+        f"as role {task.role}. Return structured JSON."
+    )
+
+
 def _default_opencode_go_runner(
     command: list[str],
     timeout_seconds: int,
@@ -205,6 +212,103 @@ def _default_opencode_go_runner(
             timeout_occurred=False,
             duration_seconds=round(time.monotonic() - start, 4),
         )
+
+
+class OpenCodeGoWorkerRunner:
+    """WorkerRunner implementation for opencode-go packet execution.
+
+    The command runner is injectable; unit tests use a fake callable and never
+    execute a live CLI. The default runner is the actual subprocess boundary.
+    """
+
+    def __init__(
+        self,
+        *,
+        wrapper: OpenCodeGoPacketWrapper | None = None,
+        command_runner: OpenCodeGoCommandRunner | None = None,
+        timeout_seconds: int = 300,
+        output_format: str = "json",
+        workdir: str | None = None,
+    ) -> None:
+        self.wrapper = wrapper or OpenCodeGoPacketWrapper()
+        self.command_runner = command_runner or _default_opencode_go_runner
+        self.timeout_seconds = timeout_seconds
+        self.output_format = output_format
+        self.workdir = workdir
+
+    def dispatch(self, task: WorkerTask) -> WorkerTask:
+        self.wrapper.write_packet(
+            task,
+            prompt=_prompt_for_task(task),
+            context={"worker_task": task.to_dict()},
+        )
+        return replace(task, state=WorkerTaskState.RUNNING)
+
+    def collect(self, task: WorkerTask) -> WorkerTask:
+        if task.state != WorkerTaskState.RUNNING:
+            raise WorkerRunError(
+                code="task_not_running",
+                message="worker task must be running before collect",
+                worker_task_id=task.worker_task_id,
+            )
+        packet_path = Path(task.packet_path)
+        command = self.wrapper.build_command(
+            task,
+            packet_path=packet_path,
+            timeout_seconds=self.timeout_seconds,
+            output_format=self.output_format,
+        )
+        try:
+            result = self.command_runner(command, self.timeout_seconds, self.workdir)
+        except Exception:
+            output_path = Path(task.output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                json.dumps(
+                    {
+                        "meeting_run_id": task.meeting_run_id,
+                        "worker_task_id": task.worker_task_id,
+                        "status": "failed",
+                        "command": command,
+                        "error": "opencode_go_runner_exception",
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            return replace(
+                task,
+                state=WorkerTaskState.FAILED,
+                error="opencode_go_runner_exception",
+                output_path=str(output_path),
+            )
+        status, state, error = OpenCodeGoSmokeRunner._classify_result(result)
+        output_path = Path(task.output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(
+                {
+                    "meeting_run_id": task.meeting_run_id,
+                    "worker_task_id": task.worker_task_id,
+                    "status": status,
+                    "command": command,
+                    "exit_code": result.exit_code,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "timeout_occurred": result.timeout_occurred,
+                    "duration_seconds": result.duration_seconds,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return replace(task, state=state, error=error, output_path=str(output_path))
 
 
 class OpenCodeGoSmokeRunner:

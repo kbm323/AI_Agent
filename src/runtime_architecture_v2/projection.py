@@ -7,9 +7,14 @@ reimplementing Hermes Gateway, queues, or Discord interaction infrastructure.
 
 from __future__ import annotations
 
+import json
+import os
 import re
-from collections.abc import Iterable
+import urllib.error
+import urllib.request
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 from src.runtime_architecture_v2.schemas import (
     DiscordProjectionEvent,
@@ -242,6 +247,118 @@ class FakeDiscordProjectionSink:
         )
 
 
+def _default_discord_http_post(
+    url: str,
+    *,
+    headers: Mapping[str, str],
+    json_body: Mapping[str, object],
+    timeout_seconds: int,
+) -> dict[str, object]:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(json_body).encode("utf-8"),
+        headers=dict(headers),
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            body = response.read().decode("utf-8")
+            try:
+                payload = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                payload = {}
+            return {"status_code": response.status, "json": payload, "text": body}
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8")
+        return {"status_code": exc.code, "text": body}
+    except OSError as exc:
+        return {"status_code": 0, "text": str(exc)}
+
+
+class LiveDiscordProjectionSink:
+    """Discord REST projection sink behind the same publish interface.
+
+    Tokens are read from the injected environment mapping only. Tests inject the
+    HTTP callable, so unit tests never touch live Discord.
+    """
+
+    def __init__(
+        self,
+        *,
+        env: Mapping[str, str] | None = None,
+        http_post: Callable[..., Mapping[str, Any]] | None = None,
+        api_base_url: str = "https://discord.com/api/v10",
+        timeout_seconds: int = 15,
+    ) -> None:
+        self.env = os.environ if env is None else env
+        self.http_post = http_post or _default_discord_http_post
+        self.api_base_url = api_base_url.rstrip("/")
+        self.timeout_seconds = timeout_seconds
+
+    def publish(self, event: DiscordProjectionEvent) -> ProjectionPublishResult:
+        if not event.content.strip():
+            return ProjectionPublishResult(
+                event_id=event.event_id,
+                status="rejected",
+                error="content must not be empty",
+            )
+        token = self.env.get("DISCORD_BOT_TOKEN", "").strip()
+        if not token:
+            return ProjectionPublishResult(
+                event_id=event.event_id,
+                status="blocked",
+                error="missing_discord_bot_token",
+            )
+        channel_id = event.target_thread_id or event.target_channel_id
+        try:
+            response = self.http_post(
+                f"{self.api_base_url}/channels/{channel_id}/messages",
+                headers={
+                    "Authorization": f"Bot {token}",
+                    "Content-Type": "application/json",
+                },
+                json_body={
+                    "content": _sanitize_discord_content(event.content),
+                    "allowed_mentions": {"parse": []},
+                },
+                timeout_seconds=self.timeout_seconds,
+            )
+        except Exception:
+            return ProjectionPublishResult(
+                event_id=event.event_id,
+                status="failed",
+                error="discord_http_exception",
+            )
+        if not isinstance(response, Mapping):
+            return ProjectionPublishResult(
+                event_id=event.event_id,
+                status="failed",
+                error="discord_http_invalid_response",
+            )
+        try:
+            raw_status = response.get("status_code")
+            status_code = int(raw_status) if raw_status is not None else 0
+        except (TypeError, ValueError):
+            return ProjectionPublishResult(
+                event_id=event.event_id,
+                status="failed",
+                error="discord_http_invalid_status",
+            )
+        if not 200 <= status_code < 300:
+            return ProjectionPublishResult(
+                event_id=event.event_id,
+                status="failed",
+                error=f"discord_http_{status_code}",
+            )
+        payload = response.get("json") or {}
+        message_id = str(payload.get("id") if isinstance(payload, Mapping) else "")
+        return ProjectionPublishResult(
+            event_id=event.event_id,
+            status="published",
+            discord_message_id=message_id,
+        )
+
+
 @dataclass(frozen=True)
 class HermesCommandSurfacePolicy:
     """Policy documenting that Phase 6 uses Hermes-native command ingress."""
@@ -274,6 +391,7 @@ __all__ = [
     "DiscordProjectionFormatter",
     "FakeDiscordProjectionSink",
     "HermesCommandSurfacePolicy",
+    "LiveDiscordProjectionSink",
     "ProjectionPublishResult",
     "TeamBotTopology",
     "default_team_bot_topology",

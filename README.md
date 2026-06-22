@@ -50,6 +50,7 @@ Phase 6  Discord Projection Layer
 Phase 7  Runtime Orchestrator / full fake MeetingRun flow
 Phase 8  Security / quota / observability policies
 Phase 9  End-to-end simulation CLI
+Phase 10 Live adapter wiring boundaries
 ```
 
 현재 실제 구동 범위:
@@ -67,6 +68,9 @@ Phase 9  End-to-end simulation CLI
 - deterministic RuntimeOrchestrator full fake flow
 - deterministic security / quota / observability policy gates
 - deterministic end-to-end simulation CLI
+- live Discord projection sink behind injected HTTP/env boundary
+- opencode-go WorkerRunner behind injected subprocess boundary
+- quota-gated GLM/Codex validator execution planner
 
 실제 외부 경계 검증 완료:
 - opencode-go CLI discovery
@@ -75,7 +79,6 @@ Phase 9  End-to-end simulation CLI
 - opencode-go live smoke 1회 성공
 
 아직 남은 작업:
-- Phase 10 live Discord adapter wiring
 - Phase 11 final verification
 ```
 
@@ -88,9 +91,9 @@ src/runtime_architecture_v2/
   routing.py            # FakeQwenRouter와 route policy
   queue_policy.py       # priority / bounded concurrency policy
   scheduling_policy.py  # Hermes-native scheduling mapping
-  workers.py            # FakeWorkerRunner, opencode-go packet/live-smoke boundary
-  validation.py         # GLM/Codex role policy, verdict collapse, correction loop
-  projection.py         # Discord-safe projection formatter, stable bot topology, fake sink
+  workers.py            # FakeWorkerRunner, opencode-go WorkerRunner/live-smoke boundary
+  validation.py         # GLM/Codex role policy, quota-gated execution planner, correction loop
+  projection.py         # Discord-safe formatter, fake sink, live Discord sink boundary
   policies.py           # security, quota, observability policy gates
   orchestrator.py       # deterministic fake MeetingRun full-flow orchestrator
   simulation_cli.py     # python -m deterministic e2e simulation runner
@@ -212,11 +215,11 @@ pytest -q
 ruff check src/runtime_architecture_v2 tests/test_runtime_architecture_v2_*.py
 ```
 
-Recent baseline after Phase 9:
+Recent baseline after Phase 10:
 
 ```text
-pytest tests/test_runtime_architecture_v2_*.py -q  -> 78 passed
-pytest -q                                         -> 5359 passed
+pytest tests/test_runtime_architecture_v2_*.py -q  -> 88 passed
+pytest -q                                         -> 5369 passed
 ```
 
 ## Runtime v2 Simulation CLI
@@ -272,6 +275,28 @@ ruff check .
 ```
 
 still reports legacy lint debt in old debug/transition/test files. For phase work, gate the changed v2 files plus full pytest until legacy lint debt is intentionally retired.
+
+## Runtime v2 Live Adapter Boundaries
+
+Phase 10 live adapter boundaries are wired behind injected, testable interfaces:
+
+```text
+Discord projection:
+- LiveDiscordProjectionSink reads DISCORD_BOT_TOKEN from environment only
+- unit tests inject http_post, so no live Discord call occurs during tests
+- message content is sanitized and allowed_mentions disables mention parsing
+
+opencode-go workers:
+- OpenCodeGoWorkerRunner implements WorkerRunner
+- packet writing and command construction are deterministic
+- command_runner is injectable; tests cover success and timeout without live CLI calls
+
+validators:
+- ValidatorExecutionPlanner builds GLM/Codex validator worker tasks as OPENCODE_GO
+- quota policy is evaluated before validator dispatch
+- blocked quota returns degraded validation verdicts instead of dispatching
+- Codex CLI remains fallback metadata only
+```
 
 ## opencode-go Live Smoke Boundary
 

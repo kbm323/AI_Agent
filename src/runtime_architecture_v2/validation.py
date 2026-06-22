@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from .policies import PolicyDecision, QuotaPolicy
 from .schemas import (
     ValidationVerdict,
     ValidationVerdictValue,
@@ -33,6 +34,16 @@ class ValidationDecision:
     requires_user: bool = False
     follow_up_worker_required: bool = False
     rationale: str = ""
+
+
+@dataclass(frozen=True)
+class ValidatorExecutionPlan:
+    """Quota-gated validator worker task plan."""
+
+    status: str
+    quota_decision: PolicyDecision
+    worker_tasks: tuple[WorkerTask, ...] = ()
+    degraded_verdicts: tuple[ValidationVerdict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -86,6 +97,66 @@ class ValidatorRolePolicy:
                 "model_family": self.model_family,
                 "fallback_runner": self.fallback_runner,
             },
+        )
+
+
+class ValidatorExecutionPlanner:
+    """Build opencode-go-first validator tasks with a quota guard."""
+
+    def __init__(self, *, root: str | Path) -> None:
+        self.root = Path(root)
+
+    def plan(
+        self,
+        *,
+        meeting_run_id: str,
+        validators: tuple[str, ...],
+        quota_policy: QuotaPolicy,
+        active_provider: str,
+    ) -> ValidatorExecutionPlan:
+        quota_decision = quota_policy.evaluate(active_provider=active_provider)
+        validator_roles = validators or ("glm_validator",)
+        if not quota_decision.allowed:
+            return ValidatorExecutionPlan(
+                status="quota_blocked",
+                quota_decision=quota_decision,
+                degraded_verdicts=tuple(
+                    build_degraded_verdict(
+                        validation_id=f"val_{meeting_run_id}_{role}_degraded",
+                        meeting_run_id=meeting_run_id,
+                        validator_role=role,
+                        validator_model=_model_for_role(role),
+                        reason=f"quota blocked: {quota_decision.reason}",
+                    )
+                    for role in validator_roles
+                ),
+            )
+        return ValidatorExecutionPlan(
+            status="ready",
+            quota_decision=quota_decision,
+            worker_tasks=tuple(
+                _role_policy_for(role).build_worker_task(
+                    meeting_run_id=meeting_run_id,
+                    validation_id=f"val_{meeting_run_id}_{index}",
+                    packet_path=(
+                        self.root
+                        / "runtime"
+                        / "meeting_runs"
+                        / meeting_run_id
+                        / "validator_packets"
+                        / f"val_{meeting_run_id}_{index}.json"
+                    ),
+                    output_path=(
+                        self.root
+                        / "runtime"
+                        / "meeting_runs"
+                        / meeting_run_id
+                        / "validator_outputs"
+                        / f"val_{meeting_run_id}_{index}.json"
+                    ),
+                )
+                for index, role in enumerate(validator_roles, start=1)
+            ),
         )
 
 
@@ -185,6 +256,24 @@ class ValidationPolicy:
         )
 
 
+def _role_policy_for(role: str) -> ValidatorRolePolicy:
+    if role == "codex_auditor":
+        return ValidatorRolePolicy.codex_auditor()
+    if role == "glm_validator":
+        return ValidatorRolePolicy.glm_validator()
+    return ValidatorRolePolicy(
+        role=role,
+        preferred_model=role,
+        execution_role="validator",
+        model_family=role,
+        fallback_runner="none",
+    )
+
+
+def _model_for_role(role: str) -> str:
+    return _role_policy_for(role).preferred_model
+
+
 def build_degraded_verdict(
     *,
     validation_id: str,
@@ -212,6 +301,8 @@ __all__ = [
     "CorrectionActionKind",
     "ValidationDecision",
     "ValidationPolicy",
+    "ValidatorExecutionPlan",
+    "ValidatorExecutionPlanner",
     "ValidatorRolePolicy",
     "build_degraded_verdict",
 ]

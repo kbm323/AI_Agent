@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.runtime_architecture_v2.policies import QuotaPolicy, QuotaSnapshot
 from src.runtime_architecture_v2.schemas import (
     ValidationVerdict,
     ValidationVerdictValue,
@@ -8,6 +9,7 @@ from src.runtime_architecture_v2.schemas import (
 from src.runtime_architecture_v2.validation import (
     CorrectionActionKind,
     ValidationPolicy,
+    ValidatorExecutionPlanner,
     ValidatorRolePolicy,
     build_degraded_verdict,
 )
@@ -213,3 +215,62 @@ def test_glm_and_codex_validator_roles_use_opencode_go_first(tmp_path):
         == "codex_cli_only_if_opencode_go_unavailable"
     )
     assert "codex_cli" not in {codex_task.runner.value, codex_task.role}
+
+
+def test_validator_execution_planner_builds_opencode_first_tasks_when_quota_allows(
+    tmp_path,
+):
+    plan = ValidatorExecutionPlanner(root=tmp_path).plan(
+        meeting_run_id="mr_001",
+        validators=("glm_validator", "codex_auditor"),
+        quota_policy=QuotaPolicy(),
+        active_provider="opencode-go",
+    )
+
+    assert plan.status == "ready"
+    assert plan.quota_decision.allowed is True
+    assert plan.degraded_verdicts == ()
+    assert [task.role for task in plan.worker_tasks] == [
+        "glm_validator",
+        "codex_auditor",
+    ]
+    assert all(
+        task.runner is WorkerTaskRunner.OPENCODE_GO for task in plan.worker_tasks
+    )
+    assert plan.worker_tasks[0].model_policy["preferred"] == "glm-5.1"
+    assert plan.worker_tasks[1].model_policy["fallback_runner"] == (
+        "codex_cli_only_if_opencode_go_unavailable"
+    )
+
+
+def test_validator_execution_planner_degrades_without_dispatch_when_quota_blocks(
+    tmp_path,
+):
+    plan = ValidatorExecutionPlanner(root=tmp_path).plan(
+        meeting_run_id="mr_001",
+        validators=("glm_validator", "codex_auditor"),
+        quota_policy=QuotaPolicy(
+            snapshot=QuotaSnapshot(
+                provider="opencode-go",
+                monthly_percent=100,
+                weekly_percent=0,
+                hourly_percent=0,
+            )
+        ),
+        active_provider="opencode-go",
+    )
+
+    assert plan.status == "quota_blocked"
+    assert plan.quota_decision.allowed is False
+    assert plan.worker_tasks == ()
+    assert [verdict.validator_role for verdict in plan.degraded_verdicts] == [
+        "glm_validator",
+        "codex_auditor",
+    ]
+    assert all(
+        verdict.verdict is ValidationVerdictValue.DEGRADED
+        for verdict in plan.degraded_verdicts
+    )
+    assert all(
+        "quota" in verdict.degraded_reason for verdict in plan.degraded_verdicts
+    )
