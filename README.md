@@ -164,6 +164,9 @@ config/
 docs/
   runtime-architecture-v2.md    # canonical architecture document
   runtime-architecture-v2-implementation-plan.md
+  runtime-architecture-v2-final-verification.md
+  phase12-live-operational-hardening-plan.md
+  phase12-live-smoke.md
   system-design-decisions.md
   diagnosis-report.md           # legacy diagnosis; v2 이전 기록
   generated/                    # historical/generated verification evidence
