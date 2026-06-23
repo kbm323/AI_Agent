@@ -85,8 +85,8 @@ Phase 12 is complete when all accepted tasks below are either PASS or explicitly
 ```text
 AC-12.0 Plan exists and is committed.
 AC-12.1 Discord REST projection live smoke is PASS. [already complete]
-AC-12.3 Bot permission hardening plan is implemented or documented as manual-only.
-AC-12.4 Token reset decision is documented; no tracked secrets introduced.
+AC-12.3 Bot permission hardening plan is documented; permission mutation deferred by decision.
+AC-12.4 Token reset decision is documented: do not rotate now; no tracked secrets introduced.
 AC-12.5 Assistant UX/channel plan is implemented or documented as manual-only.
 AC-12.6 Gateway status is verified after any Discord permission/channel changes.
 AC-12.7 Focused tests and secret scans pass for changed files.

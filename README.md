@@ -54,6 +54,7 @@ Phase 10 Live adapter wiring boundaries
 Phase 11 Final verification
 Phase 12.1 Discord live projection smoke
 Phase 12.3 Bot permission inventory / hardening decision
+Phase 12.4 Token rotation decision
 Phase 12.5 Personal assistant UX/channel cleanup decision
 ```
 
@@ -85,10 +86,10 @@ Phase 12.5 Personal assistant UX/channel cleanup decision
 - opencode-go live smoke 1회 성공
 - Phase 12.1 Discord REST live projection smoke record
 - Phase 12.3 Discord permission inventory and hardening decision
+- Phase 12.4 token rotation decision: do not rotate now
 - Phase 12.5 personal assistant UX/channel cleanup decision
 
 아직 남은 작업:
-- Phase 12.4 token rotation decision
 - Phase 12.2 opencode-go worker live smoke when quota risk is acceptable
 ```
 
@@ -170,6 +171,7 @@ docs/
   phase12-live-operational-hardening-plan.md
   phase12-live-smoke.md
   phase12-discord-permission-hardening.md
+  phase12-token-rotation-decision.md
   phase12-assistant-ux.md
   system-design-decisions.md
   diagnosis-report.md           # legacy diagnosis; v2 이전 기록
