@@ -19,3 +19,4 @@
 - `DISCORD_THREAD_REQUIRE_MENTION=true`
 - free response channel은 초기에는 비워둔다.
 - 서버 관리 권한은 사람 계정이 갖고, 봇은 최소 권한 원칙을 따른다.
+- 비서봇의 최종 UX target은 `#개인-비서`이지만, 현재 서버에 해당 채널이 없으므로 `#일일-브리핑`을 유지한다. 자세한 결정은 `docs/phase12-assistant-ux.md`를 본다.

@@ -234,8 +234,15 @@ Current status:
 ```text
 Inventory: PASS
 Documentation: PASS
-Actual Discord permission mutation: NOT PERFORMED
-Hardening complete: NO, manual action required
+Actual Discord permission mutation: DEFERRED
+Hardening complete: DEFERRED BY DECISION
 ```
 
-Phase 12.3 can be considered complete only as an inventory/documentation step. The operational permission hardening itself remains manual until the Discord server role state is changed and re-verified.
+Follow-up decision:
+
+```text
+Do not change Discord permissions right now.
+Reason: Administrator is absent, mention-gating is enabled, free-response is disabled, and all bots can access their required channels. Permission reduction can be revisited after the live workflow is stable.
+```
+
+Phase 12.3 is complete as an inventory/documentation step. The operational permission hardening itself is intentionally deferred until there is a concrete need or a separate approved hardening window.

@@ -53,6 +53,8 @@ Phase 9  End-to-end simulation CLI
 Phase 10 Live adapter wiring boundaries
 Phase 11 Final verification
 Phase 12.1 Discord live projection smoke
+Phase 12.3 Bot permission inventory / hardening decision
+Phase 12.5 Personal assistant UX/channel cleanup decision
 ```
 
 현재 실제 구동 범위:
@@ -81,13 +83,13 @@ Phase 12.1 Discord live projection smoke
 - Hermes binary discovery
 - OpenCode binary discovery
 - opencode-go live smoke 1회 성공
-- Discord REST projection live smoke 1회 성공 (`시스템-로그`)
+- Phase 12.1 Discord REST live projection smoke record
+- Phase 12.3 Discord permission inventory and hardening decision
+- Phase 12.5 personal assistant UX/channel cleanup decision
 
 아직 남은 작업:
-- Phase 12.3 bot permission hardening
-- Phase 12.5 personal assistant UX/channel cleanup
+- Phase 12.4 token rotation decision
 - Phase 12.2 opencode-go worker live smoke when quota risk is acceptable
-- optional: exposed token reset
 ```
 
 ## Runtime v2 Modules
@@ -168,6 +170,7 @@ docs/
   phase12-live-operational-hardening-plan.md
   phase12-live-smoke.md
   phase12-discord-permission-hardening.md
+  phase12-assistant-ux.md
   system-design-decisions.md
   diagnosis-report.md           # legacy diagnosis; v2 이전 기록
   generated/                    # historical/generated verification evidence
