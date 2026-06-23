@@ -9,6 +9,7 @@ from src.runtime_architecture_v2.projection import (
     FakeDiscordProjectionSink,
     HermesCommandSurfacePolicy,
     LiveDiscordProjectionSink,
+    _default_discord_http_post,
     default_team_bot_topology,
 )
 from src.runtime_architecture_v2.schemas import (
@@ -375,6 +376,47 @@ def test_live_discord_projection_sink_uses_env_token_and_injected_http_client():
             "timeout_seconds": 9,
         }
     ]
+
+
+def test_default_discord_http_post_sends_discord_compatible_user_agent(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+        def read(self):
+            return b'{"id":"discord-msg-ua"}'
+
+    def fake_urlopen(request, timeout):  # noqa: ANN001
+        captured["headers"] = dict(request.header_items())
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.projection.urllib.request.urlopen",
+        fake_urlopen,
+    )
+
+    response = _default_discord_http_post(
+        "https://discord.com/api/v10/channels/channel-1/messages",
+        headers={
+            "Authorization": "Bot token-from-env",
+            "Content-Type": "application/json",
+        },
+        json_body={"content": "hello"},
+        timeout_seconds=7,
+    )
+
+    assert response["status_code"] == 200
+    assert captured["timeout"] == 7
+    assert captured["headers"]["User-agent"].startswith("DiscordBot ")
+    assert "AI_Agent" in captured["headers"]["User-agent"]
 
 
 def test_live_discord_projection_sink_fails_closed_without_token_or_on_http_error():

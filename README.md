@@ -52,6 +52,7 @@ Phase 8  Security / quota / observability policies
 Phase 9  End-to-end simulation CLI
 Phase 10 Live adapter wiring boundaries
 Phase 11 Final verification
+Phase 12.1 Discord live projection smoke
 ```
 
 현재 실제 구동 범위:
@@ -73,16 +74,20 @@ Phase 11 Final verification
 - opencode-go WorkerRunner behind injected subprocess boundary
 - quota-gated GLM/Codex validator execution planner
 - Phase 11 final verification record
+- Phase 12.1 Discord REST live projection smoke record
 
 실제 외부 경계 검증 완료:
 - opencode-go CLI discovery
 - Hermes binary discovery
 - OpenCode binary discovery
 - opencode-go live smoke 1회 성공
+- Discord REST projection live smoke 1회 성공 (`시스템-로그`)
 
 아직 남은 작업:
-- origin/main push (GitHub credential 필요)
-- optional: exposed token reset / bot permission tightening
+- Phase 12.3 bot permission hardening
+- Phase 12.5 personal assistant UX/channel cleanup
+- Phase 12.2 opencode-go worker live smoke when quota risk is acceptable
+- optional: exposed token reset
 ```
 
 ## Runtime v2 Modules

@@ -41,6 +41,10 @@ _SECRET_ASSIGNMENT_RE = re.compile(
     r"([^\s,'\"}]+)"
 )
 _BEARER_SECRET_RE = re.compile(r"(?i)\bbearer\s+\S+")
+_DISCORD_USER_AGENT = (
+    "DiscordBot (https://github.com/kbm323/AI_Agent, phase12-live-smoke) "
+    "Python/urllib"
+)
 
 
 def _normalize_role_name(role: str) -> str:
@@ -254,10 +258,14 @@ def _default_discord_http_post(
     json_body: Mapping[str, object],
     timeout_seconds: int,
 ) -> dict[str, object]:
+    request_headers = {
+        "User-Agent": _DISCORD_USER_AGENT,
+        **dict(headers),
+    }
     request = urllib.request.Request(
         url,
         data=json.dumps(json_body).encode("utf-8"),
-        headers=dict(headers),
+        headers=request_headers,
         method="POST",
     )
     try:
