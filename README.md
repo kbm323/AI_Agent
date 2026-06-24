@@ -86,6 +86,7 @@ Phase 19   Autonomous Scheduling Daemon
 Phase 20   29-role Org Chart Registry
 Phase 21   Discord Interaction Webhook / Slash Command
 Phase 22   Always-on Autonomous Company Runtime
+Phase 23   Runtime v2 Alignment & Hardening
 ```
 
 현재 실제 구동 범위:
@@ -129,9 +130,16 @@ Phase 22   Always-on Autonomous Company Runtime
 - Phase 20 29-role org chart registry
 - Phase 21 Discord interaction webhook
 - Phase 22 unified company runtime
+- Phase 23 Runtime v2 alignment and fail-closed hardening
+
+현재 상태 구분:
+- Phase 13~22 planned implementation complete
+- Runtime v2 deterministic orchestration layer complete
+- Phase 23 fail-closed alignment/hardening in progress
+- Live production hardening remains; see `docs/phase23-live-production-hardening-checklist.md`
 
 아직 남은 작업:
-- (none — all planned phases complete)
+- live production hardening execution and controlled smoke verification
 ```
 
 ## Runtime v2 Modules
@@ -158,6 +166,8 @@ src/runtime_architecture_v2/
   bot_registry.py       # Phase 20 29-role org chart registry (not 29 Discord accounts)
   discord_webhook.py    # Phase 21 Discord interaction webhook
   autonomous_company.py # Phase 22 unified company runtime
+  # Phase 23 docs: phase23-runtime-v2-alignment-hardening.md,
+  #                phase23-live-production-hardening-checklist.md
   simulation_cli.py     # python -m deterministic e2e simulation runner
 ```
 

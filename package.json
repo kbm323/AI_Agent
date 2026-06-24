@@ -28,7 +28,7 @@
     "check:task-decomposition-stability": "node scripts/check-task-decomposition-stability.ts",
     "check:task-overlap": "node scripts/check-task-overlap.ts",
     "check:routing-assignment": "node scripts/check-routing-assignment.ts",
-    "check:openclaw-hermes-loop": "node scripts/check-openclaw-hermes-loop.ts",
+    "check:legacy-openclaw-hermes-loop": "node scripts/check-openclaw-hermes-loop.ts",
     "check:meeting-loop-routing": "node scripts/check-meeting-loop-routing.ts",
     "check:meeting-loop-artifacts": "node scripts/check-meeting-loop-artifacts.ts",
     "check:final-synthesis-artifact": "node scripts/check-final-synthesis-artifact.ts",

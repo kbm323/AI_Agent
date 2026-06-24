@@ -2,8 +2,20 @@ import assert from "node:assert/strict";
 import { AiAgentDatabase, CompanyOrchestrator } from "../src/index.ts";
 import type { DiscordDelivery, FinalizerExecutor, OwnerExecutor, ReviewerExecutor } from "../src/index.ts";
 
+/**
+ * LEGACY CHECK ONLY.
+ *
+ * This script preserves the pre-Runtime-Architecture-v2 OpenClaw/Hermes loop
+ * proof for historical regression coverage. OpenClaw is not part of the current
+ * Runtime Architecture v2 execution path. The active architecture uses
+ * Hermes-first MeetingRun coordination with opencode-go worker/validator/auditor
+ * boundaries. Keep this script out of active current-workflow commands; invoke
+ * it only through `check:legacy-openclaw-hermes-loop` when auditing legacy MVP
+ * behavior.
+ */
+
 interface OpenClawHermesLoopCheckResult {
-  command: "ai-agent check-openclaw-hermes-loop";
+  command: "ai-agent check:legacy-openclaw-hermes-loop";
   status: "passed";
   scenario: "single_openclaw_step_followed_by_single_hermes_review";
   proof: {
@@ -72,7 +84,7 @@ export async function checkOpenClawHermesLoop(): Promise<OpenClawHermesLoopCheck
     assert.equal(turns[hermesReviewIndex].content, hermesReview);
 
     return {
-      command: "ai-agent check-openclaw-hermes-loop",
+      command: "ai-agent check:legacy-openclaw-hermes-loop",
       status: "passed",
       scenario: "single_openclaw_step_followed_by_single_hermes_review",
       proof: {
