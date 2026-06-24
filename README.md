@@ -66,6 +66,7 @@ Phase 18   Live Kanban Autonomous Dispatch Loop
 Phase 19   Autonomous Scheduling Daemon
 Phase 20   29-Bot Discord Registry
 Phase 21   Discord Interaction Webhook / Slash Command
+Phase 22   Always-on Autonomous Company Runtime
 ```
 
 현재 실제 구동 범위:
@@ -108,9 +109,10 @@ Phase 21   Discord Interaction Webhook / Slash Command
 - Phase 19 autonomous scheduling daemon
 - Phase 20 29-bot Discord registry
 - Phase 21 Discord interaction webhook
+- Phase 22 unified company runtime
 
 아직 남은 작업:
-- Phase 22: Always-on Autonomous Company 통합
+- (none — all planned phases complete)
 ```
 
 ## Runtime v2 Modules
@@ -136,6 +138,7 @@ src/runtime_architecture_v2/
   daemon.py             # Phase 19 autonomous scheduling daemon
   bot_registry.py       # Phase 20 29-bot Discord registry
   discord_webhook.py    # Phase 21 Discord interaction webhook
+  autonomous_company.py # Phase 22 unified company runtime
   simulation_cli.py     # python -m deterministic e2e simulation runner
 ```
 
@@ -231,6 +234,7 @@ scripts/
   run_phase19_daemon_tick.py
   run_phase20_bot_registry.py
   run_phase21_discord_webhook.py
+  run_phase22_company_cycle.py
 
 tests/
   test_runtime_architecture_v2_*.py
