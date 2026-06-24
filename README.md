@@ -63,6 +63,7 @@ Phase 15   Persistent Second Brain / Knowledge Loop
 Phase 16   Autonomous Scheduling / Kanban Operations
 Phase 17   Production Readiness / Monitoring / Recovery
 Phase 18   Live Kanban Autonomous Dispatch Loop
+Phase 19   Autonomous Scheduling Daemon
 ```
 
 현재 실제 구동 범위:
@@ -102,9 +103,9 @@ Phase 18   Live Kanban Autonomous Dispatch Loop
 - Phase 16 autonomous scheduling / Kanban operations
 - Phase 17 production readiness / monitoring / recovery
 - Phase 18 live kanban autonomous dispatch loop
+- Phase 19 autonomous scheduling daemon
 
 아직 남은 작업:
-- Phase 19: Autonomous Scheduling Daemon (cron/daemon, 정기 회의 자동 발의)
 - Phase 20: 29개 직무 Discord Bot 전개
 - Phase 21: Discord Interaction Webhook / Slash Command
 - Phase 22: Always-on Autonomous Company 통합
@@ -130,6 +131,7 @@ src/runtime_architecture_v2/
   kanban_ops.py         # Phase 16 Hermes-native Kanban operation planning
   production.py         # Phase 17 health scanning / recovery triage
   dispatch_loop.py      # Phase 18 live autonomous dispatch loop
+  daemon.py             # Phase 19 autonomous scheduling daemon
   simulation_cli.py     # python -m deterministic e2e simulation runner
 ```
 
@@ -222,6 +224,7 @@ scripts/
   run_phase16_kanban_pilot.py
   run_phase17_health_check.py
   run_phase18_autonomous_dispatch.py
+  run_phase19_daemon_tick.py
 
 tests/
   test_runtime_architecture_v2_*.py
