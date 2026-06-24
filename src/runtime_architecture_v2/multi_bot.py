@@ -41,14 +41,42 @@ from .workers import (
 # ── Bot Persona Display Names ──────────────────────────────────────────
 
 BOT_PERSONAS: dict[str, str] = {
+    # Executive
     "ceo_coordinator": "대표",
+    "coo": "운영총괄",
+    "cfo": "재무총괄",
+    # Content Production
     "content_lead": "콘텐츠 팀장",
+    "producer": "프로듀서",
+    "writer": "작가",
+    "editor": "편집자",
+    "script_director": "대본감독",
+    "storyboard_artist": "스토리보드 아티스트",
+    # Art & Visual
     "art_lead": "아트 팀장",
+    "character_designer": "캐릭터 디자이너",
+    "background_artist": "배경 아티스트",
+    "animator": "애니메이터",
+    "vfx_artist": "VFX 아티스트",
+    # Technology
     "tech_lead": "기술 팀장",
+    "engine_developer": "엔진 개발자",
+    "backend_developer": "백엔드 개발자",
+    "ai_engineer": "AI 엔지니어",
+    "devops_engineer": "데브옵스 엔지니어",
+    # Marketing & Business
     "marketing_lead": "마케팅 팀장",
+    "sns_manager": "SNS 매니저",
+    "community_manager": "커뮤니티 매니저",
     "business_support_lead": "사업지원 팀장",
+    "partnership_manager": "파트너십 매니저",
+    # Quality & Validation
     "validation_audit": "검증 팀장",
-    "quality_lead": "검증 팀장",
+    "quality_lead": "QA 리드",
+    "legal_compliance": "법무/컴플라이언스",
+    # Production Support
+    "project_manager": "프로젝트 매니저",
+    "hr_lead": "인사/문화",
 }
 
 BotMessageType = Literal[
