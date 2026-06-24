@@ -84,7 +84,8 @@ Phase 12 is complete when all accepted tasks below are either PASS or explicitly
 
 ```text
 AC-12.0 Plan exists and is committed.
-AC-12.1 Discord REST projection live smoke is PASS. [already complete]
+AC-12.1 Discord REST projection live smoke is PASS. [complete]
+AC-12.2 opencode-go worker live smoke is PASS. [complete]
 AC-12.3 Bot permission hardening plan is documented; permission mutation deferred by decision.
 AC-12.4 Token reset decision is documented: do not rotate now; no tracked secrets introduced.
 AC-12.5 Assistant UX/channel plan is implemented or documented as manual-only.
@@ -284,11 +285,11 @@ free_response disabled or narrow-scoped
 
 ---
 
-### Task 12.2: opencode-go worker live smoke, deferred/minimal
+### Task 12.2: opencode-go worker live smoke, complete
 
 **Objective:** Validate one minimal live worker packet only when quota risk is acceptable.
 
-**Current decision:** Defer by default because OpenCode Go monthly usage is critical at 96%.
+**Decision:** Complete. Executed once after quota recovered and user explicitly requested Phase 12.2.
 
 **Preconditions:**
 
