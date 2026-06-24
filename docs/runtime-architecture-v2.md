@@ -1,9 +1,14 @@
 # AI Virtual Entertainment Company — Runtime Architecture v2
 
-> Hermes-first Multi-Agent Meeting System의 실제 운영 아키텍처.
+> Canonical final-system document for the current AI Virtual Entertainment Company runtime.
+> 이 파일이 최신 최종 아키텍처 기준 문서다.
 >
 > 기준 Seed: `seed_176a489b1d25`
 > Interview: `interview_20260619_051314`
+> Document status: CURRENT FINAL BASELINE
+> Last updated: 2026-06-25 KST
+> Last live Discord verification: 2026-06-25 02:43 KST
+> Decision precedence: latest user decisions and live Discord verification > this file > `docs/system-design-decisions.md` historical decision log > phase result documents > README.
 
 ## 1. Decision
 
@@ -57,6 +62,66 @@ Extend with adapters second.
 Create custom infrastructure only when Hermes has no fitting primitive.
 ```
 
+## 2.1 User Idea Ledger — Current Final Baseline
+
+This section exists to keep the user's latest product/system ideas in one place.
+When new ideas are accepted, update this section first or together with the
+relevant detailed architecture section.
+
+```text
+1. Final goal 기준 설계
+   - Do not shrink the system to an MVP during design.
+   - Implementation may be phased, but architecture targets the complete final company.
+
+2. Hermes-first operating model
+   - Hermes is the platform/operating layer.
+   - AI_Agent owns only the virtual-company domain coordinator, schemas, adapters, and policies.
+   - Avoid Hermes Core modifications unless a verified gap exists.
+
+3. MeetingRun as source of truth
+   - Discord messages/threads are user-facing projections.
+   - The durable business object is meeting_run_id / MeetingRun.
+   - Recovery, audit, validation, reports, and Second Brain ingestion attach to MeetingRun.
+
+4. opencode-go-first workers
+   - opencode-go is the unified worker/validator/auditor wrapper.
+   - Qwen handles routing/classification where needed.
+   - GLM is the validator model role.
+   - Codex/GPT-5.5 is the gated auditor/high-confidence review path.
+   - Model order means quota fallback order, not quality ranking.
+
+5. OpenClaw removed
+   - OpenClaw is not part of Runtime Architecture v2.
+   - Remaining OpenClaw mentions are historical/legacy evidence only unless explicitly reintroduced.
+
+6. Discord surface is intentionally small
+   - Live Discord-facing bots = 7 accounts in the Entertainment guild.
+   - Personal assistant: `aicompanyassistant` / live username `비서`.
+   - Company team leads: CEO, Content, Art, Tech, Marketing, Quality/Validation.
+   - 29-role registry is the internal company org chart, not 29 Discord bot accounts.
+   - Business Support / Legal / Finance / HR are internal roles, not live Discord bots by default.
+
+7. Personal assistant is separate from the company org chart
+   - The assistant handles user intake, personal support, personal Second Brain, schedules/briefings, and action item extraction.
+   - It can reference company outputs, but it is not one of the 29 company roles.
+
+8. Company and personal knowledge are separated
+   - Company Second Brain stores company strategy/research/meeting decisions.
+   - Personal Second Brain stores personal notes/goals/schedules/reminders/user-support context.
+   - Hermes memory stays compact and durable only.
+
+9. Safety posture
+   - Bots are mention-gated by default.
+   - No global free-response channels by default.
+   - No Administrator permission by default.
+   - Discord live mutations require explicit purpose; document/defer when not required.
+
+10. Phase discipline
+   - Before implementation: plan and acceptance criteria.
+   - After implementation: Ouroboros QA / independent review / security scan / tests / lint / commit / push / remote verification.
+   - Phase completion reports must include remaining phases.
+```
+
 ## 3. Runtime Process Topology
 
 ```text
@@ -108,19 +173,36 @@ Additional bot accounts should not introduce independent state, memory, routing,
 or command infrastructure unless Hermes Gateway cannot support the required
 interaction pattern.
 
-Current live topology is exactly 7 Discord-facing bots: 1 personal assistant plus
-6 company team-lead bots. The 29-role registry is an internal org chart and does
-not mean 29 Discord bot accounts.
+Current live topology is exactly 7 Discord-facing bots in the `Entertainment`
+Discord guild. This was verified through Discord REST on 2026-06-25 02:43 KST
+using each profile's bot token without printing secrets.
 
-| Bot | Responsibility | User @mention | Projection role |
-|---|---|---:|---|
-| `버추얼컴퍼니-Hermes` Personal Assistant / Secretary | user intake, private/personal support, personal Second Brain, daily/weekly briefing, action-item extraction | yes | assistant/intake layer; not a company department role |
-| `대표` CEO/Coordinator Bot | company default entrypoint, routing, final report | yes | final synthesis, meeting open/close |
-| `콘텐츠 팀장` Content Lead Bot | content, script, editing, thumbnail direction | yes | content team opinions/consensus |
-| `아트 팀장` Art Lead Bot | concept, character, rigging, animation, VFX, stage | yes | art team opinions/risks |
-| `기술 팀장` Tech Lead Bot | R&D, pipeline, infrastructure, development, automation | yes | technical feasibility/execution status |
-| `마케팅 팀장` Marketing Lead Bot | SNS, community, IP, goods, growth | yes | market/fan/growth perspective |
-| `검증 팀장` Validation/Audit Bot | GLM/Codex risk and final validation projection | yes | verdict, blockers, correction requests |
+The 7 live accounts are 1 personal assistant plus 6 company team-lead bots. The
+29-role registry is an internal org chart and does not mean 29 Discord bot
+accounts.
+
+| Hermes profile | Live Discord username | Live home channel | Responsibility | User @mention | Projection role |
+|---|---|---|---|---:|---|
+| `aicompanyassistant` | `비서` | `#일일-브리핑` | personal assistant / secretary: user intake, private/personal support, personal Second Brain, daily/weekly briefing, action-item extraction | yes | assistant/intake layer; not a company department role |
+| `aicompanyceo` | `대표` | `#전략-회의실` | CEO/Coordinator Bot: company default entrypoint, routing, final report | yes | final synthesis, meeting open/close |
+| `aicompanycontent` | `콘텐츠팀장` | `#콘텐츠-메인` | Content Lead Bot: content, script, editing, thumbnail direction | yes | content team opinions/consensus |
+| `aicompanyart` | `아트팀장` | `#아트-메인` | Art Lead Bot: concept, character, rigging, animation, VFX, stage | yes | art team opinions/risks |
+| `aicompanytech` | `기술팀장` | `#기술-메인` | Tech Lead Bot: R&D, pipeline, infrastructure, development, automation | yes | technical feasibility/execution status |
+| `aicompanymarketing` | `마케팅팀장` | `#마케팅-메인` | Marketing Lead Bot: SNS, community, IP, goods, growth | yes | market/fan/growth perspective |
+| `aicompanyquality` | `품질관리팀장` | `#전체-리뷰` | Quality/Validation Bot: GLM/Codex risk and final validation projection | yes | verdict, blockers, correction requests |
+
+Live safety settings verified on 2026-06-25:
+
+```text
+Guild: Entertainment (1505600166676271244)
+All 7 bot tokens returned /users/@me = 200.
+All 7 bot accounts are members of the Entertainment guild.
+All 7 configured home channels are accessible.
+All 7 profiles use DISCORD_REQUIRE_MENTION=true.
+All 7 profiles use DISCORD_THREAD_REQUIRE_MENTION=true.
+All 7 profiles have no DISCORD_FREE_RESPONSE_CHANNELS configured.
+Each member currently has 1 Discord role.
+```
 
 Internal specialists are workers, not Discord bot accounts.
 Examples: content_pd, script_writer, concept_artist, rigger, pipeline_rd,
@@ -137,7 +219,7 @@ content reference research / editorial angle -> Content Lead
 visual reference / style / animation research -> Art Lead
 legal / contract / finance / policy research -> internal Business Support role via 대표 or relevant lead
 published or decision-critical claims -> Validation/Audit
-personal schedules / private notes / personal briefing -> 버추얼컴퍼니-Hermes personal assistant
+personal schedules / private notes / personal briefing -> `비서` personal assistant (`aicompanyassistant`)
 ```
 
 The Personal Assistant is a separate user-support/intake layer, not part of the

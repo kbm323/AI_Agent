@@ -1,7 +1,10 @@
 # AI Virtual Entertainment Company — Interview-Driven Design Decisions
 
-> Generated from Ouroboros interview session `interview_20260610_070847`
+> Historical decision log generated from Ouroboros interview session `interview_20260610_070847`.
 > Date: 2026-06-10
+> Current canonical final-system architecture document: `docs/runtime-architecture-v2.md`.
+> Last synchronized with live Discord verification: 2026-06-25 02:43 KST.
+> Use this file as the decision history / rationale log; use `docs/runtime-architecture-v2.md` as the current final architecture baseline.
 
 ---
 
@@ -27,7 +30,7 @@ The current baseline is not the original OpenClaw-era draft. Later decisions sup
 Phase 12.5  Personal assistant UX / channel cleanup
   - Personal assistant bot exists as a separate user-support/intake layer
   - Profile: aicompanyassistant
-  - Bot recorded in phase doc as 개인비서-Hermes; current topology names the live assistant surface `버추얼컴퍼니-Hermes`
+  - Bot recorded in phase doc as 개인비서-Hermes; current live Discord username is `비서` under profile `aicompanyassistant`
   - Current home channel at that time: #일일-브리핑
   - Target dedicated channel: #개인-비서, deferred until separately approved/manual channel creation
   - Mention-gated, no global free response, no server administration role
@@ -38,9 +41,17 @@ Phase 13~22  Runtime Architecture v2 implementation
   - Phase implementation complete does not mean live production company complete
 
 Current Discord-facing topology
-  - 7 actual Discord-facing bots total
-  - 1 personal assistant/secretary: 버추얼컴퍼니-Hermes
-  - 6 company team-lead bots: 대표, 콘텐츠 팀장, 아트 팀장, 기술 팀장, 마케팅 팀장, 검증 팀장
+  - Live guild: Entertainment (1505600166676271244), verified through Discord REST on 2026-06-25 02:43 KST
+  - 7 actual Discord-facing bot accounts total
+  - 1 personal assistant/secretary: profile aicompanyassistant, live username `비서`, home channel #일일-브리핑
+  - 6 company team-lead bot accounts:
+    - aicompanyceo / `대표` / #전략-회의실
+    - aicompanycontent / `콘텐츠팀장` / #콘텐츠-메인
+    - aicompanyart / `아트팀장` / #아트-메인
+    - aicompanytech / `기술팀장` / #기술-메인
+    - aicompanymarketing / `마케팅팀장` / #마케팅-메인
+    - aicompanyquality / `품질관리팀장` / #전체-리뷰
+  - All 7 are mention-gated and thread-mention-gated; no free-response channels configured
   - 29-role registry = internal org chart only, not 29 Discord bot accounts
 ```
 
@@ -323,8 +334,8 @@ Current Discord-facing topology
 
 **Discord Persona Architecture — Current Live Bot Topology:**
 - Current user-approved direction: Hermes-first Runtime Architecture v2 with OpenClaw removed. Use opencode-go/Hermes workers behind Discord-facing bots; do not create one real Discord bot per specialist.
-- Actual Discord-facing bots (7): `버추얼컴퍼니-Hermes` personal assistant/secretary, `대표`, `콘텐츠 팀장`, `아트 팀장`, `기술 팀장`, `마케팅 팀장`, `검증 팀장`.
-- `버추얼컴퍼니-Hermes` is the user's personal assistant and intake/secretary layer. It is not counted as a company department role in the 29-role org chart. It can help with schedules, private notes, personal Second Brain, daily/weekly briefings, and extracting personal action items from company outputs.
+- Actual Discord-facing bots (7, live verified 2026-06-25): personal assistant/secretary `aicompanyassistant` / `비서`, plus company team leads `대표`, `콘텐츠팀장`, `아트팀장`, `기술팀장`, `마케팅팀장`, `품질관리팀장`.
+- The `aicompanyassistant` profile / live username `비서` is the user's personal assistant and intake/secretary layer. It is not counted as a company department role in the 29-role org chart. It can help with schedules, private notes, personal Second Brain, daily/weekly briefings, and extracting personal action items from company outputs.
 - The six company-facing team-lead bots own visible department-level responses: CEO/Coordinator, Content, Art, Technology, Marketing, and Validation/Audit.
 - Business Support / legal / finance / HR are internal org-chart roles by default, dispatched through the CEO/Coordinator or the appropriate team lead. They are not separate live Discord bot accounts unless explicitly promoted later.
 - The 29-role registry is an internal company org chart / assignment map, not 29 Discord bot accounts. Internal specialists exist as opencode-go/Hermes workers and are represented through team leads or, if needed, presentation-only webhook rendering.

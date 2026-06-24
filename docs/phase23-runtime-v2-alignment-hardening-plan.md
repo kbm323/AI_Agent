@@ -18,17 +18,17 @@ It fixes four issues discovered after Phase 13~22:
 
 1. OpenClaw is legacy and must not be treated as a missing optional delegate.
 2. Phase 22 top-level `ok=true` must be fail-closed across integrated subphases.
-3. “29 bots” wording must be clarified as “29-role org chart”; the actual Discord-facing topology is `버추얼컴퍼니-Hermes` personal assistant + 6 company team-lead bots.
+3. “29 bots” wording must be clarified as “29-role org chart”; the actual Discord-facing topology is the live `비서` personal assistant account + 6 company team-lead bot accounts.
 4. Live production hardening must be documented as the next boundary, not implied complete.
 
 ## Acceptance Criteria
 
 ### AC1 — Final baseline document and OpenClaw legacy cleanup / labeling
 
-- `docs/system-design-decisions.md` is the current canonical final-system decision baseline unless superseded by a later explicitly named v2 document.
+- `docs/runtime-architecture-v2.md` is the current canonical final-system architecture baseline. `docs/system-design-decisions.md` is the historical decision/rationale log.
 - The canonical baseline must include the latest Discord topology:
-  - `버추얼컴퍼니-Hermes` personal assistant/secretary bot.
-  - Six company team-lead bots: `대표`, `콘텐츠 팀장`, `아트 팀장`, `기술 팀장`, `마케팅 팀장`, `검증 팀장`.
+  - Personal assistant/secretary bot: `aicompanyassistant` / live username `비서` / `#일일-브리핑`.
+  - Six company team-lead bots: `대표`, `콘텐츠팀장`, `아트팀장`, `기술팀장`, `마케팅팀장`, `품질관리팀장`.
   - 29-role org chart is internal and does not mean 29 Discord bot accounts.
   - Business Support/legal/finance/HR are internal roles by default, not separate live bots.
 - Runtime Architecture v2 docs must state OpenClaw is removed from the current architecture.
@@ -52,7 +52,7 @@ It fixes four issues discovered after Phase 13~22:
 - Rename or supplement `active_bots` with `registered_roles` in Phase 22 outputs, preserving backward compatibility if needed.
 - README and docs must clearly state:
   - 29 entries = internal org chart / role registry.
-  - 7 Discord-facing bots = `버추얼컴퍼니-Hermes` personal assistant/secretary + 6 company team-lead bots (`대표`, `콘텐츠 팀장`, `아트 팀장`, `기술 팀장`, `마케팅 팀장`, `검증 팀장`).
+  - 7 Discord-facing bots = live `비서` personal assistant/secretary + 6 company team-lead bots (`대표`, `콘텐츠팀장`, `아트팀장`, `기술팀장`, `마케팅팀장`, `품질관리팀장`).
   - Personal assistant is a user-support/intake layer, not a company department role in the 29-role org chart.
   - Internal workers are dispatched behind team leads, not separate Discord bot accounts.
 
