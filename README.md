@@ -58,6 +58,9 @@ Phase 12.3 Bot permission inventory / hardening decision
 Phase 12.4 Token rotation decision
 Phase 12.5 Personal assistant UX/channel cleanup decision
 Phase 13   Live Company Workflow Pilot
+Phase 14   Multi-bot Operational Protocol
+Phase 15   Persistent Second Brain / Knowledge Loop
+Phase 16   Autonomous Scheduling / Kanban Operations
 ```
 
 현재 실제 구동 범위:
@@ -94,9 +97,10 @@ Phase 13   Live Company Workflow Pilot
 - Phase 13 live company workflow pilot
 - Phase 14 multi-bot operational protocol
 - Phase 15 persistent Second Brain / knowledge loop
+- Phase 16 autonomous scheduling / Kanban operations
 
 아직 남은 작업:
-- Phase 16 Autonomous Scheduling / Kanban Operations
+- Phase 17 Production Readiness / Monitoring / Recovery
 ```
 
 ## Runtime v2 Modules
@@ -116,6 +120,7 @@ src/runtime_architecture_v2/
   pilot.py              # Phase 13 bounded live company workflow pilot
   multi_bot.py          # Phase 14 multi-bot conversation protocol
   knowledge.py          # Phase 15 repo-local Second Brain / knowledge loop
+  kanban_ops.py         # Phase 16 Hermes-native Kanban operation planning
   simulation_cli.py     # python -m deterministic e2e simulation runner
 ```
 
@@ -205,6 +210,7 @@ scripts/
   *.ts, *.mjs                   # legacy verification/diagnosis scripts
   check_all_quota.sh            # provider quota snapshot helper
   run_phase13_company_workflow_pilot.py
+  run_phase16_kanban_pilot.py
 
 tests/
   test_runtime_architecture_v2_*.py
