@@ -57,6 +57,7 @@ Phase 12.2 opencode-go worker live smoke
 Phase 12.3 Bot permission inventory / hardening decision
 Phase 12.4 Token rotation decision
 Phase 12.5 Personal assistant UX/channel cleanup decision
+Phase 13   Live Company Workflow Pilot
 ```
 
 현재 실제 구동 범위:
@@ -90,9 +91,11 @@ Phase 12.5 Personal assistant UX/channel cleanup decision
 - Phase 12.3 Discord permission inventory and hardening decision
 - Phase 12.4 token rotation decision: do not rotate now
 - Phase 12.5 personal assistant UX/channel cleanup decision
+- Phase 13 live company workflow pilot
+- Phase 14 multi-bot operational protocol
 
 아직 남은 작업:
-- Phase 13 live company workflow pilot planning
+- Phase 15 Persistent Second Brain / Knowledge Loop
 ```
 
 ## Runtime v2 Modules
@@ -109,6 +112,8 @@ src/runtime_architecture_v2/
   projection.py         # Discord-safe formatter, fake sink, live Discord sink boundary
   policies.py           # security, quota, observability policy gates
   orchestrator.py       # deterministic fake MeetingRun full-flow orchestrator
+  pilot.py              # Phase 13 bounded live company workflow pilot
+  multi_bot.py          # Phase 14 multi-bot conversation protocol
   simulation_cli.py     # python -m deterministic e2e simulation runner
 ```
 
@@ -176,6 +181,8 @@ docs/
   phase12-discord-permission-hardening.md
   phase12-token-rotation-decision.md
   phase12-assistant-ux.md
+  phase13-live-company-workflow-pilot-plan.md
+  phase13-live-company-workflow-pilot.md
   system-design-decisions.md
   diagnosis-report.md           # legacy diagnosis; v2 이전 기록
   generated/                    # historical/generated verification evidence
@@ -195,6 +202,7 @@ src/
 scripts/
   *.ts, *.mjs                   # legacy verification/diagnosis scripts
   check_all_quota.sh            # provider quota snapshot helper
+  run_phase13_company_workflow_pilot.py
 
 tests/
   test_runtime_architecture_v2_*.py

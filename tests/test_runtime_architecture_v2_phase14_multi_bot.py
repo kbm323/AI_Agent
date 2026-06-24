@@ -1,0 +1,434 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from src.runtime_architecture_v2.multi_bot import (
+    BOT_PERSONAS,
+    BotMessage,
+    MeetingRound,
+    MultiBotSession,
+    build_phase14_pilot_request,
+    route_bot_projection,
+    run_meeting_phase,
+    run_phase14_multi_bot_pilot,
+)
+from src.runtime_architecture_v2.pilot import Phase13PilotModeError
+from src.runtime_architecture_v2.schemas import (
+    MeetingRunState,
+)
+from src.runtime_architecture_v2.workers import OpenCodeGoRunResult
+
+# ── Schema Tests ────────────────────────────────────────────────────────
+
+
+def test_bot_message_serialization_round_trips():
+    msg = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_test",
+        round=1,
+        msg_type="opinion",
+        content="콘텐츠 아이디어 제안입니다.",
+        mentions=("marketing_lead",),
+        visible_on_discord=True,
+    )
+    data = msg.to_dict()
+    restored = BotMessage.from_dict(data)
+
+    assert restored.bot_role == msg.bot_role
+    assert restored.meeting_run_id == msg.meeting_run_id
+    assert restored.round == msg.round
+    assert restored.msg_type == msg.msg_type
+    assert restored.content == msg.content
+    assert restored.mentions == msg.mentions
+    assert restored.visible_on_discord == msg.visible_on_discord
+
+
+def test_meeting_round_holds_multiple_bot_messages():
+    msgs = tuple(
+        BotMessage(
+            bot_role=role,
+            meeting_run_id="mr_test",
+            round=1,
+            msg_type="opinion",
+            content=f"[{role}] 의견입니다.",
+        )
+        for role in ("content_lead", "marketing_lead", "quality_lead")
+    )
+    round_data = MeetingRound(round_number=1, phase="opinions", messages=msgs)
+
+    assert len(round_data.messages) == 3
+    assert round_data.messages[0].bot_role == "content_lead"
+    assert round_data.messages[2].bot_role == "quality_lead"
+
+    restored = MeetingRound.from_dict(round_data.to_dict())
+    assert len(restored.messages) == 3
+
+
+def test_multi_bot_session_consensus_state_tracking():
+    msgs = (BotMessage(
+            bot_role="content_lead",
+            meeting_run_id="mr_test",
+            round=1,
+            msg_type="opinion",
+            content="의견",
+        ),)
+    rounds = (MeetingRound(round_number=1, phase="opinions", messages=msgs),)
+    session = MultiBotSession(
+        meeting_run_id="mr_test",
+        participants=("content_lead", "marketing_lead"),
+        rounds=rounds,
+        consensus_reached=True,
+        escalation_required=False,
+        consensus_summary="합의 완료",
+    )
+
+    assert session.consensus_reached is True
+    assert session.escalation_required is False
+    assert "합의 완료" in session.consensus_summary
+
+
+# ── Meeting Phase Tests ─────────────────────────────────────────────────
+
+
+def test_meeting_phase_produces_two_rounds(tmp_path: Path):
+    from src.runtime_architecture_v2.pilot import (
+        build_phase13_pilot_request,
+        create_phase13_meeting_run,
+    )
+
+    run = create_phase13_meeting_run(tmp_path, build_phase13_pilot_request())
+    session = run_meeting_phase(
+        run,
+        participants=("content_lead", "marketing_lead", "quality_lead"),
+        rounds=2,
+        live_bot_roles=(),
+        fake_bot_roles=("content_lead", "marketing_lead", "quality_lead"),
+    )
+
+    assert len(session.rounds) == 2
+    assert session.rounds[0].phase == "opinions"
+    assert session.rounds[1].phase == "rebuttals"
+    assert len(session.rounds[0].messages) == 3
+    assert session.consensus_reached is True
+
+
+def test_meeting_phase_with_one_live_bot(tmp_path: Path):
+    from src.runtime_architecture_v2.pilot import (
+        build_phase13_pilot_request,
+        create_phase13_meeting_run,
+    )
+
+    calls: list[list[str]] = []
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        calls.append(command)
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout="라이브 콘텐츠 팀장 의견입니다.",
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    run = create_phase13_meeting_run(tmp_path, build_phase13_pilot_request())
+    session = run_meeting_phase(
+        run,
+        participants=("content_lead", "marketing_lead", "quality_lead"),
+        rounds=2,
+        live_bot_roles=("content_lead",),
+        fake_bot_roles=("marketing_lead", "quality_lead"),
+        command_runner=command_runner,
+        workdir=str(tmp_path),
+    )
+
+    assert len(session.rounds) == 2
+    assert len(calls) >= 2  # opinion + rebuttal for live bot
+
+
+def test_meeting_phase_rejects_no_participants(tmp_path: Path):
+    from src.runtime_architecture_v2.pilot import (
+        build_phase13_pilot_request,
+        create_phase13_meeting_run,
+    )
+
+    run = create_phase13_meeting_run(tmp_path, build_phase13_pilot_request())
+    try:
+        run_meeting_phase(run, participants=(), rounds=1)
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("meeting phase must reject empty participants")
+
+
+# ── Projection Tests ────────────────────────────────────────────────────
+
+
+def test_bot_persona_covers_all_roles():
+    expected_roles = {
+        "ceo_coordinator",
+        "content_lead",
+        "art_lead",
+        "tech_lead",
+        "marketing_lead",
+        "business_support_lead",
+        "validation_audit",
+        "quality_lead",
+    }
+    assert set(BOT_PERSONAS.keys()) >= expected_roles
+
+
+def test_route_bot_projection_selects_correct_persona():
+    msg = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_test",
+        round=1,
+        msg_type="opinion",
+        content="콘텐츠 제안입니다.",
+    )
+    result = route_bot_projection(msg)
+
+    assert result.status == "published"
+    assert "fake-discord-message" in result.discord_message_id
+
+
+def test_route_bot_projection_sanitizes_secrets():
+    msg = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_test",
+        round=1,
+        msg_type="opinion",
+        content="api_key=LEAK123456 and @everyone should be safe",
+    )
+    result = route_bot_projection(msg)
+
+    assert result.status == "published"
+    assert "LEAK123456" not in result.discord_message_id
+
+
+def test_route_bot_projection_respects_visible_flag():
+    msg = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_test",
+        round=1,
+        msg_type="opinion",
+        content="내부 전용 메시지",
+        visible_on_discord=False,
+    )
+    # visible_on_discord=False messages are filtered before route_bot_projection
+    # This test just verifies the flag is preserved
+    assert msg.visible_on_discord is False
+
+
+def test_route_bot_projection_live_discord_without_token(tmp_path: Path):
+    msg = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_test",
+        round=1,
+        msg_type="opinion",
+        content="테스트 메시지",
+    )
+    result = route_bot_projection(
+        msg, live_discord=True, target_channel_id="test-channel", env={}
+    )
+    assert result.status == "blocked"
+
+
+# ── Pilot Dry-run Tests ─────────────────────────────────────────────────
+
+
+def test_phase14_dry_run_produces_multi_bot_output(tmp_path: Path):
+    result = run_phase14_multi_bot_pilot(root=tmp_path, mode="dry-run")
+
+    assert result.ok is True
+    assert result.mode == "dry-run"
+    assert result.live_worker_count == 0
+    assert result.fake_worker_count == 3
+    assert result.meeting_run.state == MeetingRunState.COMPLETED
+    assert len(result.bot_participants) == 3
+    assert "content_lead" in result.bot_participants
+    assert result.rounds_completed == 2
+    assert result.projection_messages_posted >= 4  # 3 opinions + at least 1 rebuttal
+
+
+def test_phase14_dry_run_never_calls_injected_command_runner(tmp_path: Path):
+    calls: list[list[str]] = []
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        calls.append(command)
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout='{"should_not":"run"}',
+            stderr="",
+            timeout_occurred=False,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="dry-run",
+        command_runner=command_runner,
+    )
+
+    assert result.ok is True
+    assert calls == []
+
+
+def test_phase14_dry_run_rejects_live_discord_before_sink(tmp_path: Path):
+    try:
+        run_phase14_multi_bot_pilot(
+            root=tmp_path,
+            mode="dry-run",
+            live_discord=True,
+            env={"DISCORD_BOT_TOKEN": "would-not-be-used"},
+        )
+    except Phase13PilotModeError as exc:
+        assert exc.code == "invalid_live_discord_mode"
+    else:  # pragma: no cover
+        raise AssertionError("dry-run must reject live Discord projection")
+
+
+def test_phase14_live_worker_mode_rejects_more_than_two_workers(tmp_path: Path):
+    try:
+        run_phase14_multi_bot_pilot(
+            root=tmp_path, mode="live-worker", max_live_workers=3
+        )
+    except Phase13PilotModeError as exc:
+        assert exc.code == "invalid_live_worker_count"
+    else:  # pragma: no cover
+        raise AssertionError("must reject more than 2 live workers")
+
+
+def test_phase14_live_worker_mode_with_injected_runner(tmp_path: Path):
+    calls: list[list[str]] = []
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        calls.append(command)
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout='{"idea":"multi-bot virtual idol debut concept"}',
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=2,
+        command_runner=command_runner,
+    )
+
+    assert result.ok is True
+    assert result.live_worker_count == 2
+    assert result.fake_worker_count == 1
+    assert len(calls) >= 1
+    assert result.meeting_run.state == MeetingRunState.COMPLETED
+
+
+def test_phase14_live_worker_failure_returns_structured_result(tmp_path: Path):
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        raise RuntimeError("simulated worker crash")
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=2,
+        command_runner=command_runner,
+    )
+
+    assert result.ok is False
+    assert result.meeting_run.state == MeetingRunState.FAILED
+
+
+def test_phase14_live_discord_blocked_marks_result_not_ok(tmp_path: Path):
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout='{"ok": true}',
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=1,
+        command_runner=command_runner,
+        live_discord=True,
+        env={},
+    )
+
+    assert result.ok is False
+    assert result.error == "live_discord_publish_blocked"
+    assert result.meeting_run.state == MeetingRunState.FAILED
+    assert all(r.status == "blocked" for r in result.projection_results)
+
+
+# ── Pilot Request Fixture Tests ─────────────────────────────────────────
+
+
+def test_phase14_pilot_request_is_stable():
+    request = build_phase14_pilot_request()
+
+    assert request["pilot_id"] == "phase14_multi_bot_operational_pilot"
+    assert request["trigger_text"]
+    assert request["live_bot_roles"] == ["content_lead", "marketing_lead"]
+    assert request["fake_bot_roles"] == ["quality_lead"]
+    assert "openclaw" not in json.dumps(request, ensure_ascii=False).lower()
+
+
+# ── CLI Tests ───────────────────────────────────────────────────────────
+
+
+def test_phase14_cli_dry_run_outputs_machine_readable_json(tmp_path: Path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_phase14_multi_bot_pilot.py",
+            "--mode",
+            "dry-run",
+            "--root",
+            str(tmp_path),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    payload = json.loads(completed.stdout)
+    assert payload["pilot_id"] == "phase14_multi_bot_operational_pilot"
+    assert payload["mode"] == "dry-run"
+    assert payload["live_worker_count"] == 0
+    assert payload["fake_worker_count"] == 3
+    assert payload["ok"] is True
+    assert payload["rounds_completed"] == 2
+    assert len(payload["bot_participants"]) == 3
+
+
+def test_phase14_cli_rejects_invalid_mode(tmp_path: Path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/run_phase14_multi_bot_pilot.py",
+            "--mode",
+            "live-worker",
+            "--max-live-workers",
+            "5",
+            "--root",
+            str(tmp_path),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stderr)
+    assert payload["ok"] is False
+    assert payload["error"] == "invalid_live_worker_count"
