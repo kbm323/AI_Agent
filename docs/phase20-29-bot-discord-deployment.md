@@ -1,9 +1,9 @@
-# Phase 20: 29-Bot Discord Registry — 결과
+# Phase 20: 29-role Org Chart Registry — 결과
 
 ## 상태
 
 ```text
-Phase 20: 29개 직무 Discord Bot 전개
+Phase 20: 29-role Org Chart Registry
 상태: 구현 + TDD + QA + 독립리뷰 + commit/push 완료
 ```
 
@@ -16,7 +16,7 @@ scripts/run_phase20_bot_registry.py             40 lines
 tests/test_runtime_architecture_v2_phase20_bot_registry.py  16 tests
 ```
 
-## 29-Bot Topology
+## 29-role Org Chart Topology
 
 ```text
 Executive (3): 대표(P0), 운영총괄(P1), 재무총괄

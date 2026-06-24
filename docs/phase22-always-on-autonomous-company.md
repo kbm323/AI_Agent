@@ -14,7 +14,7 @@ Phase 22: Always-on Autonomous Company (FINAL)
 2. Phase 19 → daemon tick (Daily Standup + Weekly Review)
 3. Phase 15 → knowledge loop (Second Brain update)
 4. Phase 21 → 5 slash commands simulation
-5. Phase 20 → 29-bot org chart
+5. Phase 20 → 29-role org chart
 6. Phase 18 → dispatch through kanban (via daemon)
 7. CompanyCycleResult → JSON artifact
 ```
@@ -24,7 +24,7 @@ Phase 22: Always-on Autonomous Company (FINAL)
 ```text
 CLI dry-run:
   ok=true
-  active_bots=29
+  active_bots=29  # legacy output name; means registered org-chart roles, not Discord bot accounts
   daemon_scheduled=2
   commands_simulated=5
   health_ok=true

@@ -1,4 +1,4 @@
-"""Phase 20 29-Bot Discord Registry — TDD tests."""
+"""Phase 20 29-role Org Chart Registry — TDD tests."""
 
 from __future__ import annotations
 

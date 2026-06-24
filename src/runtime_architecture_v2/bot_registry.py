@@ -1,4 +1,4 @@
-"""Phase 20: 29-Bot Discord Registry and Deployment Manifest.
+"""Phase 20: 29-role Org Chart Registry and Deployment Manifest.
 
 Defines the complete 29-role bot topology for the AI Virtual Entertainment
 Company. Each bot is mention-gated by default and registered with department,
@@ -50,7 +50,7 @@ class BotProfile:
         }
 
 
-# ── 29-Bot Registry ────────────────────────────────────────────────────
+# ── 29-role Org Chart Registry ──────────────────────────────────────────
 
 _EXECUTIVE: tuple[BotProfile, ...] = (
     BotProfile("ceo_coordinator", "대표", "Executive", priority="P0"),
@@ -151,7 +151,7 @@ def run_phase20_bot_registry(
     root: str | Path,
     mode: Literal["dry-run", "live"] = "dry-run",
 ) -> dict[str, Any]:
-    """Generate the 29-bot deployment manifest."""
+    """Generate the 29-role org chart deployment manifest."""
 
     if mode not in ("dry-run", "live"):
         return {

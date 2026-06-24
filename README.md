@@ -2,7 +2,7 @@
 
 Hermes-first AI Virtual Entertainment Company runtime.
 
-이 레포는 Discord 안에서 6~7개 팀장 Bot이 회의/작업/검증/보고를 수행하는 AI 회사 운영 코어를 구현한다. 현재 기준 설계는 OpenClaw 기반 구 MVP가 아니라 `MeetingRun` 중심 Runtime Architecture v2다.
+이 레포는 Discord 안에서 `버추얼컴퍼니-Hermes` 개인비서 Bot + 6개 회사 팀장 Bot이 회의/작업/검증/보고를 수행하는 AI 회사 운영 코어를 구현한다. 현재 기준 설계는 OpenClaw 기반 구 MVP가 아니라 `MeetingRun` 중심 Runtime Architecture v2다.
 
 ```text
 Discord는 무대다.
@@ -64,7 +64,7 @@ Phase 16   Autonomous Scheduling / Kanban Operations
 Phase 17   Production Readiness / Monitoring / Recovery
 Phase 18   Live Kanban Autonomous Dispatch Loop
 Phase 19   Autonomous Scheduling Daemon
-Phase 20   29-Bot Discord Registry
+Phase 20   29-role Org Chart Registry
 Phase 21   Discord Interaction Webhook / Slash Command
 Phase 22   Always-on Autonomous Company Runtime
 ```
@@ -107,7 +107,7 @@ Phase 22   Always-on Autonomous Company Runtime
 - Phase 17 production readiness / monitoring / recovery
 - Phase 18 live kanban autonomous dispatch loop
 - Phase 19 autonomous scheduling daemon
-- Phase 20 29-bot Discord registry
+- Phase 20 29-role org chart registry
 - Phase 21 Discord interaction webhook
 - Phase 22 unified company runtime
 
@@ -136,7 +136,7 @@ src/runtime_architecture_v2/
   production.py         # Phase 17 health scanning / recovery triage
   dispatch_loop.py      # Phase 18 live autonomous dispatch loop
   daemon.py             # Phase 19 autonomous scheduling daemon
-  bot_registry.py       # Phase 20 29-bot Discord registry
+  bot_registry.py       # Phase 20 29-role org chart registry (not 29 Discord accounts)
   discord_webhook.py    # Phase 21 Discord interaction webhook
   autonomous_company.py # Phase 22 unified company runtime
   simulation_cli.py     # python -m deterministic e2e simulation runner

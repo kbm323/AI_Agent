@@ -1,6 +1,6 @@
 # Phase 14 Multi-bot Operational Protocol — Implementation Plan
 
-**Goal:** Phase 13이 증명한 단일 live worker pilot을 넘어, 6~7개 팀장 Bot이 Discord에서 실제로 협업하는 multi-bot operational protocol을 설계·구현·검증한다.
+**Goal:** Phase 13이 증명한 단일 live worker pilot을 넘어, `버추얼컴퍼니-Hermes` 개인비서 Bot + 6개 회사 팀장 Bot이 Discord에서 협업하는 multi-bot operational protocol을 설계·구현·검증한다.
 
 **Architecture:** Phase 14 builds on Runtime Architecture v2 and Phase 13 pilot boundaries. Keep Hermes Core untouched. Extend the MeetingRun domain layer with multi-bot coordination: bot conversation protocol, multi-worker dispatch, Discord projection routing per bot persona, and meeting flow with multiple participants.
 
@@ -26,7 +26,7 @@ Phase 13이 증명한 것:
 Phase 13이 못한 것 (= Phase 14 목표):
 ```text
 Multi-bot Operational Protocol
-  → 6~7개 팀장 Bot이 하나의 MeetingRun에서 실제로 협업
+  → 개인비서 Bot + 6개 회사 팀장 Bot이 하나의 MeetingRun에서 협업
   → Bot 간 대화 프로토콜
   → 다중 live worker 동시 실행
   → MeetingPhase의 multi-participant 회의 흐름

@@ -34,7 +34,7 @@ class CompanyCycleResult:
     knowledge_updated: bool         # Phase 15
     commands_simulated: int         # Phase 21
     total_meeting_runs: int
-    active_bots: int                # Phase 20
+    active_bots: int                # Phase 20 legacy output name; means registered org-chart roles
     error: str
 
 class AutonomousCompany:

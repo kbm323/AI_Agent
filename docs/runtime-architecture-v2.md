@@ -102,43 +102,48 @@ Create custom infrastructure only when Hermes has no fitting primitive.
 
 ## 4. Discord Bot Topology
 
-Actual Discord bots are team-lead level interaction endpoints.
-They are not source-of-truth state holders.
-Hermes Discord Gateway remains the preferred transport layer. Additional bot
-accounts are projection endpoints only; they should not introduce independent
-state, memory, routing, or command infrastructure unless Hermes Gateway cannot
-support the required interaction pattern.
+Actual Discord-facing bots are projection/intake endpoints, not source-of-truth
+state holders. Hermes Discord Gateway remains the preferred transport layer.
+Additional bot accounts should not introduce independent state, memory, routing,
+or command infrastructure unless Hermes Gateway cannot support the required
+interaction pattern.
+
+Current live topology is exactly 7 Discord-facing bots: 1 personal assistant plus
+6 company team-lead bots. The 29-role registry is an internal org chart and does
+not mean 29 Discord bot accounts.
 
 | Bot | Responsibility | User @mention | Projection role |
 |---|---|---:|---|
-| CEO/Coordinator Bot | default entrypoint, routing, final report | yes | final synthesis, meeting open/close |
-| Content Lead Bot | content, script, editing, thumbnail direction | yes | content team opinions/consensus |
-| Art Lead Bot | concept, character, rigging, animation, VFX, stage | yes | art team opinions/risks |
-| Tech Lead Bot | R&D, pipeline, infrastructure, development, automation | yes | technical feasibility/execution status |
-| Marketing Lead Bot | SNS, community, IP, goods, growth | yes | market/fan/growth perspective |
-| Business Support Lead Bot | BD, legal, finance, HR, risk | yes | business/legal/finance risk |
-| Validation/Audit Bot | GLM/Codex risk and final validation projection | yes | verdict, blockers, correction requests |
+| `버추얼컴퍼니-Hermes` Personal Assistant / Secretary | user intake, private/personal support, personal Second Brain, daily/weekly briefing, action-item extraction | yes | assistant/intake layer; not a company department role |
+| `대표` CEO/Coordinator Bot | company default entrypoint, routing, final report | yes | final synthesis, meeting open/close |
+| `콘텐츠 팀장` Content Lead Bot | content, script, editing, thumbnail direction | yes | content team opinions/consensus |
+| `아트 팀장` Art Lead Bot | concept, character, rigging, animation, VFX, stage | yes | art team opinions/risks |
+| `기술 팀장` Tech Lead Bot | R&D, pipeline, infrastructure, development, automation | yes | technical feasibility/execution status |
+| `마케팅 팀장` Marketing Lead Bot | SNS, community, IP, goods, growth | yes | market/fan/growth perspective |
+| `검증 팀장` Validation/Audit Bot | GLM/Codex risk and final validation projection | yes | verdict, blockers, correction requests |
 
 Internal specialists are workers, not Discord bot accounts.
 Examples: content_pd, script_writer, concept_artist, rigger, pipeline_rd,
-web_app_developer, legal_reviewer, data_analyst.
+web_app_developer, legal_reviewer, data_analyst, business_support_lead,
+partnership_manager, finance_hr, qa_specialist.
 
-Research is a capability delegated to the relevant team, not a separate
-team-lead bot:
+Research and support are capabilities delegated to the relevant team or internal
+role, not separate Discord lead bots by default:
 
 ```text
 technical research / model-tool-API evaluation -> Tech Lead
 market research / newsletter strategy / audience insight -> Marketing Lead
 content reference research / editorial angle -> Content Lead
 visual reference / style / animation research -> Art Lead
-legal / contract / finance / policy research -> Business Support Lead
+legal / contract / finance / policy research -> internal Business Support role via 대표 or relevant lead
 published or decision-critical claims -> Validation/Audit
+personal schedules / private notes / personal briefing -> 버추얼컴퍼니-Hermes personal assistant
 ```
 
-Personal Assistant is a separate user-support layer, not part of the virtual
-entertainment company org chart and not counted as a team-lead bot. It may use a
-personal Second Brain for schedules, reminders, private notes, and user support,
-while company work remains under the existing team-lead structure.
+The Personal Assistant is a separate user-support/intake layer, not part of the
+29-role company org chart. It may use a personal Second Brain for schedules,
+reminders, private notes, and user support, while company work remains under the
+company team-lead structure.
 
 ## 4.1 Command Surface
 

@@ -1,4 +1,4 @@
-# Phase 20: 29개 직무 Discord Bot 전개 — Plan
+# Phase 20: 29-role Org Chart Registry — Plan
 
 ## Goal
 
@@ -9,7 +9,7 @@ Bot registry, profile 정의, deployment manifest, dry-run 검증까지.
 
 ```
 Phase 14: Multi-bot protocol (8 roles)
-Phase 20: Full 29-role bot registry + deployment manifest
+Phase 20: Full 29-role org chart registry + deployment manifest
 ```
 
 - **Registry = source of truth**: 29개 역할 정의 (id, name, department, permissions, mention_gate)

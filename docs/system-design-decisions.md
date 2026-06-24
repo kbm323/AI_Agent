@@ -11,6 +11,41 @@
 
 ---
 
+## Decision Chronology / Current Baseline
+
+The current baseline is not the original OpenClaw-era draft. Later decisions supersede older references when they conflict.
+
+```text
+2026-06-10  Interview baseline
+  - Meeting-first AI Virtual Entertainment Company
+  - Hermes-first Coordinator
+  - opencode-go direct CLI execution
+  - GLM validator + Codex auditor
+  - OpenClaw removed from Runtime Architecture v2
+  - Company Second Brain and Personal Second Brain separated
+
+Phase 12.5  Personal assistant UX / channel cleanup
+  - Personal assistant bot exists as a separate user-support/intake layer
+  - Profile: aicompanyassistant
+  - Bot recorded in phase doc as 개인비서-Hermes; current topology names the live assistant surface `버추얼컴퍼니-Hermes`
+  - Current home channel at that time: #일일-브리핑
+  - Target dedicated channel: #개인-비서, deferred until separately approved/manual channel creation
+  - Mention-gated, no global free response, no server administration role
+
+Phase 13~22  Runtime Architecture v2 implementation
+  - Deterministic MeetingRun orchestration layer implemented
+  - Second Brain, Kanban, health, dispatch, daemon, org registry, slash/webhook, and unified company cycle added
+  - Phase implementation complete does not mean live production company complete
+
+Current Discord-facing topology
+  - 7 actual Discord-facing bots total
+  - 1 personal assistant/secretary: 버추얼컴퍼니-Hermes
+  - 6 company team-lead bots: 대표, 콘텐츠 팀장, 아트 팀장, 기술 팀장, 마케팅 팀장, 검증 팀장
+  - 29-role registry = internal org chart only, not 29 Discord bot accounts
+```
+
+---
+
 ## Track 1: Multi-Model Worker Execution
 
 **Original Issue:** Hermes `delegate_task` uses a single delegation model, but the design requires per-role different models.
@@ -286,20 +321,24 @@
 - New meeting_id: `/meeting new`, complete topic change, team change, final/locked state, long time elapsed
 - meeting_id tracks: user_id, channel_id, thread_id
 
-**Discord Persona Architecture — Hybrid Bot/Webhook Model:**
-- User-approved direction: use the hybrid model, not webhook-only and not one real bot per specialist.
-- Persistent team-leader bots (7): 👔Coordinator, 🎬Content Lead, 🎨Art Lead, ⚙️Tech Lead, 📈Marketing Lead, 💼Business Support Lead, 🛡️Validation/Audit.
-- Team-leader bots are real Discord bots/users from the user's point of view: they can be mentioned directly (for example `@TechDirector ...`), can own visible team-level responses, and can participate in meeting threads.
-- Internal specialists are not real Discord bots by default; they exist as opencode-go/Hermes workers and are represented through the relevant team leader.
+**Discord Persona Architecture — Current Live Bot Topology:**
+- Current user-approved direction: Hermes-first Runtime Architecture v2 with OpenClaw removed. Use opencode-go/Hermes workers behind Discord-facing bots; do not create one real Discord bot per specialist.
+- Actual Discord-facing bots (7): `버추얼컴퍼니-Hermes` personal assistant/secretary, `대표`, `콘텐츠 팀장`, `아트 팀장`, `기술 팀장`, `마케팅 팀장`, `검증 팀장`.
+- `버추얼컴퍼니-Hermes` is the user's personal assistant and intake/secretary layer. It is not counted as a company department role in the 29-role org chart. It can help with schedules, private notes, personal Second Brain, daily/weekly briefings, and extracting personal action items from company outputs.
+- The six company-facing team-lead bots own visible department-level responses: CEO/Coordinator, Content, Art, Technology, Marketing, and Validation/Audit.
+- Business Support / legal / finance / HR are internal org-chart roles by default, dispatched through the CEO/Coordinator or the appropriate team lead. They are not separate live Discord bot accounts unless explicitly promoted later.
+- The 29-role registry is an internal company org chart / assignment map, not 29 Discord bot accounts. Internal specialists exist as opencode-go/Hermes workers and are represented through team leads or, if needed, presentation-only webhook rendering.
 - Optional specialist appearance uses Discord webhook rendering inside the meeting thread (custom username/avatar per message) for roles like Live2D rigger, 3D modeler, Unity engineer, motion designer, QA analyst.
-- Webhook specialists are presentation-only: they do not receive mentions, DMs, slash commands, or presence. If a specialist must be directly mentionable, promote that role to a persistent bot explicitly.
-- Coordinator owns `/meeting`, thread creation, meeting_id routing, state transitions, and final cross-posts. Team-leader bots own role-specific visible utterances. Webhook specialists only render internal worker outputs.
+- Webhook specialists are presentation-only: they do not receive mentions, DMs, slash commands, or presence. If a specialist must be directly mentionable, promote that role to a persistent bot explicitly after a separate topology decision.
+- Coordinator/Hermes owns meeting intake, thread creation, meeting_id routing, state transitions, and final cross-posts. Team-lead bots own role-specific visible utterances. Webhook specialists only render internal worker outputs.
 
 **Design Principles:**
+- Actual live Discord topology = 1 personal assistant + 6 company team-lead bots.
+- Org chart roles are not Discord bot accounts.
 - Mentionable roles require persistent bots; presentation-only specialist voices use webhooks.
 - Persona over Model: Discord exposes roles, not models.
 - Persistent Leaders, Dynamic Specialists.
-- Single User Interface: one AI company, many internal personas.
+- Single User Interface: one AI company, many internal personas, with personal assistant context kept separate from company knowledge.
 
 ---
 

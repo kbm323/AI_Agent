@@ -8,7 +8,7 @@
 ## Design Principle
 
 ```
-Phase 20: 29-bot registry (누가 있는지)
+Phase 20: 29-role org chart registry (누가 있는지)
 Phase 21: Slash commands + webhooks (어떻게 대화하는지)
 ```
 

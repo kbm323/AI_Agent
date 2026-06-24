@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the Phase 20 29-bot deployment manifest."""
+"""Generate the Phase 20 29-role org chart manifest."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from src.runtime_architecture_v2.bot_registry import (  # noqa: E402
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Phase 20 29-Bot Discord Registry",
+        description="Phase 20 29-role Org Chart Registry",
     )
     parser.add_argument(
         "--mode",
