@@ -93,9 +93,10 @@ Phase 13   Live Company Workflow Pilot
 - Phase 12.5 personal assistant UX/channel cleanup decision
 - Phase 13 live company workflow pilot
 - Phase 14 multi-bot operational protocol
+- Phase 15 persistent Second Brain / knowledge loop
 
 아직 남은 작업:
-- Phase 15 Persistent Second Brain / Knowledge Loop
+- Phase 16 Autonomous Scheduling / Kanban Operations
 ```
 
 ## Runtime v2 Modules
@@ -114,6 +115,7 @@ src/runtime_architecture_v2/
   orchestrator.py       # deterministic fake MeetingRun full-flow orchestrator
   pilot.py              # Phase 13 bounded live company workflow pilot
   multi_bot.py          # Phase 14 multi-bot conversation protocol
+  knowledge.py          # Phase 15 repo-local Second Brain / knowledge loop
   simulation_cli.py     # python -m deterministic e2e simulation runner
 ```
 
