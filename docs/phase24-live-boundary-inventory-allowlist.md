@@ -145,7 +145,7 @@ Use this wording after Phase 24:
 ```text
 Phase 24 live boundary allowlist foundation complete.
 Runtime v2 deterministic orchestration layer remains complete.
-Live production hardening still remains for Hermes Gateway surface verification, live worker/validator/auditor smoke, service supervision, and full closed-loop live pilot.
+Live production hardening still remains for live worker/validator/auditor smoke, service supervision, full closed-loop live pilot, and 24h production runbook. Hermes Gateway surface verification was completed in Phase 25.
 ```
 
 Do not claim fully live production readiness yet.
@@ -154,7 +154,6 @@ Do not claim fully live production readiness yet.
 
 | Phase | Content |
 |---|---|
-| Phase 25 | Hermes Gateway Command Surface Verification — verify existing Hermes Discord Gateway / mention / supported command behavior; standalone slash commands remain optional/out-of-scope unless explicitly approved. |
 | Phase 26 | Live Worker / Validator / Auditor Boundary Smoke — quota-gated opencode-go, GLM validator, Codex auditor boundary smoke. |
 | Phase 27 | Always-on Service Supervision Pilot — start/stop/status/heartbeat/log bounds for the 7 Hermes profiles without permission expansion. |
 | Phase 28 | Full Live Closed-loop Pilot — Hermes Gateway input to MeetingRun to workers/validation/projection in controlled smoke channel. |

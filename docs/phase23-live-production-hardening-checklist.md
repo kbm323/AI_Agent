@@ -42,7 +42,7 @@ Required before accepting production slash/webhook traffic:
 - public key loaded from profile-local environment only
 ```
 
-Status: DEFERRED unless a live interaction endpoint is enabled.
+Status: DEFERRED → PHASE 25 VERIFIED. `HermesGatewayCommandSurfacePolicy` records that no live interaction endpoint is enabled in the default Hermes-first command surface. Interaction security remains deferred because Phase 25 deliberately does not promote the Phase 21 artifact to a live endpoint.
 
 ### Gate 2 — Guild/channel allowlist
 
@@ -84,7 +84,7 @@ Required before treating Discord app commands as production entrypoints:
 - command logs contain interaction IDs but not tokens
 ```
 
-Status: DEFERRED unless Phase 21 adapter is moved from deterministic/test coverage to live endpoint operation.
+Status: DEFERRED → PHASE 25 VERIFIED. Standalone slash registration remains out of scope by default. `HermesGatewayCommandSurfacePolicy` fail-closes standalone slash adapter requests unless a later explicit adapter decision enables them.
 
 ### Gate 5 — Kanban live client dependency
 
