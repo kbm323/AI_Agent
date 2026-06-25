@@ -112,7 +112,7 @@ Required before live model execution is considered production:
 - quota gate checked before large worker batches
 ```
 
-Status: PARTIAL. Architecture and quota scripts exist; live worker smoke remains a later boundary.
+Status: PARTIAL → PHASE 26 VERIFIED. `LiveWorkerBoundarySmokePolicy` checks 8 boundary conditions (packet-based input, model/provider recording, timeout/non-zero-exit fail-closed, output sanitization, quota gate, no shell=True, no direct env passthrough). `sanitize_worker_output` redacts secret-like patterns from stdout/stderr. `OpenCodeGoSmokeRunner` supports `sanitize_output=True`. No live CLI execution in tests.
 
 ### Gate 7 — Quota/cost monitoring
 
@@ -125,7 +125,7 @@ Required before always-on operation:
 - quota exhaustion must save state or fail safely, not spin/retry indefinitely
 ```
 
-Status: AVAILABLE. Current quota checker exists and was used before Phase 23.
+Status: AVAILABLE → PHASE 26 VERIFIED. Current quota checker exists and is verified by `LiveWorkerBoundarySmokePolicy` as a required boundary condition before worker batches.
 
 ### Gate 8 — Service supervision
 

@@ -89,6 +89,7 @@ Phase 22   Always-on Autonomous Company Runtime
 Phase 23   Runtime v2 Alignment & Hardening
 Phase 24   Live Boundary Inventory & Allowlist Foundation
 Phase 25   Hermes Gateway Command Surface Verification
+Phase 26   Live Worker / Validator / Auditor Boundary Smoke
 ```
 
 현재 실제 구동 범위:
@@ -135,6 +136,7 @@ Phase 25   Hermes Gateway Command Surface Verification
 - Phase 23 Runtime v2 alignment and fail-closed hardening
 - Phase 24 live boundary inventory and allowlist foundation
 - Phase 25 Hermes Gateway command surface verification
+- Phase 26 live worker / validator / auditor boundary smoke
 
 현재 상태 구분:
 - Phase 13~22 planned implementation complete
@@ -142,10 +144,10 @@ Phase 25   Hermes Gateway Command Surface Verification
 - Phase 23 fail-closed alignment/hardening complete
 - Phase 24 live boundary allowlist foundation complete
 - Phase 25 Hermes-first command surface verification complete
+- Phase 26 worker/validator/auditor boundary smoke complete
 - Live production hardening remains; see `docs/phase23-live-production-hardening-checklist.md`
 
 아직 남은 작업:
-- live worker / validator / auditor boundary smoke
 - always-on service supervision
 - full live closed-loop pilot
 - 24h live pilot and production runbook
@@ -164,6 +166,7 @@ src/runtime_architecture_v2/
   validation.py         # GLM/Codex role policy, quota-gated execution planner, correction loop
   projection.py         # Discord-safe formatter, fake sink, live sink, Phase 24 boundary allowlist
   command_surface.py    # Phase 25 Hermes-first command surface policy/report
+  worker_boundary_smoke.py  # Phase 26 live worker boundary smoke policy + output sanitizer
   policies.py           # security, quota, observability policy gates
   orchestrator.py       # deterministic fake MeetingRun full-flow orchestrator
   pilot.py              # Phase 13 bounded live company workflow pilot

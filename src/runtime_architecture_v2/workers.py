@@ -327,6 +327,7 @@ class OpenCodeGoSmokeRunner:
         output_format: str = "json",
         workdir: str | None = None,
         expected_stdout_contains: str = "",
+        sanitize_output: bool = False,
     ) -> None:
         self.wrapper = wrapper or OpenCodeGoPacketWrapper()
         self.command_runner = command_runner or _default_opencode_go_runner
@@ -334,6 +335,7 @@ class OpenCodeGoSmokeRunner:
         self.output_format = output_format
         self.workdir = workdir
         self.expected_stdout_contains = expected_stdout_contains
+        self.sanitize_output = sanitize_output
 
     def run(
         self,
@@ -359,6 +361,12 @@ class OpenCodeGoSmokeRunner:
             status = "failed"
             state = WorkerTaskState.FAILED
             error = "opencode_go_missing_expected_output"
+        stdout_to_write = result.stdout
+        stderr_to_write = result.stderr
+        if self.sanitize_output:
+            from .worker_boundary_smoke import sanitize_worker_output
+            stdout_to_write = sanitize_worker_output(result.stdout)
+            stderr_to_write = sanitize_worker_output(result.stderr)
         output_path = Path(task.output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
@@ -369,8 +377,8 @@ class OpenCodeGoSmokeRunner:
                     "status": status,
                     "command": command,
                     "exit_code": result.exit_code,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
+                    "stdout": stdout_to_write,
+                    "stderr": stderr_to_write,
                     "timeout_occurred": result.timeout_occurred,
                     "duration_seconds": result.duration_seconds,
                     "expected_stdout_contains": self.expected_stdout_contains,
