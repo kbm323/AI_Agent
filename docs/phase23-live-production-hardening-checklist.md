@@ -159,7 +159,12 @@ Required before posting AI-generated content to user-visible channels:
 - secret-like assignments/bearer tokens redacted
 ```
 
-Status: PARTIAL. Projection sanitizer exists; live smoke verification remains separate.
+Status: PHASE 28 VERIFIED. ProjectionSafetyPolicy.current_verified() verifies
+allowed_mentions constraint, mass-mention breaking, content cap, raw worker
+output omission, trace ID preservation, and secret-like redaction. Phase 28
+closed-loop pilot verifies Hermes Gateway input → MeetingRun → workers →
+validation → projection in controlled smoke mode. Live projection remains
+injected-boundary only and fails closed when publish is blocked or failed.
 
 ## Production-readiness wording
 
