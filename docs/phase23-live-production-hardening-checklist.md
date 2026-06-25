@@ -140,7 +140,11 @@ Required before claiming always-on production:
 - secrets loaded from profile-local env, never committed
 ```
 
-Status: DEFERRED. Phase 23 documents boundary only.
+Status: PHASE 27 VERIFIED. ServiceSupervisionPolicy.current_verified() defines
+start/stop/status/heartbeat/log_bound/restart_policy/secrets_env_path for all
+7 live Hermes profiles. evaluate() verifies all 6 Gate 8 conditions with
+fail-closed posture. No permission expansion. Profile names match
+DiscordLiveBoundaryPolicy exactly.
 
 ### Gate 9 — Projection safety
 
