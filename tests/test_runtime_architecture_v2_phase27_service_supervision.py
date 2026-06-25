@@ -17,6 +17,7 @@ from runtime_architecture_v2.service_supervision import (
     ServiceSupervisionDecision,
     ServiceSupervisionPolicy,
     ServiceSupervisionStatus,
+    _expected_profile_env_path,
 )
 
 # ── AC1: current_verified() returns 7 profiles ──────────────────────────
@@ -574,3 +575,97 @@ class TestReviewHardening:
         decision = bad.evaluate()
         assert decision.status == ServiceSupervisionStatus.FAIL
         assert "status_command_missing" in decision.reason
+
+    def test_fails_on_tmp_env_path_even_when_profile_name_present(self):
+        """secrets_env_path must be exact profile-local Hermes env."""
+        policy = ServiceSupervisionPolicy.current_verified()
+        p = policy.profiles[0]
+        bad_p = ServiceProfile(
+            profile_name=p.profile_name,
+            start_command=p.start_command,
+            stop_command=p.stop_command,
+            status_command=p.status_command,
+            heartbeat_interval_seconds=p.heartbeat_interval_seconds,
+            log_bound=p.log_bound,
+            restart_policy=p.restart_policy,
+            secrets_env_path=f"/tmp/{p.profile_name}.env",
+        )
+        bad = ServiceSupervisionPolicy(profiles=(bad_p,) + policy.profiles[1:])
+        decision = bad.evaluate()
+        assert decision.status == ServiceSupervisionStatus.FAIL
+        assert "secrets_env_path_not_profile_local" in decision.reason
+
+    def test_fails_on_repo_local_env_path(self):
+        """repo-local env files are not profile-local Hermes env files."""
+        policy = ServiceSupervisionPolicy.current_verified()
+        p = policy.profiles[0]
+        bad_p = ServiceProfile(
+            profile_name=p.profile_name,
+            start_command=p.start_command,
+            stop_command=p.stop_command,
+            status_command=p.status_command,
+            heartbeat_interval_seconds=p.heartbeat_interval_seconds,
+            log_bound=p.log_bound,
+            restart_policy=p.restart_policy,
+            secrets_env_path=f"./profiles/{p.profile_name}/.env",
+        )
+        bad = ServiceSupervisionPolicy(profiles=(bad_p,) + policy.profiles[1:])
+        decision = bad.evaluate()
+        assert decision.status == ServiceSupervisionStatus.FAIL
+        assert "secrets_env_path_not_profile_local" in decision.reason
+
+    def test_expected_profile_env_path_shape(self):
+        assert _expected_profile_env_path("aicompanyassistant") == (
+            "~/.hermes/profiles/aicompanyassistant/.env"
+        )
+
+    def test_evaluate_fails_when_boundary_policy_profiles_drift(self):
+        policy = ServiceSupervisionPolicy.current_verified()
+        boundary = DiscordLiveBoundaryPolicy.current_verified()
+        drifted = DiscordLiveBoundaryPolicy(
+            guild_id=boundary.guild_id,
+            allowed_channel_ids_by_profile={
+                k: v for k, v in boundary.allowed_channel_ids_by_profile.items()
+                if k != "aicompanyassistant"
+            },
+            permission_mutation_allowed=boundary.permission_mutation_allowed,
+            administrator_allowed=boundary.administrator_allowed,
+            require_mention=boundary.require_mention,
+            thread_require_mention=boundary.thread_require_mention,
+            free_response_channels=boundary.free_response_channels,
+        )
+        decision = policy.evaluate(discord_boundary_policy=drifted)
+        assert decision.status == ServiceSupervisionStatus.FAIL
+        assert "discord_boundary_profile_mismatch" in decision.reason
+
+    def test_evaluate_fails_when_boundary_mentions_disabled(self):
+        policy = ServiceSupervisionPolicy.current_verified()
+        boundary = DiscordLiveBoundaryPolicy.current_verified()
+        unsafe = DiscordLiveBoundaryPolicy(
+            guild_id=boundary.guild_id,
+            allowed_channel_ids_by_profile=boundary.allowed_channel_ids_by_profile,
+            permission_mutation_allowed=boundary.permission_mutation_allowed,
+            administrator_allowed=boundary.administrator_allowed,
+            require_mention=False,
+            thread_require_mention=boundary.thread_require_mention,
+            free_response_channels=boundary.free_response_channels,
+        )
+        decision = policy.evaluate(discord_boundary_policy=unsafe)
+        assert decision.status == ServiceSupervisionStatus.FAIL
+        assert "discord_boundary_mention_gate_required" in decision.reason
+
+    def test_evaluate_fails_when_boundary_thread_mentions_disabled(self):
+        policy = ServiceSupervisionPolicy.current_verified()
+        boundary = DiscordLiveBoundaryPolicy.current_verified()
+        unsafe = DiscordLiveBoundaryPolicy(
+            guild_id=boundary.guild_id,
+            allowed_channel_ids_by_profile=boundary.allowed_channel_ids_by_profile,
+            permission_mutation_allowed=boundary.permission_mutation_allowed,
+            administrator_allowed=boundary.administrator_allowed,
+            require_mention=boundary.require_mention,
+            thread_require_mention=False,
+            free_response_channels=boundary.free_response_channels,
+        )
+        decision = policy.evaluate(discord_boundary_policy=unsafe)
+        assert decision.status == ServiceSupervisionStatus.FAIL
+        assert "discord_boundary_mention_gate_required" in decision.reason

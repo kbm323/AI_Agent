@@ -20,6 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum, unique
 
+from .projection import DiscordLiveBoundaryPolicy
+
 
 @unique
 class ServiceSupervisionStatus(StrEnum):
@@ -131,11 +133,16 @@ _EXPECTED_PROFILE_NAMES = frozenset({
 })
 
 
+def _expected_profile_env_path(profile_name: str) -> str:
+    """Return the only accepted profile-local Hermes env path."""
+
+    return f"~/.hermes/profiles/{profile_name}/.env"
+
+
 def _default_profiles() -> tuple[ServiceProfile, ...]:
     """Return the 7 verified live Hermes profiles with supervision bounds."""
 
     log_dir_template = "runtime/logs/{profile}"
-    secrets_template = "~/.hermes/profiles/{profile}/.env"
     default_log = LogBound(max_size_mb=50, rotation_count=5)
     default_restart = RestartPolicy(
         strategy="on-failure", max_restarts=3, backoff_seconds=30,
@@ -172,7 +179,7 @@ def _default_profiles() -> tuple[ServiceProfile, ...]:
                     max_restarts=default_restart.max_restarts,
                     backoff_seconds=default_restart.backoff_seconds,
                 ),
-                secrets_env_path=secrets_template.format(profile=name),
+                secrets_env_path=_expected_profile_env_path(name),
             ),
         )
     return tuple(profiles)
@@ -201,7 +208,11 @@ class ServiceSupervisionPolicy:
             administrator_allowed=False,
         )
 
-    def evaluate(self) -> ServiceSupervisionDecision:
+    def evaluate(
+        self,
+        *,
+        discord_boundary_policy: DiscordLiveBoundaryPolicy | None = None,
+    ) -> ServiceSupervisionDecision:
         """Evaluate all Gate 8 conditions. Fail-closed on any unmet condition."""
 
         if not self.profiles:
@@ -257,6 +268,50 @@ class ServiceSupervisionPolicy:
                 reason=(
                     f"profile_name_mismatch: {', '.join(parts)}"
                 ),
+                profile_count=len(self.profiles),
+                conditions_checked=_GATE8_CONDITIONS,
+            )
+
+        boundary = (
+            discord_boundary_policy
+            or DiscordLiveBoundaryPolicy.current_verified()
+        )
+        boundary_names = set(boundary.allowed_channel_ids_by_profile.keys())
+        if name_set != boundary_names:
+            return ServiceSupervisionDecision(
+                status=ServiceSupervisionStatus.FAIL,
+                reason=(
+                    "discord_boundary_profile_mismatch: service profiles "
+                    "must match DiscordLiveBoundaryPolicy profiles exactly"
+                ),
+                profile_count=len(self.profiles),
+                conditions_checked=_GATE8_CONDITIONS,
+            )
+        if not boundary.require_mention or not boundary.thread_require_mention:
+            return ServiceSupervisionDecision(
+                status=ServiceSupervisionStatus.FAIL,
+                reason="discord_boundary_mention_gate_required",
+                profile_count=len(self.profiles),
+                conditions_checked=_GATE8_CONDITIONS,
+            )
+        if boundary.free_response_channels:
+            return ServiceSupervisionDecision(
+                status=ServiceSupervisionStatus.FAIL,
+                reason="discord_boundary_free_response_not_allowed",
+                profile_count=len(self.profiles),
+                conditions_checked=_GATE8_CONDITIONS,
+            )
+        if boundary.permission_mutation_allowed:
+            return ServiceSupervisionDecision(
+                status=ServiceSupervisionStatus.FAIL,
+                reason="discord_boundary_permission_mutation_not_allowed",
+                profile_count=len(self.profiles),
+                conditions_checked=_GATE8_CONDITIONS,
+            )
+        if boundary.administrator_allowed:
+            return ServiceSupervisionDecision(
+                status=ServiceSupervisionStatus.FAIL,
+                reason="discord_boundary_administrator_not_allowed",
                 profile_count=len(self.profiles),
                 conditions_checked=_GATE8_CONDITIONS,
             )
@@ -364,16 +419,13 @@ class ServiceSupervisionPolicy:
                     profile_count=len(self.profiles),
                     conditions_checked=_GATE8_CONDITIONS,
                 )
-            if (
-                ".env" not in profile.secrets_env_path
-                or profile.profile_name not in profile.secrets_env_path
-            ):
+            expected_env_path = _expected_profile_env_path(profile.profile_name)
+            if profile.secrets_env_path != expected_env_path:
                 return ServiceSupervisionDecision(
                     status=ServiceSupervisionStatus.FAIL,
                     reason=(
                         f"secrets_env_path_not_profile_local for "
-                        f"{profile.profile_name}: path must contain .env "
-                        "and the profile name"
+                        f"{profile.profile_name}: expected {expected_env_path}"
                     ),
                     profile_count=len(self.profiles),
                     conditions_checked=_GATE8_CONDITIONS,

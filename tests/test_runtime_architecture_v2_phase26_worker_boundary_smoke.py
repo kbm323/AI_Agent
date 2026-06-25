@@ -5,19 +5,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.runtime_architecture_v2.schemas import (
+from runtime_architecture_v2.schemas import (
     WorkerTask,
     WorkerTaskRunner,
     WorkerTaskState,
 )
-from src.runtime_architecture_v2.worker_boundary_smoke import (
+from runtime_architecture_v2.worker_boundary_smoke import (
     BoundarySmokeStatus,
     LiveWorkerBoundarySmokePolicy,
     sanitize_worker_output,
 )
-from src.runtime_architecture_v2.workers import (
+from runtime_architecture_v2.workers import (
     OpenCodeGoRunResult,
     OpenCodeGoSmokeRunner,
+    OpenCodeGoWorkerRunner,
 )
 
 
@@ -211,10 +212,120 @@ def test_phase26_smoke_runner_preserves_output_when_no_secrets(
     task = _task(tmp_path)
     completed = OpenCodeGoSmokeRunner(
         command_runner=runner,
-        sanitize_output=True,
     ).run(task, prompt="smoke", context={})
 
     output = json.loads(
         Path(completed.output_path).read_text(encoding="utf-8")
     )
     assert output["stdout"] == '{"status":"ok","answer":"clean"}'
+
+
+def test_phase26_worker_runner_sanitizes_output_by_default(tmp_path: Path):
+    def runner(
+        command: list[str], timeout_seconds: int, workdir: str | None
+    ):
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout="api_key=leaked_secret_123",
+            stderr="Bearer abc456",
+            timeout_occurred=False,
+        )
+
+    task = _task(tmp_path)
+    worker = OpenCodeGoWorkerRunner(command_runner=runner)
+    completed = worker.collect(worker.dispatch(task))
+
+    output = json.loads(
+        Path(completed.output_path).read_text(encoding="utf-8")
+    )
+    assert completed.state == WorkerTaskState.SUCCEEDED
+    assert "leaked_secret_123" not in output["stdout"]
+    assert "abc456" not in output["stderr"]
+    assert "[redacted]" in output["stdout"]
+    assert "bearer [redacted]" in output["stderr"].lower()
+
+
+def test_phase26_smoke_runner_sanitizes_output_by_default(tmp_path: Path):
+    def runner(
+        command: list[str], timeout_seconds: int, workdir: str | None
+    ):
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout="token=leaked_secret_456",
+            stderr="Bearer def789",
+            timeout_occurred=False,
+        )
+
+    task = _task(tmp_path)
+    completed = OpenCodeGoSmokeRunner(command_runner=runner).run(
+        task, prompt="smoke", context={},
+    )
+
+    output = json.loads(
+        Path(completed.output_path).read_text(encoding="utf-8")
+    )
+    assert completed.state == WorkerTaskState.SUCCEEDED
+    assert "leaked_secret_456" not in output["stdout"]
+    assert "def789" not in output["stderr"]
+
+
+def test_phase26_smoke_runner_exception_fails_closed_without_leaking(
+    tmp_path: Path,
+):
+    def runner(
+        command: list[str], timeout_seconds: int, workdir: str | None
+    ):
+        raise RuntimeError("token=supersecret raw failure")
+
+    task = _task(tmp_path)
+    completed = OpenCodeGoSmokeRunner(command_runner=runner).run(
+        task, prompt="smoke", context={},
+    )
+
+    output = json.loads(
+        Path(completed.output_path).read_text(encoding="utf-8")
+    )
+    assert completed.state == WorkerTaskState.FAILED
+    assert completed.error == "opencode_go_runner_exception"
+    assert output["status"] == "failed"
+    assert output["error"] == "opencode_go_runner_exception"
+    assert "supersecret" not in json.dumps(output)
+    assert "raw failure" not in json.dumps(output)
+
+
+def test_phase26_default_runner_uses_explicit_env_mapping():
+    runner = OpenCodeGoWorkerRunner()
+    assert runner.command_env == {}
+
+
+def test_phase26_smoke_runner_uses_explicit_env_mapping():
+    runner = OpenCodeGoSmokeRunner()
+    assert runner.command_env == {}
+
+
+def test_phase26_smoke_runner_redacts_secret_like_prompt_in_command_artifact(
+    tmp_path: Path,
+):
+    def runner(
+        command: list[str], timeout_seconds: int, workdir: str | None
+    ):
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout='{"status":"ok"}',
+            stderr="",
+            timeout_occurred=False,
+        )
+
+    task = _task(tmp_path)
+    completed = OpenCodeGoSmokeRunner(command_runner=runner).run(
+        task,
+        prompt="do work with token=prompt_secret_123",
+        context={},
+    )
+
+    output = json.loads(
+        Path(completed.output_path).read_text(encoding="utf-8")
+    )
+    assert completed.state == WorkerTaskState.SUCCEEDED
+    assert "prompt_secret_123" not in json.dumps(output)
+    assert "[redacted]" in json.dumps(output)

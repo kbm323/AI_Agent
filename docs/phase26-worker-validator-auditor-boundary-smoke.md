@@ -1,8 +1,9 @@
 # Phase 26 — Live Worker / Validator / Auditor Boundary Smoke
 
 > Canonical baseline: `docs/runtime-architecture-v2.md`
-> Phase status: COMPLETE
+> Phase status: COMPLETE — HARDENED
 > Date: 2026-06-25 KST
+> Hardening update: 2026-06-25 KST
 
 ## Decision
 
@@ -60,8 +61,14 @@ sanitize_worker_output() redacts:
 - truncates output to 4096 characters
 ```
 
-OpenCodeGoSmokeRunner now accepts `sanitize_output=True` to apply
-sanitization to stdout/stderr before persisting output files.
+OpenCodeGoSmokeRunner now sanitizes stdout/stderr before persisting output
+files by default. OpenCodeGoWorkerRunner also sanitizes stdout/stderr before
+persistence. Runner exceptions are converted into structured failed artifacts
+with sanitized error codes rather than raw exception text.
+
+The default opencode-go process boundary uses an explicit environment mapping
+instead of implicit parent-environment inheritance. The default mapping is empty
+unless a caller passes an allowlist explicitly.
 
 ## Gate Status
 
@@ -99,16 +106,21 @@ Covered behaviors:
 - verification report records Gate 6/7 status
 - smoke runner sanitizes output when secrets present
 - smoke runner preserves output when no secrets
+- worker runner sanitizes output by default
+- smoke runner sanitizes output by default
+- smoke runner exceptions become structured failed artifacts without raw leak
+- default worker/smoke runners use explicit env mapping
+- persisted command metadata redacts secret-like prompt values
 ```
 
 ## Verification Evidence
 
 ```text
 python3 -m pytest tests/test_runtime_architecture_v2_phase26_worker_boundary_smoke.py -q
--> 12 passed
+-> 18 passed
 
-python3 -m pytest tests/test_runtime_architecture_v2_*.py -q
--> 256 passed
+python3 -m pytest tests/ -k "runtime_architecture_v2" -q
+-> 338 passed
 
 ruff check src/runtime_architecture_v2 tests/test_runtime_architecture_v2_*.py
 -> No issues found

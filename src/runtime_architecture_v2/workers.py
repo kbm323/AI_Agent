@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
@@ -177,6 +177,8 @@ def _default_opencode_go_runner(
     command: list[str],
     timeout_seconds: int,
     workdir: str | None,
+    *,
+    env: Mapping[str, str] | None = None,
 ) -> OpenCodeGoRunResult:
     start = time.monotonic()
     try:
@@ -186,6 +188,7 @@ def _default_opencode_go_runner(
             text=True,
             timeout=timeout_seconds,
             cwd=workdir,
+            env=dict(env or {}),
         )
         return OpenCodeGoRunResult(
             exit_code=completed.returncode,
@@ -214,6 +217,14 @@ def _default_opencode_go_runner(
         )
 
 
+def _sanitize_command_for_persistence(command: list[str]) -> list[str]:
+    """Redact secret-like values from persisted command metadata."""
+
+    from .worker_boundary_smoke import sanitize_worker_output
+
+    return [sanitize_worker_output(str(part)) for part in command]
+
+
 class OpenCodeGoWorkerRunner:
     """WorkerRunner implementation for opencode-go packet execution.
 
@@ -229,9 +240,21 @@ class OpenCodeGoWorkerRunner:
         timeout_seconds: int = 300,
         output_format: str = "json",
         workdir: str | None = None,
+        command_env: Mapping[str, str] | None = None,
     ) -> None:
         self.wrapper = wrapper or OpenCodeGoPacketWrapper()
-        self.command_runner = command_runner or _default_opencode_go_runner
+        self.command_env = dict(command_env or {})
+        if command_runner is None:
+            self.command_runner = (
+                lambda command, timeout_seconds, workdir: _default_opencode_go_runner(
+                    command,
+                    timeout_seconds,
+                    workdir,
+                    env=self.command_env,
+                )
+            )
+        else:
+            self.command_runner = command_runner
         self.timeout_seconds = timeout_seconds
         self.output_format = output_format
         self.workdir = workdir
@@ -269,7 +292,7 @@ class OpenCodeGoWorkerRunner:
                         "meeting_run_id": task.meeting_run_id,
                         "worker_task_id": task.worker_task_id,
                         "status": "failed",
-                        "command": command,
+                        "command": _sanitize_command_for_persistence(command),
                         "error": "opencode_go_runner_exception",
                     },
                     ensure_ascii=False,
@@ -288,16 +311,20 @@ class OpenCodeGoWorkerRunner:
         status, state, error = OpenCodeGoSmokeRunner._classify_result(result)
         output_path = Path(task.output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        from .worker_boundary_smoke import sanitize_worker_output
+
+        stdout_to_write = sanitize_worker_output(result.stdout)
+        stderr_to_write = sanitize_worker_output(result.stderr)
         output_path.write_text(
             json.dumps(
                 {
                     "meeting_run_id": task.meeting_run_id,
                     "worker_task_id": task.worker_task_id,
                     "status": status,
-                    "command": command,
+                    "command": _sanitize_command_for_persistence(command),
                     "exit_code": result.exit_code,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
+                    "stdout": stdout_to_write,
+                    "stderr": stderr_to_write,
                     "timeout_occurred": result.timeout_occurred,
                     "duration_seconds": result.duration_seconds,
                 },
@@ -327,10 +354,22 @@ class OpenCodeGoSmokeRunner:
         output_format: str = "json",
         workdir: str | None = None,
         expected_stdout_contains: str = "",
-        sanitize_output: bool = False,
+        sanitize_output: bool = True,
+        command_env: Mapping[str, str] | None = None,
     ) -> None:
         self.wrapper = wrapper or OpenCodeGoPacketWrapper()
-        self.command_runner = command_runner or _default_opencode_go_runner
+        self.command_env = dict(command_env or {})
+        if command_runner is None:
+            self.command_runner = (
+                lambda command, timeout_seconds, workdir: _default_opencode_go_runner(
+                    command,
+                    timeout_seconds,
+                    workdir,
+                    env=self.command_env,
+                )
+            )
+        else:
+            self.command_runner = command_runner
         self.timeout_seconds = timeout_seconds
         self.output_format = output_format
         self.workdir = workdir
@@ -351,7 +390,33 @@ class OpenCodeGoSmokeRunner:
             timeout_seconds=self.timeout_seconds,
             output_format=self.output_format,
         )
-        result = self.command_runner(command, self.timeout_seconds, self.workdir)
+        try:
+            result = self.command_runner(command, self.timeout_seconds, self.workdir)
+        except Exception:
+            output_path = Path(task.output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                json.dumps(
+                    {
+                        "meeting_run_id": task.meeting_run_id,
+                        "worker_task_id": task.worker_task_id,
+                        "status": "failed",
+                        "command": _sanitize_command_for_persistence(command),
+                        "error": "opencode_go_runner_exception",
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            return replace(
+                task,
+                state=WorkerTaskState.FAILED,
+                error="opencode_go_runner_exception",
+                output_path=str(output_path),
+            )
         status, state, error = self._classify_result(result)
         if (
             state == WorkerTaskState.SUCCEEDED
@@ -375,7 +440,7 @@ class OpenCodeGoSmokeRunner:
                     "meeting_run_id": task.meeting_run_id,
                     "worker_task_id": task.worker_task_id,
                     "status": status,
-                    "command": command,
+                    "command": _sanitize_command_for_persistence(command),
                     "exit_code": result.exit_code,
                     "stdout": stdout_to_write,
                     "stderr": stderr_to_write,

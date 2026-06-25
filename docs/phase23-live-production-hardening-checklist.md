@@ -112,7 +112,7 @@ Required before live model execution is considered production:
 - quota gate checked before large worker batches
 ```
 
-Status: PARTIAL → PHASE 26 VERIFIED. `LiveWorkerBoundarySmokePolicy` checks 8 boundary conditions (packet-based input, model/provider recording, timeout/non-zero-exit fail-closed, output sanitization, quota gate, no shell=True, no direct env passthrough). `sanitize_worker_output` redacts secret-like patterns from stdout/stderr. `OpenCodeGoSmokeRunner` supports `sanitize_output=True`. No live CLI execution in tests.
+Status: PARTIAL → PHASE 26 HARDENED. `LiveWorkerBoundarySmokePolicy` checks 8 boundary conditions (packet-based input, model/provider recording, timeout/non-zero-exit fail-closed, output sanitization, quota gate, no shell=True, no direct env passthrough). `sanitize_worker_output` redacts secret-like patterns from stdout/stderr. `OpenCodeGoWorkerRunner` and `OpenCodeGoSmokeRunner` now sanitize stdout/stderr before persistence by default, runner exceptions become structured failed artifacts, and default opencode-go process execution uses an explicit environment mapping instead of implicit parent-environment passthrough. No live CLI execution in tests.
 
 ### Gate 7 — Quota/cost monitoring
 
@@ -140,11 +140,13 @@ Required before claiming always-on production:
 - secrets loaded from profile-local env, never committed
 ```
 
-Status: PHASE 27 VERIFIED. ServiceSupervisionPolicy.current_verified() defines
+Status: PHASE 27 HARDENED. ServiceSupervisionPolicy.current_verified() defines
 start/stop/status/heartbeat/log_bound/restart_policy/secrets_env_path for all
 7 live Hermes profiles. evaluate() verifies all 6 Gate 8 conditions with
-fail-closed posture. No permission expansion. Profile names match
-DiscordLiveBoundaryPolicy exactly.
+fail-closed posture, directly checks DiscordLiveBoundaryPolicy profile/safety
+posture, and requires exact profile-local env paths under
+`~/.hermes/profiles/<profile>/.env`. No permission expansion. Profile names
+match DiscordLiveBoundaryPolicy exactly.
 
 ### Gate 9 — Projection safety
 

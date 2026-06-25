@@ -1,9 +1,10 @@
 # Phase 27: Always-on Service Supervision Pilot — Result
 
 **Date**: 2026-06-25
-**Status**: VERIFIED
+**Status**: VERIFIED — HARDENED
 **Gate**: Gate 8 — Service supervision
 **Commit**: pending
+**Hardening update**: 2026-06-25
 
 ## Summary
 
@@ -46,9 +47,24 @@ verification layer only, consistent with Phase 24/25/26 pattern.
 
 ## Boundary Policy Consistency
 
-The 7 profile names in `ServiceSupervisionPolicy.current_verified()`
-exactly match the `allowed_channel_ids_by_profile` keys in
-`DiscordLiveBoundaryPolicy.current_verified()`.
+`ServiceSupervisionPolicy.evaluate()` now directly checks the active
+`DiscordLiveBoundaryPolicy` profile set and Discord safety posture. It fails
+closed if the boundary policy profile keys drift from the 7 service profiles,
+if mention gates are disabled, if free-response channels appear, or if
+permission mutation / Administrator posture is enabled.
+
+## Hardening Addendum
+
+The earlier Phase 27 policy checked that `secrets_env_path` contained `.env` and
+the profile name. That was too weak: paths like `/tmp/<profile>.env` could pass.
+The hardened policy now requires the exact profile-local Hermes path:
+
+```text
+~/.hermes/profiles/<profile>/.env
+```
+
+Regression tests cover tmp paths, repo-local env paths, boundary profile drift,
+and disabled mention gates.
 
 ## Test Coverage
 
@@ -67,20 +83,22 @@ exactly match the `allowed_channel_ids_by_profile` keys in
 | AC11: boundary policy consistency | 2 | PASS |
 | Integrated smoke | 2 | PASS |
 | Parametrized field checks | 7 | PASS |
-| Review hardening | 8 | PASS |
-| **Total** | **48** | **PASS** |
+| Review hardening | 14 | PASS |
+| **Total** | **54** | **PASS** |
 
 ## Full Test Results
 
-- Phase 27 tests: 48 passed (40 initial + 8 review hardening)
-- Related tests (phase25+26+smoke): 71 passed
-- Runtime v2 subset: 304 passed
-- Full pytest: 5589 passed
+- Phase 27 tests: 54 passed (48 existing + 6 hardening regressions)
+- Related Phase 26~28 tests: 94 passed
+- Runtime v2 subset: 338 passed
+- Full pytest: 5623 passed
 - Ruff: No issues found
 - Secret scan: 0 findings
 - Independent review #1: FAIL → 7 issues fixed
 - Independent review #2: PASS (security_concerns=[], logic_errors=[])
-- Ouroboros QA: PASS 0.83/1.00
+- Phase 26/27 re-review: FAIL → runtime enforcement gaps fixed in hardening patch
+- Phase 26/27 final review: PASS (security_concerns=[], logic_errors=[])
+- Ouroboros QA: PASS 0.88/1.00
 
 ## Independent Review
 
