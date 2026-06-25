@@ -92,6 +92,7 @@ Phase 25   Hermes Gateway Command Surface Verification
 Phase 26   Live Worker / Validator / Auditor Boundary Smoke
 Phase 27   Always-on Service Supervision Pilot
 Phase 28   Full Live Closed-loop Pilot
+Phase 29   24h Live Pilot & Production Runbook
 ```
 
 현재 실제 구동 범위:
@@ -138,23 +139,25 @@ Phase 28   Full Live Closed-loop Pilot
 - Phase 23 Runtime v2 alignment and fail-closed hardening
 - Phase 24 live boundary inventory and allowlist foundation
 - Phase 25 Hermes Gateway command surface verification
-- Phase 26 live worker / validator / auditor boundary smoke
+- Phase 26 worker / validator / auditor boundary smoke
 - Phase 27 always-on service supervision pilot
 - Phase 28 full live closed-loop controlled smoke
+- Phase 29 24h live pilot & production runbook readiness proof
 
 현재 상태 구분:
 - Phase 13~22 planned implementation complete
+- Phase 23~29 hardening/live-gate verification complete
 - Runtime v2 deterministic orchestration layer complete
-- Phase 23 fail-closed alignment/hardening complete
+- Live production hardening gates verified (controlled smoke only; no unbounded live operation)
 - Phase 24 live boundary allowlist foundation complete
 - Phase 25 Hermes-first command surface verification complete
 - Phase 26 worker/validator/auditor boundary smoke complete
 - Phase 27 always-on service supervision pilot complete
 - Phase 28 full live closed-loop pilot complete
-- Live production hardening remains; see `docs/phase23-live-production-hardening-checklist.md`
+- Phase 29 24h live pilot & production runbook readiness proof complete
 
 아직 남은 작업:
-- 24h live pilot and production runbook
+- None — all planned phases implemented
 ```
 
 ## Runtime v2 Modules
@@ -173,6 +176,7 @@ src/runtime_architecture_v2/
   worker_boundary_smoke.py  # Phase 26 live worker boundary smoke policy + output sanitizer
   service_supervision.py    # Phase 27 always-on service supervision policy (Gate 8)
   closed_loop_pilot.py      # Phase 28 Hermes Gateway -> MeetingRun -> projection controlled smoke
+  live_pilot_runbook.py     # Phase 29 24h pilot bounds + production runbook + readiness verdict
   policies.py           # security, quota, observability policy gates
   orchestrator.py       # deterministic fake MeetingRun full-flow orchestrator
   pilot.py              # Phase 13 bounded live company workflow pilot

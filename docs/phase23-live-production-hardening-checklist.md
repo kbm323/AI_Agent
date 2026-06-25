@@ -168,6 +168,24 @@ closed-loop pilot verifies Hermes Gateway input → MeetingRun → workers →
 validation → projection in controlled smoke mode. Live projection remains
 injected-boundary only and fails closed when publish is blocked or failed.
 
+### Gate 10 — Production readiness / 24h bounded live pilot
+
+Required before claiming the system is ready for bounded production operations:
+
+```text
+- all Gate 5-9 statuses verified pass
+- production runbook complete
+- 24h pilot bounds declared (max runs/hour, max cost, window, channels)
+- recovery evidence present (checkpoint interval, rollback command, incident channel, manual override)
+- quota/cost evidence present (budget cap, hourly max, model thresholds, alert channel)
+```
+
+Status: PHASE 29 VERIFIED. ProductionReadinessVerdict.evaluate() fails closed
+unless Gate 5-9 are pass, the runbook is complete, the 24h live pilot policy
+passes, and recovery/quota/cost evidence meet bounded constraints.
+simulate_24h_pilot() returns a verdict and synthetic observations without
+actually running for 24 hours.
+
 ## Production-readiness wording
 
 Use these labels consistently:
