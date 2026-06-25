@@ -84,9 +84,10 @@ Phase 17   Production Readiness / Monitoring / Recovery
 Phase 18   Live Kanban Autonomous Dispatch Loop
 Phase 19   Autonomous Scheduling Daemon
 Phase 20   29-role Org Chart Registry
-Phase 21   Discord Interaction Webhook / Slash Command
+Phase 21   Discord Interaction Webhook / Slash Command artifact (not default command surface)
 Phase 22   Always-on Autonomous Company Runtime
 Phase 23   Runtime v2 Alignment & Hardening
+Phase 24   Live Boundary Inventory & Allowlist Foundation
 ```
 
 현재 실제 구동 범위:
@@ -128,18 +129,24 @@ Phase 23   Runtime v2 Alignment & Hardening
 - Phase 18 live kanban autonomous dispatch loop
 - Phase 19 autonomous scheduling daemon
 - Phase 20 29-role org chart registry
-- Phase 21 Discord interaction webhook
+- Phase 21 Discord interaction webhook artifact (not the default command surface)
 - Phase 22 unified company runtime
 - Phase 23 Runtime v2 alignment and fail-closed hardening
+- Phase 24 live boundary inventory and allowlist foundation
 
 현재 상태 구분:
 - Phase 13~22 planned implementation complete
 - Runtime v2 deterministic orchestration layer complete
-- Phase 23 fail-closed alignment/hardening in progress
+- Phase 23 fail-closed alignment/hardening complete
+- Phase 24 live boundary allowlist foundation complete
 - Live production hardening remains; see `docs/phase23-live-production-hardening-checklist.md`
 
 아직 남은 작업:
-- live production hardening execution and controlled smoke verification
+- Hermes Gateway command surface verification
+- live worker / validator / auditor boundary smoke
+- always-on service supervision
+- full live closed-loop pilot
+- 24h live pilot and production runbook
 ```
 
 ## Runtime v2 Modules
@@ -153,11 +160,11 @@ src/runtime_architecture_v2/
   scheduling_policy.py  # Hermes-native scheduling mapping
   workers.py            # FakeWorkerRunner, opencode-go WorkerRunner/live-smoke boundary
   validation.py         # GLM/Codex role policy, quota-gated execution planner, correction loop
-  projection.py         # Discord-safe formatter, fake sink, live Discord sink boundary
+  projection.py         # Discord-safe formatter, fake sink, live sink, Phase 24 boundary allowlist
   policies.py           # security, quota, observability policy gates
   orchestrator.py       # deterministic fake MeetingRun full-flow orchestrator
   pilot.py              # Phase 13 bounded live company workflow pilot
-  multi_bot.py          # Phase 14 multi-bot conversation protocol
+  multi_bot.py          # Phase 14 multi-bot conversation protocol + live boundary-guarded projection
   knowledge.py          # Phase 15 repo-local Second Brain / knowledge loop
   kanban_ops.py         # Phase 16 Hermes-native Kanban operation planning
   production.py         # Phase 17 health scanning / recovery triage

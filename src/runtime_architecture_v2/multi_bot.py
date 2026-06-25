@@ -11,12 +11,13 @@ worker, and projection boundaries.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
 from .projection import (
+    DiscordLiveBoundaryPolicy,
     FakeDiscordProjectionSink,
     LiveDiscordProjectionSink,
     ProjectionPublishResult,
@@ -230,12 +231,26 @@ class MultiBotPilotResult:
 # ── Bot Persona Projection Routing ─────────────────────────────────────
 
 
+def _profile_for_bot_role(bot_role: str) -> str:
+    return {
+        "ceo_coordinator": "aicompanyceo",
+        "content_lead": "aicompanycontent",
+        "art_lead": "aicompanyart",
+        "tech_lead": "aicompanytech",
+        "marketing_lead": "aicompanymarketing",
+        "quality_lead": "aicompanyquality",
+        "validation_audit": "aicompanyquality",
+        "business_support_lead": "aicompanyceo",
+    }.get(bot_role, "aicompanyceo")
+
+
 def route_bot_projection(
     message: BotMessage,
     *,
     live_discord: bool = False,
     target_channel_id: str = "",
     env: Mapping[str, str] | None = None,
+    discord_http_post: Callable[..., Mapping[str, object]] | None = None,
 ) -> ProjectionPublishResult:
     """Route a BotMessage through the correct persona projection.
 
@@ -261,7 +276,14 @@ def route_bot_projection(
     )
 
     if live_discord and target_channel_id:
-        sink = LiveDiscordProjectionSink(env=dict(env or {}))
+        boundary_policy = DiscordLiveBoundaryPolicy.current_verified()
+        sink = LiveDiscordProjectionSink(
+            env=dict(env or {}),
+            http_post=discord_http_post,
+            boundary_policy=boundary_policy,
+            profile=_profile_for_bot_role(message.bot_role),
+            guild_id=boundary_policy.guild_id,
+        )
     else:
         sink = FakeDiscordProjectionSink()
 

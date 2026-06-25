@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +17,7 @@ from typing import Literal
 
 from .policies import redact_sensitive_text
 from .projection import (
+    DiscordLiveBoundaryPolicy,
     DiscordProjectionFormatter,
     FakeDiscordProjectionSink,
     LiveDiscordProjectionSink,
@@ -241,6 +242,7 @@ def run_phase13_pilot(
     live_discord: bool = False,
     env: Mapping[str, str] | None = None,
     target_channel_id: str = "phase13-channel",
+    discord_http_post: Callable[..., Mapping[str, object]] | None = None,
 ) -> Phase13PilotResult:
     """Run the bounded Phase 13 workflow pilot."""
 
@@ -347,6 +349,7 @@ def run_phase13_pilot(
         target_channel_id=target_channel_id,
         live_discord=live_discord,
         env=env,
+        discord_http_post=discord_http_post,
     )
     if live_discord and projection_result.status != "published":
         final_state = MeetingRunState.FAILED
@@ -519,6 +522,7 @@ def _publish_or_record_projection(
     target_channel_id: str,
     live_discord: bool,
     env: Mapping[str, str] | None,
+    discord_http_post: Callable[..., Mapping[str, object]] | None = None,
 ) -> ProjectionPublishResult:
     formatter = DiscordProjectionFormatter()
     event = formatter.build_summary_event(
@@ -529,11 +533,17 @@ def _publish_or_record_projection(
         verdicts=validation_verdicts,
         target_channel_id=target_channel_id,
     )
-    sink = (
-        LiveDiscordProjectionSink(env=env)
-        if live_discord
-        else FakeDiscordProjectionSink()
-    )
+    if live_discord:
+        boundary_policy = DiscordLiveBoundaryPolicy.current_verified()
+        sink = LiveDiscordProjectionSink(
+            env=env,
+            http_post=discord_http_post,
+            boundary_policy=boundary_policy,
+            profile="aicompanycontent",
+            guild_id=boundary_policy.guild_id,
+        )
+    else:
+        sink = FakeDiscordProjectionSink()
     result = sink.publish(event)
     projection_dir = (
         root / "runtime" / "meeting_runs" / run.meeting_run_id / "discord_projection"

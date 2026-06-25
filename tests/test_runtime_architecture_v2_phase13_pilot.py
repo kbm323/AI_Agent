@@ -217,6 +217,38 @@ def test_phase13_live_discord_blocked_without_token_marks_result_not_ok(
 
 
 
+def test_phase13_live_discord_boundary_blocks_unknown_channel_before_http(
+    tmp_path: Path,
+):
+    calls = []
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout='{"ok": true}',
+            stderr="",
+            timeout_occurred=False,
+        )
+
+    result = run_phase13_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=1,
+        command_runner=command_runner,
+        live_discord=True,
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+        target_channel_id="not-allowed-channel",
+        discord_http_post=lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    assert result.ok is False
+    assert result.error == "live_discord_publish_blocked"
+    assert result.projection_publish_result.status == "blocked"
+    assert result.projection_publish_result.error == "channel_not_allowed"
+    assert calls == []
+
+
+
 def test_phase13_report_summarizes_opencode_event_stream_without_raw_dump(
     tmp_path: Path,
 ):

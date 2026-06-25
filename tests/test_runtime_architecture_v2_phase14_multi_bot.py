@@ -236,6 +236,29 @@ def test_route_bot_projection_live_discord_without_token(tmp_path: Path):
     assert result.status == "blocked"
 
 
+def test_route_bot_projection_live_discord_unknown_channel_blocks_before_http():
+    calls = []
+    msg = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_test",
+        round=1,
+        msg_type="opinion",
+        content="테스트 메시지",
+    )
+
+    result = route_bot_projection(
+        msg,
+        live_discord=True,
+        target_channel_id="unknown-channel",
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+        discord_http_post=lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    assert result.status == "blocked"
+    assert result.error == "channel_not_allowed"
+    assert calls == []
+
+
 # ── Pilot Dry-run Tests ─────────────────────────────────────────────────
 
 

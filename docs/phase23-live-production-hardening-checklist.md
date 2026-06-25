@@ -56,7 +56,7 @@ Required before live posting outside controlled smoke channels:
 - user-visible channels require explicit smoke approval
 ```
 
-Status: PARTIAL. Home channels are verified; allowlist enforcement must be reviewed per adapter before production.
+Status: PARTIAL → PHASE 24 FOUNDATION COMPLETE. Home channels are verified by name; `DiscordLiveBoundaryPolicy` now fail-closes live projection on guild/profile/channel mismatch before HTTP. The current policy is symbolic until a token-safe real channel-ID inventory is run, so arbitrary live Discord posts are blocked rather than silently allowed.
 
 ### Gate 3 — Discord permission inventory
 

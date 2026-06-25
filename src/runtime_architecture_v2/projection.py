@@ -115,6 +115,76 @@ class ProjectionPublishResult:
     error: str = ""
 
 
+@dataclass(frozen=True)
+class DiscordBoundaryDecision:
+    """Allowlist decision for a live Discord projection boundary."""
+
+    allowed: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class DiscordLiveBoundaryPolicy:
+    """Phase 24 live Discord boundary policy.
+
+    This is an inventory/allowlist guard, not a permission mutation layer. It
+    preserves the currently verified Hermes-first posture: mention-gated bots,
+    no free-response channels, no Administrator, and no Discord permission
+    changes unless a later explicit live need is approved.
+    """
+
+    guild_id: str
+    allowed_channel_ids_by_profile: dict[str, str]
+    permission_mutation_allowed: bool = False
+    administrator_allowed: bool = False
+    require_mention: bool = True
+    thread_require_mention: bool = True
+    free_response_channels: tuple[str, ...] = ()
+
+    @classmethod
+    def current_verified(cls) -> DiscordLiveBoundaryPolicy:
+        """Return the current verified 7-bot Entertainment boundary."""
+
+        return cls(
+            guild_id="1505600166676271244",
+            allowed_channel_ids_by_profile={
+                "aicompanyassistant": "home:aicompanyassistant:#일일-브리핑",
+                "aicompanyceo": "home:aicompanyceo:#전략-회의실",
+                "aicompanycontent": "home:aicompanycontent:#콘텐츠-메인",
+                "aicompanyart": "home:aicompanyart:#아트-메인",
+                "aicompanytech": "home:aicompanytech:#기술-메인",
+                "aicompanymarketing": "home:aicompanymarketing:#마케팅-메인",
+                "aicompanyquality": "home:aicompanyquality:#전체-리뷰",
+            },
+        )
+
+    def evaluate(
+        self,
+        *,
+        profile: str,
+        guild_id: str,
+        channel_id: str,
+    ) -> DiscordBoundaryDecision:
+        """Fail closed unless guild/profile/channel match the allowlist."""
+
+        if guild_id != self.guild_id:
+            return DiscordBoundaryDecision(False, "guild_not_allowed")
+        allowed_channel_id = self.allowed_channel_ids_by_profile.get(profile)
+        if allowed_channel_id is None:
+            return DiscordBoundaryDecision(False, "profile_not_allowed")
+        if channel_id != allowed_channel_id:
+            return DiscordBoundaryDecision(False, "channel_not_allowed")
+        if self.permission_mutation_allowed:
+            return DiscordBoundaryDecision(False, "permission_mutation_not_allowed")
+        if self.administrator_allowed:
+            return DiscordBoundaryDecision(False, "administrator_not_allowed")
+        if not self.require_mention or not self.thread_require_mention:
+            return DiscordBoundaryDecision(False, "mention_gate_required")
+        if self.free_response_channels:
+            return DiscordBoundaryDecision(False, "free_response_not_allowed")
+        return DiscordBoundaryDecision(True, "allowed")
+
+
 def _sanitize_discord_content(content: str) -> str:
     sanitized = _BEARER_SECRET_RE.sub("bearer [redacted]", content)
     sanitized = _SECRET_ASSIGNMENT_RE.sub(r"\1[redacted]", sanitized)
@@ -297,11 +367,17 @@ class LiveDiscordProjectionSink:
         http_post: Callable[..., Mapping[str, Any]] | None = None,
         api_base_url: str = "https://discord.com/api/v10",
         timeout_seconds: int = 15,
+        boundary_policy: DiscordLiveBoundaryPolicy | None = None,
+        profile: str = "",
+        guild_id: str = "",
     ) -> None:
         self.env = os.environ if env is None else env
         self.http_post = http_post or _default_discord_http_post
         self.api_base_url = api_base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.boundary_policy = boundary_policy
+        self.profile = profile
+        self.guild_id = guild_id
 
     def publish(self, event: DiscordProjectionEvent) -> ProjectionPublishResult:
         if not event.content.strip():
@@ -310,6 +386,19 @@ class LiveDiscordProjectionSink:
                 status="rejected",
                 error="content must not be empty",
             )
+        post_channel_id = event.target_thread_id or event.target_channel_id
+        if self.boundary_policy is not None:
+            decision = self.boundary_policy.evaluate(
+                profile=self.profile,
+                guild_id=self.guild_id,
+                channel_id=event.target_channel_id,
+            )
+            if not decision.allowed:
+                return ProjectionPublishResult(
+                    event_id=event.event_id,
+                    status="blocked",
+                    error=decision.reason,
+                )
         token = self.env.get("DISCORD_BOT_TOKEN", "").strip()
         if not token:
             return ProjectionPublishResult(
@@ -317,10 +406,9 @@ class LiveDiscordProjectionSink:
                 status="blocked",
                 error="missing_discord_bot_token",
             )
-        channel_id = event.target_thread_id or event.target_channel_id
         try:
             response = self.http_post(
-                f"{self.api_base_url}/channels/{channel_id}/messages",
+                f"{self.api_base_url}/channels/{post_channel_id}/messages",
                 headers={
                     "Authorization": f"Bot {token}",
                     "Content-Type": "application/json",
@@ -396,6 +484,8 @@ class HermesCommandSurfacePolicy:
 
 
 __all__ = [
+    "DiscordBoundaryDecision",
+    "DiscordLiveBoundaryPolicy",
     "DiscordProjectionFormatter",
     "FakeDiscordProjectionSink",
     "HermesCommandSurfacePolicy",

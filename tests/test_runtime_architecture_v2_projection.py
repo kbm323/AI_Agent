@@ -5,6 +5,7 @@ import os
 import pytest
 
 from src.runtime_architecture_v2.projection import (
+    DiscordLiveBoundaryPolicy,
     DiscordProjectionFormatter,
     FakeDiscordProjectionSink,
     HermesCommandSurfacePolicy,
@@ -325,6 +326,112 @@ def test_hermes_command_surface_policy_prefers_native_gateway():
     assert policy.requires_custom_queue_db is False
     assert "Hermes Gateway" in policy.describe()
     assert "queue.db" not in policy.describe()
+
+
+def test_phase24_live_boundary_policy_preserves_current_bot_permissions():
+    policy = DiscordLiveBoundaryPolicy.current_verified()
+
+    assert policy.guild_id == "1505600166676271244"
+    assert policy.permission_mutation_allowed is False
+    assert policy.administrator_allowed is False
+    assert policy.require_mention is True
+    assert policy.thread_require_mention is True
+    assert policy.free_response_channels == ()
+    assert set(policy.allowed_channel_ids_by_profile) == {
+        "aicompanyassistant",
+        "aicompanyceo",
+        "aicompanycontent",
+        "aicompanyart",
+        "aicompanytech",
+        "aicompanymarketing",
+        "aicompanyquality",
+    }
+
+
+def test_phase24_live_boundary_policy_fails_closed_for_unknown_guild_or_channel():
+    policy = DiscordLiveBoundaryPolicy.current_verified()
+
+    allowed = policy.evaluate(
+        profile="aicompanyceo",
+        guild_id="1505600166676271244",
+        channel_id=policy.allowed_channel_ids_by_profile["aicompanyceo"],
+    )
+    wrong_guild = policy.evaluate(
+        profile="aicompanyceo",
+        guild_id="other-guild",
+        channel_id=policy.allowed_channel_ids_by_profile["aicompanyceo"],
+    )
+    wrong_channel = policy.evaluate(
+        profile="aicompanyceo",
+        guild_id="1505600166676271244",
+        channel_id="unknown-channel",
+    )
+
+    assert allowed.allowed is True
+    assert allowed.reason == "allowed"
+    assert wrong_guild.allowed is False
+    assert wrong_guild.reason == "guild_not_allowed"
+    assert wrong_channel.allowed is False
+    assert wrong_channel.reason == "channel_not_allowed"
+
+
+def test_live_discord_projection_sink_blocks_disallowed_boundary_before_http():
+    calls = []
+    policy = DiscordLiveBoundaryPolicy.current_verified()
+    event = DiscordProjectionEvent(
+        event_id="proj_boundary_block",
+        meeting_run_id="mr_boundary_block",
+        bot_role="ceo_coordinator",
+        target_channel_id="not-the-ceo-channel",
+        content="hello",
+        source="meeting_run",
+        source_id="mr_boundary_block",
+    )
+
+    result = LiveDiscordProjectionSink(
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+        http_post=lambda *args, **kwargs: calls.append((args, kwargs)),
+        boundary_policy=policy,
+        profile="aicompanyceo",
+        guild_id="1505600166676271244",
+    ).publish(event)
+
+    assert result.status == "blocked"
+    assert result.error == "channel_not_allowed"
+    assert calls == []
+
+
+def test_live_discord_projection_sink_allows_thread_post_when_parent_channel_allowed():
+    calls = []
+    policy = DiscordLiveBoundaryPolicy.current_verified()
+    allowed_parent = policy.allowed_channel_ids_by_profile["aicompanycontent"]
+    event = DiscordProjectionEvent(
+        event_id="proj_boundary_thread",
+        meeting_run_id="mr_boundary_thread",
+        bot_role="content_lead",
+        target_channel_id=allowed_parent,
+        target_thread_id="thread-snowflake-1",
+        content="hello",
+        source="meeting_run",
+        source_id="mr_boundary_thread",
+    )
+
+    result = LiveDiscordProjectionSink(
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+        http_post=lambda *args, **kwargs: calls.append((args, kwargs))
+        or {"status_code": 200, "json": {"id": "msg-thread"}},
+        api_base_url="https://discord.test/api/v10",
+        boundary_policy=policy,
+        profile="aicompanycontent",
+        guild_id="1505600166676271244",
+    ).publish(event)
+
+    assert result.status == "published"
+    assert result.discord_message_id == "msg-thread"
+    assert calls[0][0][0] == (
+        "https://discord.test/api/v10/channels/thread-snowflake-1/messages"
+    )
+
 
 
 def test_live_discord_projection_sink_uses_env_token_and_injected_http_client():
