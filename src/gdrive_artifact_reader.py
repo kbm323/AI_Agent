@@ -50,6 +50,7 @@ from .gdrive_artifact_writer import (
     DEFAULT_ROOT_FOLDER_NAME,
     DRIVE_API_BASE,
     MIME_TYPES,
+    ArtifactType,
     _build_auth_header,
     _find_folder,
     _get_drive_api_fn,
@@ -881,3 +882,17 @@ def build_reader(
         request_timeout=request_timeout,
     )
     return ArtifactReader(config)
+
+
+__all__ = [
+    "ArtifactInfo",
+    "ArtifactQuery",
+    "ArtifactReadResult",
+    "ArtifactReader",
+    "ArtifactType",
+    "ReaderConfig",
+    "build_reader",
+    "find_artifacts",
+    "query_and_download",
+    "read_artifact_content",
+]

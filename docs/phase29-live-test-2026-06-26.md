@@ -111,20 +111,21 @@ ruff check src/runtime_architecture_v2 \
 No issues found
 ```
 
-Full test suite:
+Full test suite after regression fix:
 
 ```text
-5663 passed, 1 failed
+5664 passed
 ```
 
-Known unrelated failure:
+Regression fixed:
 
 ```text
 TestArtifactTypeReExport.test_re_exported_from_writer
-ImportError: cannot import name 'ArtifactType' from 'src.gdrive_artifact_reader'
+- root cause: reader doc/test expected ArtifactType re-export, but reader did not import it from writer
+- fix: re-export writer ArtifactType from src.gdrive_artifact_reader and declare it in __all__
 ```
 
-Quota after test:
+Quota after initial bounded live test:
 
 ```text
 Go:    Monthly 35%, Weekly 73%, Hourly 0%
@@ -132,8 +133,16 @@ Codex: Monthly 0%,  Weekly 58%, Hourly 13%
 Both available
 ```
 
+Quota after regression fix and full-suite verification:
+
+```text
+Go:    Monthly 35%, Weekly 73%, Hourly 0%
+Codex: Monthly 0%,  Weekly 60%, Hourly 28%
+Both available
+```
+
 ## Verdict
 
 The bounded live test is PASS.
 
-The system is safe to proceed to a longer supervised pilot, but not to an unattended unbounded 24h run until the gdrive re-export regression is either fixed or explicitly excluded from the live-production gate.
+The full test suite is now green (`5664 passed`). The system is safe to proceed to a longer supervised pilot under the Phase 29 bounds before any unattended 24h operation.
