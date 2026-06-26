@@ -31,6 +31,10 @@ GLM/Codex는 감사실이다.
 MeetingRun은 모든 회의/작업/검증/보고의 장부다.
 ```
 
+## Documentation Languages
+
+- [한국어 사용설명서 (README.ko.md)](README.ko.md) — installation, usage, examples, FAQ
+
 ## Current Architecture
 
 ```text
@@ -157,7 +161,7 @@ Phase 29   24h Live Pilot & Production Runbook
 - Phase 29 24h live pilot & production runbook readiness proof complete
 
 아직 남은 작업:
-- None — all planned phases implemented
+- Actual unbounded 24h live pilot (운영 활동; 코드 검증 완료)
 ```
 
 ## Runtime v2 Modules
@@ -327,11 +331,11 @@ pytest -q
 ruff check src/runtime_architecture_v2 tests/test_runtime_architecture_v2_*.py
 ```
 
-Recent baseline after Phase 10:
+Recent baseline after Phase 29 cross-phase audit fix:
 
 ```text
-pytest tests/test_runtime_architecture_v2_*.py -q  -> 88 passed
-pytest -q                                         -> 5369 passed
+pytest tests/test_runtime_architecture_v2_*.py -q  -> 376 passed
+pytest -q                                         -> 5664 passed
 ```
 
 ## Runtime v2 Simulation CLI
@@ -399,9 +403,9 @@ docs/runtime-architecture-v2-final-verification.md
 Recent baseline after Phase 11:
 
 ```text
-pytest tests/test_runtime_architecture_v2_*.py tests/test_quota_scripts_no_hardcoded_secrets.py -q -> 92 passed
+pytest tests/test_runtime_architecture_v2_*.py tests/test_quota_scripts_no_hardcoded_secrets.py -q -> 388 passed
 python3 scripts/simulate_runtime_architecture_v2.py --scenario all -> top_ok=True, 7 scenarios
-pytest -q                                                 -> 5373 passed
+pytest -q                                                 -> 5664 passed
 ruff check src/runtime_architecture_v2 tests/test_runtime_architecture_v2_*.py tests/test_quota_scripts_no_hardcoded_secrets.py -> no issues
 pytest tests/test_quota_scripts_no_hardcoded_secrets.py -q -> 4 passed
 ```
@@ -468,24 +472,23 @@ Remote `master` has been removed. Use `main` for all new work.
 Start here:
 
 ```text
-docs/runtime-architecture-v2.md
-docs/runtime-architecture-v2-implementation-plan.md
-docs/system-design-decisions.md
-seeds/seed_runtime_architecture_v2.yaml
+docs/runtime-architecture-v2.md                         ← 정식 설계 문서
+docs/runtime-architecture-v2-implementation-plan.md     ← 구현 계획
+docs/phase1-29-cross-phase-risk-audit.md                ← 전단계 리스크 감사
+docs/system-design-decisions.md                         ← 설계 결정 이력
+seeds/seed_runtime_architecture_v2.yaml                 ← Ouroboros Seed
+README.ko.md                                            ← 한국어 사용설명서
 ```
 
 Legacy docs may mention OpenClaw or MVP. Treat those as historical evidence unless a v2 document explicitly re-adopts them.
 
 ## Next Phase
 
-Next work is no longer a Runtime Architecture v2 implementation phase. Runtime v2
-is verified through Phase 11. Continue with post-v2 operational hardening only
-after selecting scope, for example:
+Phase 1~29 complete. All planned implementation and hardening phases are verified.
+The only remaining item is the actual unbounded 24h live pilot (operational activity,
+not a code-deliverable phase).
 
-```text
-- GitHub credential repair and origin/main push
-- live Discord projection smoke to #시스템-로그
-- opencode-go live worker smoke under current quota
-- Discord token reset and safer bot permission re-invite
-- #개인-비서 channel creation / assistant UX hardening
-```
+Runtime v2 is fully implemented and tested:
+- 5664 pytest passed
+- All 29 phases documented and verified
+- Cross-phase risk audit complete (see docs/phase1-29-cross-phase-risk-audit.md)
