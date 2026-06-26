@@ -51,6 +51,31 @@ quota_alert_channel            present
 min_checkpoint_interval_seconds >= 60
 ```
 
+## Model and Quota Operating Policy
+
+Before applying the Phase 29 live-pilot configuration, keep the active 7-bot
+model policy aligned with `docs/runtime-architecture-v2.md`:
+
+```text
+비서             -> opencode-go/qwen3.7-plus       -> opencode-go/deepseek-v4-flash fallback
+대표             -> opencode-go/qwen3.7-max        -> opencode-go/qwen3.7-plus / opencode-go/glm-5.2 fallback; GPT/Codex escalation
+콘텐츠팀장       -> opencode-go/kimi-k2.6          -> opencode-go/qwen3.7-plus fallback
+아트팀장         -> opencode-go/minimax-m3         -> opencode-go/minimax-m2.7 / opencode-go/deepseek-v4-pro fallback
+기술팀장         -> opencode-go/deepseek-v4-pro    -> opencode-go/deepseek-v4-flash / opencode-go/kimi-k2.7-code fallback; GPT/Codex audit
+마케팅팀장       -> opencode-go/qwen3.7-max        -> opencode-go/qwen3.7-plus / opencode-go/kimi-k2.6 fallback
+품질관리팀장     -> opencode-go/glm-5.2            -> opencode-go/glm-5.1 fallback; GPT/Codex final audit
+```
+
+GPT-5.5/Codex is reserved for final audit, high-risk irreversible operations,
+release/runbook gates, code/security/data-loss risk, and GLM non-pass or
+low-confidence verdicts. Do not use GPT-5.5 as the daily default for all 7 live
+bot profiles during a 24-hour pilot; that turns the auditor into the bottleneck
+and drains the quota lane needed for emergencies.
+
+Profile model changes are operational mutations: apply them only after any
+active supervised pilot finishes, restart the affected Hermes gateway profiles,
+then run a 7-channel controlled smoke before extending the pilot window.
+
 ## Production Runbook
 
 `ProductionRunbook.current_verified()` contains 6 required pre-flight sections:

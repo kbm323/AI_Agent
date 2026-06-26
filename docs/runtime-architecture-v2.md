@@ -6,7 +6,7 @@
 > 기준 Seed: `seed_176a489b1d25`
 > Interview: `interview_20260619_051314`
 > Document status: CURRENT FINAL BASELINE
-> Last updated: 2026-06-25 KST
+> Last updated: 2026-06-26 KST
 > Last live Discord verification: 2026-06-25 02:43 KST
 > Decision precedence: latest user decisions and live Discord verification > this file > `docs/system-design-decisions.md` historical decision log > phase result documents > README.
 
@@ -83,11 +83,12 @@ relevant detailed architecture section.
    - The durable business object is meeting_run_id / MeetingRun.
    - Recovery, audit, validation, reports, and Second Brain ingestion attach to MeetingRun.
 
-4. opencode-go-first workers
+4. opencode-go-first workers and GPT escalation
    - opencode-go is the unified worker/validator/auditor wrapper.
    - Qwen handles routing/classification where needed.
-   - GLM is the validator model role.
-   - Codex/GPT-5.5 is the gated auditor/high-confidence review path.
+   - Discord-facing team leads use role-fit opencode-go models by default.
+   - GLM is the default validator/contradiction/risk-review model role.
+   - Codex/GPT-5.5 is not a daily team-lead default; it is the gated final auditor, high-confidence reviewer, and irreversible-risk escalation path.
    - Model order means quota fallback order, not quality ranking.
 
 5. OpenClaw removed
@@ -227,7 +228,60 @@ The Personal Assistant is a separate user-support/intake layer, not part of the
 reminders, private notes, and user support, while company work remains under the
 company team-lead structure.
 
-## 4.1 Command Surface
+## 4.1 Discord-facing Model Assignment
+
+The 7 live Hermes profiles are persistent Discord persona/gateway endpoints.
+Their default models should be selected for their daily conversation and routing
+responsibility, while `MeetingRun.worker_tasks[].model_policy` remains the more
+granular source for internal specialist execution.
+
+GPT-5.5/Codex is intentionally **not** the primary model for every bot. It is a
+scarce high-confidence auditor used after role-specialized opencode-go models
+and GLM validation when the decision is high-risk, externally visible, or
+technically irreversible.
+
+| Hermes profile | Live username | Primary model | Fallback chain | GPT/Codex role |
+|---|---|---|---|---|
+| `aicompanyassistant` | `비서` | `opencode-go/qwen3.7-plus` | `opencode-go/deepseek-v4-flash` | None by default; escalate only for private-data, account, or irreversible user-support risk |
+| `aicompanyceo` | `대표` | `opencode-go/qwen3.7-max` | `opencode-go/qwen3.7-plus` -> `opencode-go/glm-5.2` | Final-arbiter escalation for strategy, budget, brand, external commitments, and model-conflict resolution |
+| `aicompanycontent` | `콘텐츠팀장` | `opencode-go/kimi-k2.6` | `opencode-go/qwen3.7-plus` | External-publication or brand-risk review only |
+| `aicompanyart` | `아트팀장` | `opencode-go/minimax-m3` | `opencode-go/minimax-m2.7` -> `opencode-go/deepseek-v4-pro` | Asset/license/brand-risk review only |
+| `aicompanytech` | `기술팀장` | `opencode-go/deepseek-v4-pro` | `opencode-go/deepseek-v4-flash` -> `opencode-go/kimi-k2.7-code` | Code/security/data-loss/deployment audit |
+| `aicompanymarketing` | `마케팅팀장` | `opencode-go/qwen3.7-max` | `opencode-go/qwen3.7-plus` -> `opencode-go/kimi-k2.6` | Public campaign, partnership, or reputation-risk review |
+| `aicompanyquality` | `품질관리팀장` | `opencode-go/glm-5.2` | `opencode-go/glm-5.1` | Primary escalation endpoint for `openai-codex/gpt-5.5` final audit |
+
+Runtime interpretation:
+
+```text
+normal production work:
+  role-specialized opencode-go model -> GLM validation if required -> report
+
+critical or irreversible work:
+  role-specialized opencode-go model -> GLM validation -> GPT-5.5/Codex audit -> user escalation when needed
+```
+
+GPT-5.5/Codex escalation triggers:
+
+```text
+- code, automation, security, deployment, or data-loss risk
+- Discord permission, token, channel, gateway, or live-boundary mutation
+- budget, legal, contract, IP, brand, public-campaign, or external publication risk
+- GLM returns non-pass, low confidence, or explicit escalation recommendation
+- team-lead models disagree on a material conclusion
+- production pilot/runbook gate, release, or rollback decision
+- user explicitly requests final audit, independent review, or "really verify it"
+```
+
+Operational constraints:
+
+```text
+- Do not set all 7 bot profiles to GPT-5.5 by default.
+- Do not spend premium opencode-go models on high-volume assistant/intake traffic.
+- Keep Codex/GPT as an escalation lane so quota remains available for the decisions where it matters most.
+- Changing profile model/fallback config requires profile-local config edits and gateway restart; do it after active pilots finish.
+```
+
+## 4.2 Command Surface
 
 The command surface is Hermes-native first.
 Standalone Discord slash commands such as `/meeting`, `/cancel`, `/status`,

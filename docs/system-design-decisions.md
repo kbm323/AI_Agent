@@ -68,13 +68,26 @@ Current Discord-facing topology
 - Hermes `delegate_task` is NOT used for worker execution (no per-task profile override)
 - Hermes Core modifications are avoided
 - 90% general meetings: opencode-go CLI
-- 10% special work: direct model invocation
+- 10% special work: direct model invocation or GPT/Codex escalation
 - `delegate_task` core extension (Option A) is rejected
+
+**Discord-facing default model map:**
+
+| Profile | Primary | Fallback / escalation |
+|---|---|---|
+| `aicompanyassistant` | `opencode-go/qwen3.7-plus` | `opencode-go/deepseek-v4-flash` |
+| `aicompanyceo` | `opencode-go/qwen3.7-max` | `opencode-go/qwen3.7-plus`, then `opencode-go/glm-5.2`, then GPT/Codex for high-risk final arbitration |
+| `aicompanycontent` | `opencode-go/kimi-k2.6` | `opencode-go/qwen3.7-plus`; GPT/Codex only for public/brand risk |
+| `aicompanyart` | `opencode-go/minimax-m3` | `opencode-go/minimax-m2.7`, then `opencode-go/deepseek-v4-pro`; GPT/Codex only for asset/license/brand risk |
+| `aicompanytech` | `opencode-go/deepseek-v4-pro` | `opencode-go/deepseek-v4-flash`, then `opencode-go/kimi-k2.7-code`; GPT/Codex for code/security/deployment audit |
+| `aicompanymarketing` | `opencode-go/qwen3.7-max` | `opencode-go/qwen3.7-plus`, then `opencode-go/kimi-k2.6`; GPT/Codex for public campaign/reputation risk |
+| `aicompanyquality` | `opencode-go/glm-5.2` | `opencode-go/glm-5.1`, then GPT/Codex final audit |
 
 **Rationale:**
 - opencode-go already supports multiple models (Kimi, DeepSeek, Qwen, GLM, MiniMax) via single interface
 - Coordinator just passes model name as argument — simple implementation
 - Hermes Core modification zero
+- GPT-5.5/Codex remains available for scarce, high-confidence audit work instead of being drained by daily team-lead chatter
 
 ---
 
@@ -108,7 +121,13 @@ Current Discord-facing topology
 
 ## Track 4: Validation Layer
 
-**Decision:** GLM-5.1 default validator + conditional Codex GPT-5.5 dual validation.
+**Decision:** GLM default validator + conditional Codex/GPT-5.5 dual validation.
+
+The preferred quality profile uses `opencode-go/glm-5.2` for the live
+Quality/Validation bot when available, with `opencode-go/glm-5.1` as fallback.
+Runtime code paths that still default to `glm-5.1` remain compatible until the
+implementation policy is upgraded. Codex/GPT-5.5 is the final-audit lane, not a
+general-purpose default for every Discord-facing bot.
 
 **Escalation Triggers (GLM → Codex):**
 - Budget/schedule related items
