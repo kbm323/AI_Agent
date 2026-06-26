@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from .model_policy import worker_model_policy_for_role
 from .policies import redact_sensitive_text
 from .projection import (
     DiscordLiveBoundaryPolicy,
@@ -656,14 +657,13 @@ def _model_policy_for_role(
     role: str,
     runner: WorkerTaskRunner,
 ) -> dict[str, object]:
+    policy = worker_model_policy_for_role(role)
+    policy["runner"] = str(runner.value if hasattr(runner, "value") else runner)
     if runner == WorkerTaskRunner.OPENCODE_GO:
-        return {
-            "preferred": "glm-5.1",
-            "execution_role": "worker",
-            "model_family": "glm",
-            "phase13_live_worker": role == "content_lead",
-        }
-    return {"preferred": "fake", "execution_role": "support", "phase13_fake": True}
+        policy["phase13_live_worker"] = role == "content_lead"
+        return policy
+    policy["phase13_fake"] = True
+    return policy
 
 
 def _new_phase13_meeting_run_id(pilot_id: str) -> str:

@@ -347,6 +347,15 @@ def test_phase14_live_worker_mode_with_injected_runner(tmp_path: Path):
     assert result.live_worker_count == 2
     assert result.fake_worker_count == 1
     assert len(calls) >= 1
+    assert {call[2] for call in calls if len(call) >= 3 and call[1] == "--model"} == {"qwen-max"}
+    policies = {task.role: task.model_policy for task in result.worker_tasks}
+    assert policies["content_lead"]["role_id"] == "content-director"
+    assert policies["content_lead"]["projection_profile"] == "aicompanycontent"
+    assert policies["marketing_lead"]["role_id"] == "marketing-lead"
+    assert policies["marketing_lead"]["projection_profile"] == "aicompanymarketing"
+    assert policies["quality_lead"]["role_id"] == "validator"
+    assert policies["quality_lead"]["preferred"] == "glm-5.1"
+    assert policies["quality_lead"]["projection_profile"] == "aicompanyquality"
     assert result.meeting_run.state == MeetingRunState.COMPLETED
 
 

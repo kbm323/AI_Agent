@@ -72,8 +72,15 @@ def test_phase13_worker_tasks_include_one_opencode_go_task_by_default(tmp_path: 
     ]
     assert len(live_tasks) == 1
     assert live_tasks[0].role == "content_lead"
-    assert live_tasks[0].model_policy["preferred"] == "glm-5.1"
+    assert live_tasks[0].model_policy["role_id"] == "content-director"
+    assert live_tasks[0].model_policy["provider"] == "opencode-go"
+    assert live_tasks[0].model_policy["preferred"] == "qwen-max"
+    assert live_tasks[0].model_policy["projection_profile"] == "aicompanycontent"
     assert len(fake_tasks) == 2
+    fake_by_role = {task.role: task.model_policy for task in fake_tasks}
+    assert fake_by_role["marketing_lead"]["role_id"] == "marketing-lead"
+    assert fake_by_role["quality_lead"]["role_id"] == "validator"
+    assert fake_by_role["quality_lead"]["preferred"] == "glm-5.1"
     for task in tasks:
         assert str(tmp_path / "runtime" / "meeting_runs") in task.packet_path
         assert task.worker_task_id.startswith(f"wt_{run.meeting_run_id}_")
@@ -149,7 +156,7 @@ def test_phase13_live_worker_mode_uses_injected_runner(tmp_path: Path):
     assert result.live_worker_count == 1
     assert result.fake_worker_count == 2
     assert len(calls) == 1
-    assert calls[0][:3] == ["opencode-go", "--model", "glm-5.1"]
+    assert calls[0][:3] == ["opencode-go", "--model", "qwen-max"]
     assert result.worker_tasks[0].state == WorkerTaskState.SUCCEEDED
 
 

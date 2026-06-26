@@ -16,6 +16,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
+from .model_policy import worker_model_policy_for_role
 from .projection import (
     DiscordLiveBoundaryPolicy,
     FakeDiscordProjectionSink,
@@ -452,7 +453,7 @@ def _build_phase14_worker_tasks(
                 runner=runner_enum,
                 packet_path=str(run_dir / "packets" / f"{task_id}.json"),
                 output_path=str(run_dir / "worker_outputs" / f"{task_id}.json"),
-                model_policy={"preferred": "glm-5.1"},
+                model_policy=worker_model_policy_for_role(role),
             )
         )
     return tuple(tasks)
@@ -770,7 +771,10 @@ def _live_bot_content(
     command_runner: OpenCodeGoCommandRunner | None,
     workdir: str,
 ) -> str:
-    """Generate live bot content through opencode-go worker."""
+    """Generate live bot content through opencode-go worker, respecting the
+    role's canonical model policy when available.
+    """
+
     persona = BOT_PERSONAS.get(role, role)
     prompt = (
         f"당신은 AI 가상 엔터테인먼트 회사의 '{persona}'입니다.\n"
@@ -784,8 +788,13 @@ def _live_bot_content(
         return _fake_bot_content(role, round_num, msg_type)
 
     try:
+        policy = worker_model_policy_for_role(role)
+    except KeyError:
+        policy = {"preferred": "glm-5.1", "primary_model": "glm-5.1"}
+
+    try:
         result = command_runner(
-            ["opencode-go", "--model", "glm-5.1", "--prompt", prompt],
+            ["opencode-go", "--model", str(policy.get("preferred", policy.get("primary_model", "glm-5.1"))), "--prompt", prompt],
             timeout_seconds=300,
             workdir=workdir,
         )
