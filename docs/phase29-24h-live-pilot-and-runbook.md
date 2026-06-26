@@ -87,24 +87,25 @@ It completes in milliseconds.
 | Test Group | Count | Status |
 |------------|-------|--------|
 | Pilot policy pass | 1 | PASS |
-| Pilot policy fail-closed constraints | 12 | PASS |
+| Pilot policy fail-closed constraints | 14 | PASS |
 | Runbook completeness | 3 | PASS |
 | Readiness verdict pass | 1 | PASS |
 | Readiness verdict fail-closed (gate/runbook/pilot) | 3 | PASS |
 | 24h simulation | 3 | PASS |
-| Artifact persistence | 2 | PASS |
-| **Total** | **25** | **PASS** |
+| Artifact persistence | 4 | PASS |
+| **Total** | **29** | **PASS** |
 
 ## Verification Evidence
 
-- Phase 29 tests: 25 passed
-- Phase 25-29 related tests: 126 passed
-- Runtime v2 subset: 363 passed
-- Full pytest: 5648 passed
+- Phase 29 tests: 29 passed
+- Phase 25-29 related tests: 135 passed
+- Runtime v2 subset: 372 passed
+- Full pytest: 5657 passed
 - Ruff: No issues found
 - Secret scan: 0 findings
 - Independent review #1: PASS with suggestions addressed
 - Independent review #2: PASS (max_runs_per_hour <= 0 hardening applied)
+- Post-review hardening: malformed window lengths fail closed, quota alert channel must be profile-local, gate reasons/blockers/observations are redacted at artifact serialization boundaries
 - Ouroboros QA: PASS (0.82/1.00, pass threshold 0.80)
 
 ## Remaining Phases

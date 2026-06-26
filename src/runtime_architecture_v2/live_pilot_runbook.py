@@ -8,10 +8,12 @@ before any long-running live operation is declared safe to start.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum, unique
 from typing import Any
+
+from .projection import _sanitize_discord_content
 
 
 @unique
@@ -118,8 +120,13 @@ class TwentyFourHourLivePilotPolicy:
                     f"{bounded_ops.max_runs_per_hour} > {self.max_runs_per_hour}"
                 ),
             )
+        if len(bounded_ops.allowed_window_hours) != 2:
+            return LivePilotDecision(
+                LivePilotStatus.FAIL,
+                f"allowed_window_hours_invalid: {bounded_ops.allowed_window_hours}",
+            )
         start, end = bounded_ops.allowed_window_hours
-        if len(bounded_ops.allowed_window_hours) != 2 or start >= end:
+        if start >= end:
             return LivePilotDecision(
                 LivePilotStatus.FAIL,
                 f"allowed_window_hours_invalid: {bounded_ops.allowed_window_hours}",
@@ -215,8 +222,36 @@ class TwentyFourHourLivePilotPolicy:
             return LivePilotDecision(
                 LivePilotStatus.FAIL, "quota_alert_channel_missing"
             )
+        if self.require_quota_alert_channel and not quota_cost.alert_channel.startswith(
+            "home:"
+        ):
+            return LivePilotDecision(
+                LivePilotStatus.FAIL,
+                "quota_alert_channel_prefix_not_allowed",
+            )
 
         return LivePilotDecision(LivePilotStatus.PASS, "")
+
+
+def _sanitize_artifact_text(value: str) -> str:
+    return _sanitize_discord_content(value).replace("[redacted]", "REDACTED")
+
+
+def _gate_to_artifact(gate: GateStatus) -> dict[str, str]:
+    return {
+        "name": _sanitize_artifact_text(gate.name),
+        "status": _sanitize_artifact_text(gate.status),
+        "reason": _sanitize_artifact_text(gate.reason),
+    }
+
+
+def _observation_to_artifact(observation: LivePilotObservation) -> dict[str, str]:
+    return {
+        "timestamp": _sanitize_artifact_text(observation.timestamp),
+        "event_type": _sanitize_artifact_text(observation.event_type),
+        "trace_id": _sanitize_artifact_text(observation.trace_id),
+        "status": _sanitize_artifact_text(observation.status),
+    }
 
 
 @dataclass(frozen=True)
@@ -308,7 +343,9 @@ class ProductionReadinessVerdict:
 
         for gate in gate_statuses:
             if gate.status != "pass":
-                blockers.append(f"{gate.name}_failed: {gate.reason}")
+                blockers.append(
+                    _sanitize_artifact_text(f"{gate.name}_failed: {gate.reason}")
+                )
 
         if not runbook.is_complete():
             missing = [
@@ -316,7 +353,7 @@ class ProductionReadinessVerdict:
                 for section in ProductionRunbook._REQUIRED_SECTIONS
                 if not runbook.pre_flight_sections.get(section, "").strip()
             ]
-            blockers.append(f"runbook_incomplete: {missing}")
+            blockers.append(_sanitize_artifact_text(f"runbook_incomplete: {missing}"))
 
         pilot_decision = pilot_policy.evaluate(
             bounded_ops=bounded_ops,
@@ -324,7 +361,11 @@ class ProductionReadinessVerdict:
             quota_cost=quota_cost,
         )
         if pilot_decision.status == LivePilotStatus.FAIL:
-            blockers.append(f"pilot_policy_failed: {pilot_decision.reason}")
+            blockers.append(
+                _sanitize_artifact_text(
+                    f"pilot_policy_failed: {pilot_decision.reason}"
+                )
+            )
 
         if blockers:
             return ProductionReadinessVerdict(
@@ -399,12 +440,14 @@ class ProductionReadinessVerdict:
         return {
             "phase": verdict_with_obs.phase,
             "verdict": verdict_with_obs.status,
-            "blockers": list(verdict_with_obs.blockers),
-            "gate_statuses": [
-                {"name": g.name, "status": g.status, "reason": g.reason}
-                for g in verdict_with_obs.gate_statuses
+            "blockers": [
+                _sanitize_artifact_text(blocker)
+                for blocker in verdict_with_obs.blockers
             ],
-            "observations": [asdict(o) for o in observations],
+            "gate_statuses": [
+                _gate_to_artifact(g) for g in verdict_with_obs.gate_statuses
+            ],
+            "observations": [_observation_to_artifact(o) for o in observations],
         }
 
     def to_artifact(self) -> dict[str, Any]:
@@ -413,10 +456,13 @@ class ProductionReadinessVerdict:
         return {
             "phase": self.phase,
             "status": self.status,
-            "blockers": list(self.blockers),
-            "gate_statuses": [
-                {"name": g.name, "status": g.status, "reason": g.reason}
-                for g in self.gate_statuses
+            "blockers": [
+                _sanitize_artifact_text(blocker) for blocker in self.blockers
             ],
-            "observations": [asdict(o) for o in self.observations],
+            "gate_statuses": [
+                _gate_to_artifact(g) for g in self.gate_statuses
+            ],
+            "observations": [
+                _observation_to_artifact(o) for o in self.observations
+            ],
         }

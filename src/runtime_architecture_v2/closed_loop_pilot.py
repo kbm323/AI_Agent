@@ -13,6 +13,7 @@ callable is required; otherwise the run fails closed before any live boundary.
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ from .worker_boundary_smoke import (
 )
 
 PHASE28_PILOT_ID = "phase28_full_live_closed_loop_pilot"
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 _PHASE28_STAGE_SEQUENCE = (
     "gateway_input_received",
@@ -349,6 +351,18 @@ def run_phase28_closed_loop_pilot(
         else "controlled-dry-run"
     )
 
+    if not _SAFE_ID_RE.fullmatch(gateway_input.trace_id):
+        safe_trace = _sanitize_discord_content(gateway_input.trace_id).replace(
+            "[redacted]", "REDACTED"
+        )
+        return _failed_result(
+            root=root,
+            mode=mode,
+            trace_id="invalid_trace_id",
+            meeting_run_id="",
+            error=f"invalid_trace_id:{safe_trace}",
+        )
+
     if controlled_live_projection and discord_http_post is None:
         return _failed_result(
             root=root,
@@ -370,17 +384,26 @@ def run_phase28_closed_loop_pilot(
 
     meeting_run_id = f"mr-phase28-{gateway_input.trace_id}"
     orchestrator = RuntimeOrchestrator(root=root)
-    orchestrated = orchestrator.run(
-        meeting_run_id=meeting_run_id,
-        trigger_text=gateway_input.trigger_text,
-        user_id=gateway_input.user_id,
-        channel_id=gateway_input.channel_id,
-        thread_id=gateway_input.thread_id,
-        guild_id=gateway_input.guild_id,
-        hermes_session_id=gateway_input.trace_id,
-        priority=gateway_input.priority,
-        simulation=True,
-    )
+    try:
+        orchestrated = orchestrator.run(
+            meeting_run_id=meeting_run_id,
+            trigger_text=gateway_input.trigger_text,
+            user_id=gateway_input.user_id,
+            channel_id=gateway_input.channel_id,
+            thread_id=gateway_input.thread_id,
+            guild_id=gateway_input.guild_id,
+            hermes_session_id=gateway_input.trace_id,
+            priority=gateway_input.priority,
+            simulation=True,
+        )
+    except Exception:
+        return _failed_result(
+            root=root,
+            mode=mode,
+            trace_id=gateway_input.trace_id,
+            meeting_run_id=meeting_run_id,
+            error="orchestrator_failed",
+        )
 
     projection_decision = policy.projection_safety_policy.evaluate(
         content=orchestrated.projection_event.content,
@@ -417,7 +440,7 @@ def run_phase28_closed_loop_pilot(
             guild_id=gateway_input.guild_id,
         )
         publish = sink.publish(event)
-        live_attempted = True
+        live_attempted = publish.status != "blocked"
     else:
         publish = FakeDiscordProjectionSink().publish(event)
         live_attempted = False

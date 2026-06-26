@@ -79,20 +79,21 @@ artifact_written
 |-----------|-------|--------|
 | ProjectionSafetyPolicy | 7 | PASS |
 | ClosedLoopPilotPolicy | 5 | PASS |
-| Controlled closed-loop runner | 10 | PASS |
-| **Total** | **22** | **PASS** |
+| Controlled closed-loop runner | 16 | PASS |
+| **Total** | **28** | **PASS** |
 
 ## Verification Results
 
-- Phase 28 tests: 22 passed
-- Related Phase 25~28 tests: 89 passed
+- Phase 28 tests: 28 passed
+- Related Phase 25~28 tests: 106 passed
 - Ruff: No issues found
-- Runtime v2 subset: 326 passed
-- Full pytest: 5611 passed
+- Runtime v2 subset: 372 passed
+- Full pytest: 5657 passed
 - Secret scan: 0 findings
 - Independent review #1: FAIL → trace-after-cap issue fixed with RED regression
 - Independent review #2: PASS (security_concerns=[], logic_errors=[])
 - Reviewer suggestions addressed: exact trace reason, blocked publish does not call HTTP, invalid content cap fails closed
+- Post-review hardening: invalid trace IDs now fail closed without persisting secret-like rejected IDs, orchestrator exceptions return structured failure with dedicated regression coverage, blocked live projection no longer counts as a live HTTP attempt
 - Ouroboros QA: PASS 0.86/1.00
 
 ## Files

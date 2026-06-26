@@ -275,6 +275,85 @@ class TestRunPhase28ClosedLoopPilot:
         assert "command_surface" in result.error
         assert result.projection_status == "not_attempted"
 
+    def test_fails_closed_when_trace_id_contains_path_separator(self, tmp_path):
+        result = run_phase28_closed_loop_pilot(
+            root=tmp_path,
+            gateway_input=GatewayInput(
+                trace_id="bad/trace",
+                surface=CommandSurfaceMode.HERMES_EXISTING_GATEWAY,
+            ),
+        )
+        assert result.ok is False
+        assert result.status == ClosedLoopStatus.FAIL
+        assert result.projection_status == "not_attempted"
+        assert "invalid_trace_id" in result.error
+
+    def test_fails_closed_when_trace_id_contains_parent_segment(self, tmp_path):
+        result = run_phase28_closed_loop_pilot(
+            root=tmp_path,
+            gateway_input=GatewayInput(
+                trace_id="..parent",
+                surface=CommandSurfaceMode.HERMES_EXISTING_GATEWAY,
+            ),
+        )
+        assert result.ok is False
+        assert result.status == ClosedLoopStatus.FAIL
+        assert result.projection_status == "not_attempted"
+        assert "invalid_trace_id" in result.error
+
+    def test_invalid_trace_id_secret_like_value_not_persisted(self, tmp_path):
+        result = run_phase28_closed_loop_pilot(
+            root=tmp_path,
+            gateway_input=GatewayInput(
+                trace_id="token=supersecret",
+                surface=CommandSurfaceMode.HERMES_EXISTING_GATEWAY,
+            ),
+        )
+        artifact = (tmp_path / result.artifact_path).read_text(encoding="utf-8")
+
+        assert result.ok is False
+        assert result.trace_id == "invalid_trace_id"
+        assert "supersecret" not in artifact
+        assert "REDACTED" in artifact
+
+    def test_invalid_trace_id_secret_like_value_not_persisted_on_live_setup_failure(
+        self,
+        tmp_path,
+    ):
+        result = run_phase28_closed_loop_pilot(
+            root=tmp_path,
+            gateway_input=GatewayInput(
+                trace_id="token=supersecret",
+                surface=CommandSurfaceMode.HERMES_EXISTING_GATEWAY,
+            ),
+            controlled_live_projection=True,
+            discord_http_post=None,
+        )
+        artifact = (tmp_path / result.artifact_path).read_text(encoding="utf-8")
+
+        assert result.ok is False
+        assert result.trace_id == "invalid_trace_id"
+        assert "supersecret" not in artifact
+        assert "REDACTED" in artifact
+
+    def test_fails_closed_when_orchestrator_raises(self, tmp_path, monkeypatch):
+        def raise_orchestrator_failure(self, **kwargs):
+            raise RuntimeError("token=supersecret raw orchestrator failure")
+
+        monkeypatch.setattr(
+            "runtime_architecture_v2.closed_loop_pilot.RuntimeOrchestrator.run",
+            raise_orchestrator_failure,
+        )
+
+        result = run_phase28_closed_loop_pilot(root=tmp_path)
+        artifact = (tmp_path / result.artifact_path).read_text(encoding="utf-8")
+
+        assert result.ok is False
+        assert result.status == ClosedLoopStatus.FAIL
+        assert result.error == "orchestrator_failed"
+        assert "supersecret" not in artifact
+        assert "raw orchestrator failure" not in artifact
+
     def test_fails_closed_when_live_projection_requested_without_injected_http(
         self,
         tmp_path,
@@ -364,6 +443,7 @@ class TestRunPhase28ClosedLoopPilot:
         assert result.status == ClosedLoopStatus.FAIL
         assert result.projection_status == "blocked"
         assert "channel_not_allowed" in result.error
+        assert result.live_discord_attempted is False
         assert calls == []
 
     def test_live_http_exception_is_sanitized(self, tmp_path):
@@ -384,3 +464,7 @@ class TestRunPhase28ClosedLoopPilot:
         assert "discord_http_exception" in result.error
         assert "supersecret" not in result.error
         assert "raw failure" not in result.error
+
+
+
+

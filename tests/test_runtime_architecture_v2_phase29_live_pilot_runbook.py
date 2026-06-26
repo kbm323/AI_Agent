@@ -14,6 +14,7 @@ from pathlib import Path
 from runtime_architecture_v2.live_pilot_runbook import (
     BoundedOpsEvidence,
     GateStatus,
+    LivePilotObservation,
     LivePilotStatus,
     ProductionReadinessVerdict,
     ProductionRunbook,
@@ -234,6 +235,24 @@ class TestTwentyFourHourLivePilotPolicy:
         assert decision.status == LivePilotStatus.FAIL
         assert "allowed_window_hours" in decision.reason
 
+    def test_fails_when_allowed_window_hours_length_is_not_two(self):
+        policy = TwentyFourHourLivePilotPolicy.current_verified()
+        bad_windows = ((), ("09:00",), ("09:00", "12:00", "13:00"))
+        for allowed_window_hours in bad_windows:
+            ops = BoundedOpsEvidence(
+                max_runs_per_hour=5,
+                allowed_window_hours=allowed_window_hours,
+                allowed_channels=("home:aicompanyceo:#전략-회의실",),
+                mention_gated=True,
+            )
+            decision = policy.evaluate(
+                bounded_ops=ops,
+                recovery=_valid_recovery_evidence(),
+                quota_cost=_valid_quota_cost_evidence(),
+            )
+            assert decision.status == LivePilotStatus.FAIL
+            assert "allowed_window_hours" in decision.reason
+
     def test_fails_when_incident_channel_not_profile_local(self):
         policy = TwentyFourHourLivePilotPolicy.current_verified()
         recovery = RecoveryEvidence(
@@ -249,6 +268,22 @@ class TestTwentyFourHourLivePilotPolicy:
         )
         assert decision.status == LivePilotStatus.FAIL
         assert "incident_channel_prefix" in decision.reason
+
+    def test_fails_when_quota_alert_channel_not_profile_local(self):
+        policy = TwentyFourHourLivePilotPolicy.current_verified()
+        quota = QuotaCostEvidence(
+            budget_cap_usd=100.0,
+            hourly_spend_max=10.0,
+            model_quota_thresholds={"opencode-go": 0.8},
+            alert_channel="#전체-리뷰",
+        )
+        decision = policy.evaluate(
+            bounded_ops=_valid_bounded_ops_evidence(),
+            recovery=_valid_recovery_evidence(),
+            quota_cost=quota,
+        )
+        assert decision.status == LivePilotStatus.FAIL
+        assert "quota_alert_channel_prefix" in decision.reason
 
     def test_simulate_not_ready_when_gate_missing(self):
         result = ProductionReadinessVerdict.simulate_24h_pilot(
@@ -435,3 +470,48 @@ class TestArtifactPersistence:
         # Recovery evidence is provided as input but is not duplicated in the
         # artifact; secrets must be loaded from profile-local env, never
         # committed.
+
+    def test_artifact_redacts_secret_like_gate_reasons(self):
+        gates = list(_all_gates_pass())
+        gates[1] = GateStatus(
+            name="gate_6",
+            status="fail",
+            reason="token=supersecret raw provider failure",
+        )
+        verdict = ProductionReadinessVerdict.evaluate(
+            gate_statuses=tuple(gates),
+            runbook=ProductionRunbook.current_verified(),
+            pilot_policy=TwentyFourHourLivePilotPolicy.current_verified(),
+            bounded_ops=_valid_bounded_ops_evidence(),
+            recovery=_valid_recovery_evidence(),
+            quota_cost=_valid_quota_cost_evidence(),
+        )
+        artifact = json.dumps(verdict.to_artifact(), ensure_ascii=False)
+
+        assert verdict.status == "NOT_READY"
+        assert "supersecret" not in artifact
+        assert "REDACTED" in artifact
+
+
+    def test_artifact_redacts_direct_blockers_and_observations(self):
+        verdict = ProductionReadinessVerdict(
+            status="NOT_READY",
+            blockers=("token=supersecret direct blocker",),
+            gate_statuses=(GateStatus("gate_5", "fail", "password=hunter2"),),
+            observations=(
+                LivePilotObservation(
+                    timestamp="2026-06-25T00:00:00Z",
+                    event_type="token=supersecret event",
+                    trace_id="bearer abcdef",
+                    status="fail",
+                ),
+            ),
+        )
+        artifact = json.dumps(verdict.to_artifact(), ensure_ascii=False)
+
+        assert "supersecret" not in artifact
+        assert "hunter2" not in artifact
+        assert "abcdef" not in artifact
+        assert "REDACTED" in artifact
+
+
