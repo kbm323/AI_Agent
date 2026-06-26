@@ -22,6 +22,7 @@ from .projection import (
     FakeDiscordProjectionSink,
     LiveDiscordProjectionSink,
     ProjectionPublishResult,
+    _default_discord_http_post,
     _sanitize_discord_content,
 )
 from .schemas import (
@@ -245,6 +246,39 @@ def _profile_for_bot_role(bot_role: str) -> str:
     }.get(bot_role, "aicompanyceo")
 
 
+def _target_channel_for_bot_role(
+    bot_role: str,
+    target_channel_id: str,
+    boundary_policy: DiscordLiveBoundaryPolicy,
+) -> str:
+    """Resolve Phase 14 projection target for a bot role.
+
+    `profile-home` is an explicit controlled-smoke sentinel: each projected bot
+    posts only to its verified profile home channel. Any other value is treated
+    as an explicit caller-provided channel and remains subject to boundary
+    policy evaluation.
+    """
+    if target_channel_id != "profile-home":
+        return target_channel_id
+    profile = _profile_for_bot_role(bot_role)
+    return boundary_policy.allowed_channel_ids_by_profile.get(profile, "")
+
+
+def _discord_env_for_profile(profile: str) -> dict[str, str]:
+    """Load only the Discord bot token from a Hermes profile .env file."""
+    env_path = Path.home() / ".hermes" / "profiles" / profile / ".env"
+    if not env_path.exists():
+        return {}
+    for raw_line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() == "DISCORD_BOT_TOKEN":
+            return {"DISCORD_BOT_TOKEN": value.strip().strip('"').strip("'")}
+    return {}
+
+
 def route_bot_projection(
     message: BotMessage,
     *,
@@ -260,6 +294,14 @@ def route_bot_projection(
     """
     persona = BOT_PERSONAS.get(message.bot_role, message.bot_role)
     safe_content = _sanitize_discord_content(message.content)
+    boundary_policy = DiscordLiveBoundaryPolicy.current_verified()
+    profile = _profile_for_bot_role(message.bot_role)
+    resolved_target_channel_id = _target_channel_for_bot_role(
+        message.bot_role,
+        target_channel_id,
+        boundary_policy,
+    )
+    sink_env = dict(env) if env is not None else _discord_env_for_profile(profile)
 
     prefix = f"**[{persona}]** "
     full = prefix + safe_content
@@ -270,19 +312,18 @@ def route_bot_projection(
         event_id=f"proj_{message.meeting_run_id}_{message.bot_role}_r{message.round}",
         meeting_run_id=message.meeting_run_id,
         bot_role=message.bot_role,
-        target_channel_id=target_channel_id or "phase14-channel",
+        target_channel_id=resolved_target_channel_id or "phase14-channel",
         content=full,
         source="multi_bot_meeting",
         source_id=f"{message.bot_role}_r{message.round}",
     )
 
-    if live_discord and target_channel_id:
-        boundary_policy = DiscordLiveBoundaryPolicy.current_verified()
+    if live_discord and resolved_target_channel_id:
         sink = LiveDiscordProjectionSink(
-            env=dict(env or {}),
-            http_post=discord_http_post,
+            env=sink_env,
+            http_post=discord_http_post or _default_discord_http_post,
             boundary_policy=boundary_policy,
-            profile=_profile_for_bot_role(message.bot_role),
+            profile=profile,
             guild_id=boundary_policy.guild_id,
         )
     else:

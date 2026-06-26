@@ -8,6 +8,8 @@ packet construction before any live subprocess execution.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import time
 from collections.abc import Callable, Mapping
@@ -173,6 +175,41 @@ def _prompt_for_task(task: WorkerTask) -> str:
     )
 
 
+def _explicit_env_for_subprocess(env: Mapping[str, str] | None) -> dict[str, str]:
+    """Return a scrubbed env that preserves PATH for executable discovery only.
+
+    The caller's env mapping remains authoritative: provider tokens are not
+    inherited from the parent process. PATH is carried over only when the caller
+    did not explicitly provide one, because opencode-go launches the underlying
+    opencode binary by name.
+    """
+    result = dict(env or {})
+    if "PATH" not in result and os.environ.get("PATH"):
+        result["PATH"] = os.environ["PATH"]
+    return result
+
+
+def _resolve_executable_for_explicit_env(command: list[str]) -> list[str]:
+    """Resolve argv[0] before running with an explicit scrubbed env.
+
+    Worker runners intentionally pass an explicit env mapping (often `{}`) so
+    live tests cannot accidentally inherit tokens or provider credentials from
+    the process environment. A fully scrubbed env also removes PATH, so a bare
+    executable such as `opencode-go` would fail lookup even when installed. We
+    resolve only the executable path before the env is scrubbed; credentials are
+    still not inherited by the child process.
+    """
+    if not command:
+        return command
+    executable = command[0]
+    if "/" in executable:
+        return command
+    resolved = shutil.which(executable)
+    if not resolved:
+        return command
+    return [resolved, *command[1:]]
+
+
 def _default_opencode_go_runner(
     command: list[str],
     timeout_seconds: int,
@@ -183,12 +220,12 @@ def _default_opencode_go_runner(
     start = time.monotonic()
     try:
         completed = subprocess.run(
-            command,
+            _resolve_executable_for_explicit_env(command),
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
             cwd=workdir,
-            env=dict(env or {}),
+            env=_explicit_env_for_subprocess(env),
         )
         return OpenCodeGoRunResult(
             exit_code=completed.returncode,

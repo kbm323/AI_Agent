@@ -19,6 +19,8 @@ from runtime_architecture_v2.workers import (
     OpenCodeGoRunResult,
     OpenCodeGoSmokeRunner,
     OpenCodeGoWorkerRunner,
+    _explicit_env_for_subprocess,
+    _resolve_executable_for_explicit_env,
 )
 
 
@@ -296,6 +298,36 @@ def test_phase26_smoke_runner_exception_fails_closed_without_leaking(
 def test_phase26_default_runner_uses_explicit_env_mapping():
     runner = OpenCodeGoWorkerRunner()
     assert runner.command_env == {}
+
+
+def test_phase26_explicit_empty_env_keeps_pathless_credentials_but_resolves_binary(
+    monkeypatch,
+):
+    monkeypatch.setenv("PATH", "/safe/bin:/home/kbm/.local/bin")
+
+    def fake_which(binary: str):
+        assert binary == "opencode-go"
+        return "/home/kbm/.local/bin/opencode-go"
+
+    monkeypatch.setattr("runtime_architecture_v2.workers.shutil.which", fake_which)
+
+    command = ["opencode-go", "--model", "qwen-max"]
+    resolved = _resolve_executable_for_explicit_env(command)
+
+    assert resolved[0] == "/home/kbm/.local/bin/opencode-go"
+    assert resolved[1:] == ["--model", "qwen-max"]
+
+
+def test_phase26_explicit_empty_env_allows_path_but_no_token_leak(monkeypatch):
+    monkeypatch.setenv("PATH", "/safe/bin:/home/kbm/.local/bin")
+    monkeypatch.setenv("OPENCODE_GO_API_KEY", "must_not_leak")
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "must_not_leak")
+
+    env = _explicit_env_for_subprocess({})
+
+    assert env == {"PATH": "/safe/bin:/home/kbm/.local/bin"}
+    assert "OPENCODE_GO_API_KEY" not in env
+    assert "DISCORD_BOT_TOKEN" not in env
 
 
 def test_phase26_smoke_runner_uses_explicit_env_mapping():

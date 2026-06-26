@@ -348,6 +348,29 @@ def test_phase24_live_boundary_policy_preserves_current_bot_permissions():
     }
 
 
+def test_phase30_live_boundary_policy_allows_verified_home_channel_inventory():
+    policy = DiscordLiveBoundaryPolicy.current_verified()
+    expected_channels = {
+        "aicompanyassistant": "1507063720025522267",
+        "aicompanyceo": "1505600167221526621",
+        "aicompanycontent": "1505927982722580500",
+        "aicompanyart": "1505928014800752671",
+        "aicompanytech": "1505928578016219247",
+        "aicompanymarketing": "1505931658426060970",
+        "aicompanyquality": "1507063654397378561",
+    }
+
+    assert policy.allowed_channel_ids_by_profile == expected_channels
+    for profile, channel_id in expected_channels.items():
+        decision = policy.evaluate(
+            profile=profile,
+            guild_id="1505600166676271244",
+            channel_id=channel_id,
+        )
+        assert decision.allowed is True, profile
+        assert decision.reason == "allowed"
+
+
 def test_phase24_live_boundary_policy_fails_closed_for_unknown_guild_or_channel():
     policy = DiscordLiveBoundaryPolicy.current_verified()
 

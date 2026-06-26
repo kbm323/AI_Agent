@@ -10,6 +10,7 @@ from src.runtime_architecture_v2.multi_bot import (
     BotMessage,
     MeetingRound,
     MultiBotSession,
+    _discord_env_for_profile,
     build_phase14_pilot_request,
     route_bot_projection,
     run_meeting_phase,
@@ -236,6 +237,22 @@ def test_route_bot_projection_live_discord_without_token(tmp_path: Path):
     assert result.status == "blocked"
 
 
+def test_phase14_profile_env_loader_reads_only_discord_token(tmp_path: Path, monkeypatch):
+    fake_home = tmp_path / "home"
+    profile_dir = fake_home / ".hermes" / "profiles" / "aicompanycontent"
+    profile_dir.mkdir(parents=True)
+    (profile_dir / ".env").write_text(
+        "DISCORD_BOT_TOKEN=bot-token-123\n"
+        "OPENCODE_GO_API_KEY=must-not-load\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("src.runtime_architecture_v2.multi_bot.Path.home", lambda: fake_home)
+
+    env = _discord_env_for_profile("aicompanycontent")
+
+    assert env == {"DISCORD_BOT_TOKEN": "bot-token-123"}
+
+
 def test_route_bot_projection_live_discord_unknown_channel_blocks_before_http():
     calls = []
     msg = BotMessage(
@@ -257,6 +274,108 @@ def test_route_bot_projection_live_discord_unknown_channel_blocks_before_http():
     assert result.status == "blocked"
     assert result.error == "channel_not_allowed"
     assert calls == []
+
+
+def test_route_bot_projection_profile_home_routes_to_verified_channel():
+    calls = []
+    msg = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_test",
+        round=1,
+        msg_type="opinion",
+        content="테스트 메시지",
+    )
+
+    result = route_bot_projection(
+        msg,
+        live_discord=True,
+        target_channel_id="profile-home",
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+        discord_http_post=lambda *args, **kwargs: calls.append((args, kwargs)) or {"status_code": 200, "json": {"id": "posted-1"}},
+    )
+
+    assert result.status == "published"
+    assert result.discord_message_id == "posted-1"
+    assert calls
+    args, _kwargs = calls[0]
+    assert args[0].endswith("/channels/1505927982722580500/messages")
+
+
+def test_route_bot_projection_profile_home_uses_default_live_http_client(monkeypatch):
+    calls = []
+
+    def fake_default_http_post(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {"status_code": 200, "json": {"id": "posted-default"}}
+
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.multi_bot._default_discord_http_post",
+        fake_default_http_post,
+    )
+    msg = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_test",
+        round=1,
+        msg_type="opinion",
+        content="테스트 메시지",
+    )
+
+    result = route_bot_projection(
+        msg,
+        live_discord=True,
+        target_channel_id="profile-home",
+        env={"DISCORD_BOT_TOKEN": "token-from-env"},
+    )
+
+    assert result.status == "published"
+    assert result.discord_message_id == "posted-default"
+    assert calls
+
+
+def test_route_bot_projection_env_none_loads_only_profile_discord_token(
+    tmp_path: Path,
+    monkeypatch,
+):
+    fake_home = tmp_path / "home"
+    profile_dir = fake_home / ".hermes" / "profiles" / "aicompanycontent"
+    profile_dir.mkdir(parents=True)
+    (profile_dir / ".env").write_text(
+        "DISCORD_BOT_TOKEN=bot-token-123\n"
+        "OPENCODE_GO_API_KEY=must-not-leak\n",
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_default_http_post(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {"status_code": 200, "json": {"id": "posted-profile-env"}}
+
+    monkeypatch.setattr("src.runtime_architecture_v2.multi_bot.Path.home", lambda: fake_home)
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.multi_bot._default_discord_http_post",
+        fake_default_http_post,
+    )
+    msg = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_test",
+        round=1,
+        msg_type="opinion",
+        content="테스트 메시지",
+    )
+
+    result = route_bot_projection(
+        msg,
+        live_discord=True,
+        target_channel_id="profile-home",
+        env=None,
+    )
+
+    assert result.status == "published"
+    assert result.discord_message_id == "posted-profile-env"
+    assert calls
+    _args, kwargs = calls[0]
+    assert kwargs["headers"]["Authorization"] == "Bot bot-token-123"
+    assert "must-not-leak" not in str(kwargs)
 
 
 # ── Pilot Dry-run Tests ─────────────────────────────────────────────────
@@ -347,7 +466,7 @@ def test_phase14_live_worker_mode_with_injected_runner(tmp_path: Path):
     assert result.live_worker_count == 2
     assert result.fake_worker_count == 1
     assert len(calls) >= 1
-    assert {call[2] for call in calls if len(call) >= 3 and call[1] == "--model"} == {"qwen-max"}
+    assert {call[2] for call in calls if len(call) >= 3 and call[1] == "--model"} == {"qwen3.7-max"}
     policies = {task.role: task.model_policy for task in result.worker_tasks}
     assert policies["content_lead"]["role_id"] == "content-director"
     assert policies["content_lead"]["projection_profile"] == "aicompanycontent"

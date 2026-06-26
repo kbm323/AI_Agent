@@ -389,7 +389,7 @@ class TestRunPhase28ClosedLoopPilot:
             env={"DISCORD_BOT_TOKEN": "fake-token-for-test"},
             discord_http_post=fake_http_post,
             target_profile="aicompanyassistant",
-            target_channel_id="home:aicompanyassistant:#일일-브리핑",
+            target_channel_id="1507063720025522267",
         )
 
         assert result.ok is True
@@ -412,7 +412,7 @@ class TestRunPhase28ClosedLoopPilot:
             env={"DISCORD_BOT_TOKEN": "fake-token-for-test"},
             discord_http_post=fake_http_post,
             target_profile="aicompanyassistant",
-            target_channel_id="home:aicompanyassistant:#일일-브리핑",
+            target_channel_id="1507063720025522267",
         )
 
         assert result.ok is False
@@ -456,7 +456,7 @@ class TestRunPhase28ClosedLoopPilot:
             env={"DISCORD_BOT_TOKEN": "fake-token-for-test"},
             discord_http_post=fake_http_post,
             target_profile="aicompanyassistant",
-            target_channel_id="home:aicompanyassistant:#일일-브리핑",
+            target_channel_id="1507063720025522267",
         )
 
         assert result.ok is False

@@ -151,13 +151,13 @@ class DiscordLiveBoundaryPolicy:
         return cls(
             guild_id="1505600166676271244",
             allowed_channel_ids_by_profile={
-                "aicompanyassistant": "home:aicompanyassistant:#일일-브리핑",
-                "aicompanyceo": "home:aicompanyceo:#전략-회의실",
-                "aicompanycontent": "home:aicompanycontent:#콘텐츠-메인",
-                "aicompanyart": "home:aicompanyart:#아트-메인",
-                "aicompanytech": "home:aicompanytech:#기술-메인",
-                "aicompanymarketing": "home:aicompanymarketing:#마케팅-메인",
-                "aicompanyquality": "home:aicompanyquality:#전체-리뷰",
+                "aicompanyassistant": "1507063720025522267",
+                "aicompanyceo": "1505600167221526621",
+                "aicompanycontent": "1505927982722580500",
+                "aicompanyart": "1505928014800752671",
+                "aicompanytech": "1505928578016219247",
+                "aicompanymarketing": "1505931658426060970",
+                "aicompanyquality": "1507063654397378561",
             },
         )
 

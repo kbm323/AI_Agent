@@ -115,7 +115,7 @@ roles:
     discord_name: "🎬 ContentPD"
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - creative_direction
@@ -136,7 +136,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - scriptwriting
@@ -155,7 +155,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - storyboarding
@@ -173,7 +173,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: minimax-music
     expertise_tags:
       - music_composition
@@ -192,7 +192,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - sound_design
@@ -211,7 +211,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - video_editing
@@ -232,7 +232,7 @@ roles:
     discord_name: "🎨 ArtDirector"
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - visual_direction
@@ -252,7 +252,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - character_design
@@ -272,7 +272,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - background_art
@@ -291,7 +291,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - vfx
@@ -310,7 +310,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - ui_design
@@ -330,7 +330,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - motion_graphics
@@ -352,7 +352,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v3
-      fallback: qwen-max
+      fallback: qwen3.7-max
     expertise_tags:
       - technical_architecture
       - system_design
@@ -373,7 +373,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v3
-      fallback: qwen-max
+      fallback: qwen3.7-max
     expertise_tags:
       - backend
       - api_design
@@ -394,7 +394,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v3
-      fallback: qwen-max
+      fallback: qwen3.7-max
     expertise_tags:
       - frontend
       - react
@@ -414,7 +414,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v3
-      fallback: qwen-max
+      fallback: qwen3.7-max
     expertise_tags:
       - devops
       - ci_cd
@@ -475,7 +475,7 @@ roles:
     discord_name: "📈 MarketingLead"
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - marketing_strategy
@@ -495,7 +495,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - social_media
@@ -515,7 +515,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - public_relations
@@ -535,7 +535,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v3
-      fallback: qwen-max
+      fallback: qwen3.7-max
     expertise_tags:
       - data_analysis
       - metrics
@@ -555,7 +555,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - community_management
@@ -574,7 +574,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen-max
+      name: qwen3.7-max
       fallback: deepseek-v3
     expertise_tags:
       - brand_strategy
@@ -637,7 +637,7 @@ roles:
     model:
       provider: opencode-go
       name: glm-5.1
-      fallback: qwen-max
+      fallback: qwen3.7-max
     expertise_tags:
       - quality_assurance
       - testing
@@ -658,7 +658,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v3
-      fallback: qwen-max
+      fallback: qwen3.7-max
     expertise_tags:
       - tool_execution
       - code_generation
@@ -678,7 +678,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v3
-      fallback: qwen-max
+      fallback: qwen3.7-max
     expertise_tags:
       - cli_tools
       - git_operations
