@@ -16,7 +16,7 @@ class DispatchExplodingRunner(FakeWorkerRunner):
     def dispatch(self, task):  # noqa: ANN001
         raise WorkerRunError(
             code="dispatch_failed",
-            message="simulated dispatch exception",
+            message="token=supersecret simulated dispatch exception",
             worker_task_id=task.worker_task_id,
         )
 
@@ -141,7 +141,9 @@ def test_orchestrator_fails_closed_when_worker_runner_raises(tmp_path):
     assert result.meeting_run.state == MeetingRunState.FAILED
     assert result.validation_decision.kind == "stop"
     assert result.worker_tasks[0].state == WorkerTaskState.FAILED
-    assert "simulated dispatch exception" in result.worker_tasks[0].error
+    assert result.worker_tasks[0].error == "dispatch_failed"
+    assert "supersecret" not in result.projection_event.content
+    assert "simulated dispatch exception" not in result.projection_event.content
     assert any(verdict.verdict == "reject" for verdict in result.validation_verdicts)
     assert result.projection_event.bot_role == "validation_audit"
     assert result.projection_publish_result.status == "published"
@@ -151,6 +153,8 @@ def test_orchestrator_fails_closed_when_worker_runner_raises(tmp_path):
     audit_log = (run_dir / "audit_log.jsonl").read_text(encoding="utf-8")
     assert "worker_failed" in audit_log
     assert "dispatch_failed" in audit_log
+    assert "supersecret" not in audit_log
+    assert "simulated dispatch exception" not in audit_log
 
 
 def test_orchestrator_non_simulation_uses_hermes_native_scheduling(tmp_path):
@@ -304,3 +308,4 @@ def test_orchestrator_quota_policy_exception_fails_closed_before_dispatch(tmp_pa
     audit_log = (run_dir / "audit_log.jsonl").read_text(encoding="utf-8")
     assert "quota_gate" in audit_log
     assert "quota_policy_exception" in audit_log
+

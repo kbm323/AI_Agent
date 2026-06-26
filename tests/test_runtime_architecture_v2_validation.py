@@ -243,6 +243,20 @@ def test_validator_execution_planner_builds_opencode_first_tasks_when_quota_allo
     )
 
 
+def test_validator_execution_planner_rejects_unsafe_meeting_run_ids(tmp_path):
+    for meeting_run_id in (".", "..", ".hidden", "bad/path"):
+        plan = ValidatorExecutionPlanner(root=tmp_path).plan(
+            meeting_run_id=meeting_run_id,
+            validators=("glm_validator",),
+            quota_policy=QuotaPolicy(),
+            active_provider="opencode-go",
+        )
+        assert plan.status == "invalid_meeting_run_id"
+        assert plan.quota_decision.allowed is False
+        assert plan.worker_tasks == ()
+        assert plan.degraded_verdicts == ()
+
+
 def test_validator_execution_planner_degrades_without_dispatch_when_quota_blocks(
     tmp_path,
 ):
@@ -274,3 +288,4 @@ def test_validator_execution_planner_degrades_without_dispatch_when_quota_blocks
     assert all(
         "quota" in verdict.degraded_reason for verdict in plan.degraded_verdicts
     )
+

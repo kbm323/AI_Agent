@@ -27,16 +27,17 @@ Design decisions
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, Callable, Optional
+from typing import Any
 
 import nacl.encoding
 import nacl.exceptions
 import nacl.signing
 
-
 # ── Discord Interaction Types ─────────────────────────────────────────────
+
 
 class DiscordInteractionType(IntEnum):
     """Discord interaction types we process.
@@ -50,6 +51,7 @@ class DiscordInteractionType(IntEnum):
 
 
 # ── Discord Interaction Response Types ────────────────────────────────────
+
 
 class DiscordResponseType(IntEnum):
     """Discord interaction callback response types.
@@ -66,6 +68,7 @@ class DiscordResponseType(IntEnum):
 
 
 # ── Discord Interaction Callback Flags ────────────────────────────────────
+
 
 class DiscordMessageFlags(IntEnum):
     """Flags for interaction callback data.
@@ -121,7 +124,7 @@ class InteractionResponse:
     type: int
     """One of the :class:`DiscordResponseType` values."""
 
-    data: Optional[dict[str, Any]] = None
+    data: dict[str, Any] | None = None
     """Optional data payload (content, embeds, flags, etc.)."""
 
     def to_dict(self) -> dict[str, Any]:
@@ -192,13 +195,13 @@ class WebhookResult:
     success: bool
     """True when the webhook was successfully processed."""
 
-    response: Optional[InteractionResponse] = None
+    response: InteractionResponse | None = None
     """The Discord callback response to send back (PONG / message / deferred)."""
 
-    parsed_interaction: Optional[ParsedInteraction] = None
+    parsed_interaction: ParsedInteraction | None = None
     """The parsed interaction fields (caller routes to Coordinator)."""
 
-    error: Optional[str] = None
+    error: str | None = None
     """Human-readable error description (only populated when success=False)."""
 
 
@@ -227,7 +230,9 @@ class SignatureVerificationError(WebhookHandlerError):
     body.
     """
 
-    def __init__(self, message: str = "Discord interaction signature verification failed") -> None:
+    def __init__(
+        self, message: str = "Discord interaction signature verification failed"
+    ) -> None:
         super().__init__(message, code="SIGNATURE_VERIFICATION_FAILED")
 
 
@@ -295,7 +300,7 @@ def verify_discord_signature(
     except ValueError:
         raise SignatureVerificationError(
             "Discord public key is not valid hex"
-        )
+        ) from None
 
     if len(public_key_bytes) != 32:
         raise SignatureVerificationError(
@@ -306,9 +311,7 @@ def verify_discord_signature(
     try:
         signature_bytes = bytes.fromhex(signature_hex)
     except ValueError:
-        raise SignatureVerificationError(
-            "Discord signature is not valid hex"
-        )
+        raise SignatureVerificationError("Discord signature is not valid hex") from None
 
     if len(signature_bytes) != 64:
         raise SignatureVerificationError(
@@ -324,7 +327,7 @@ def verify_discord_signature(
     except nacl.exceptions.BadSignatureError:
         raise SignatureVerificationError(
             "Discord interaction signature verification failed"
-        )
+        ) from None
 
     return True
 
@@ -354,7 +357,7 @@ def parse_interaction_payload(raw_body: bytes) -> dict[str, Any]:
     try:
         body_str = raw_body.decode("utf-8")
     except UnicodeDecodeError:
-        raise InvalidPayloadError("Raw body is not valid UTF-8")
+        raise InvalidPayloadError("Raw body is not valid UTF-8") from None
 
     # ── Parse JSON ──────────────────────────────────────────────
     try:
@@ -362,7 +365,7 @@ def parse_interaction_payload(raw_body: bytes) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise InvalidPayloadError(
             f"Failed to parse interaction JSON body: {exc}"
-        )
+        ) from None
 
     if not isinstance(payload, dict):
         raise InvalidPayloadError("Interaction payload is not a JSON object")
@@ -376,14 +379,10 @@ def parse_interaction_payload(raw_body: bytes) -> dict[str, Any]:
 
     raw_type = payload.get("type")
     if not isinstance(raw_type, int):
-        raise InvalidPayloadError(
-            "Interaction payload missing or invalid 'type'"
-        )
+        raise InvalidPayloadError("Interaction payload missing or invalid 'type'")
 
     if raw_type not in _VALID_INTERACTION_TYPES:
-        raise InvalidPayloadError(
-            f"Unknown interaction type: {raw_type}"
-        )
+        raise InvalidPayloadError(f"Unknown interaction type: {raw_type}")
 
     return payload
 
@@ -608,9 +607,9 @@ def route_command(parsed: ParsedInteraction) -> InteractionResponse:
 
     try:
         return handler(parsed)
-    except Exception as exc:
+    except Exception:
         return build_error_response(
-            f"Command handler error: {exc}",
+            "Command handler error: command_handler_exception",
             ephemeral=True,
         )
 
@@ -773,9 +772,11 @@ def _flatten_command_options(
         {'agenda': 'Hello'}
 
         >>> opts = [
-        ...     {"name": "create", "type": 1, "options": [
-        ...         {"name": "name", "type": 3, "value": "Foo"}
-        ...     ]}
+        ...     {
+        ...         "name": "create",
+        ...         "type": 1,
+        ...         "options": [{"name": "name", "type": 3, "value": "Foo"}],
+        ...     }
         ... ]
         >>> _flatten_command_options(opts)
         {'name': 'Foo'}

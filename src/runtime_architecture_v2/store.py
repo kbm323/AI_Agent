@@ -218,7 +218,12 @@ class MeetingRunStore:
         )
 
     def _validate_id(self, value: str, label: str) -> None:
-        if not value or not _SAFE_ID_RE.fullmatch(value):
+        if (
+            not value
+            or value in {".", ".."}
+            or value.startswith(".")
+            or not _SAFE_ID_RE.fullmatch(value)
+        ):
             raise StoreError(
                 code=f"invalid {label}",
                 message=f"invalid {label}: {value}",

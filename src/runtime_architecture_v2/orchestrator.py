@@ -41,7 +41,7 @@ from .schemas import (
 )
 from .store import MeetingRunStore
 from .validation import ValidationDecision, ValidationPolicy
-from .workers import FakeWorkerRunner, WorkerRunner
+from .workers import FakeWorkerRunner, WorkerRunError, WorkerRunner
 
 
 @dataclass(frozen=True)
@@ -476,10 +476,15 @@ class RuntimeOrchestrator:
                 running = self.worker_runner.dispatch(task)
                 collected = self.worker_runner.collect(running)
             except Exception as exc:
+                error_code = (
+                    exc.code
+                    if isinstance(exc, WorkerRunError) and exc.code
+                    else "worker_runner_exception"
+                )
                 collected = replace(
                     task,
                     state=WorkerTaskState.FAILED,
-                    error=str(exc),
+                    error=error_code,
                 )
             if collected.state != WorkerTaskState.SUCCEEDED:
                 self.store.append_audit_event(

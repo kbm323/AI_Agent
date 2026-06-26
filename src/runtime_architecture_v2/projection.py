@@ -8,7 +8,6 @@ reimplementing Hermes Gateway, queues, or Discord interaction infrastructure.
 from __future__ import annotations
 
 import json
-import os
 import re
 import urllib.error
 import urllib.request
@@ -42,8 +41,7 @@ _SECRET_ASSIGNMENT_RE = re.compile(
 )
 _BEARER_SECRET_RE = re.compile(r"(?i)\bbearer\s+\S+")
 _DISCORD_USER_AGENT = (
-    "DiscordBot (https://github.com/kbm323/AI_Agent, phase12-live-smoke) "
-    "Python/urllib"
+    "DiscordBot (https://github.com/kbm323/AI_Agent, phase12-live-smoke) Python/urllib"
 )
 
 
@@ -371,8 +369,8 @@ class LiveDiscordProjectionSink:
         profile: str = "",
         guild_id: str = "",
     ) -> None:
-        self.env = os.environ if env is None else env
-        self.http_post = http_post or _default_discord_http_post
+        self.env = {} if env is None else env
+        self.http_post = http_post
         self.api_base_url = api_base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.boundary_policy = boundary_policy
@@ -385,6 +383,12 @@ class LiveDiscordProjectionSink:
                 event_id=event.event_id,
                 status="rejected",
                 error="content must not be empty",
+            )
+        if self.http_post is None:
+            return ProjectionPublishResult(
+                event_id=event.event_id,
+                status="blocked",
+                error="live_http_client_required",
             )
         post_channel_id = event.target_thread_id or event.target_channel_id
         if self.boundary_policy is not None:

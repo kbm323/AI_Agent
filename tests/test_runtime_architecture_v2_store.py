@@ -59,6 +59,27 @@ def test_store_rejects_path_traversal_meeting_run_ids(tmp_path: Path):
         store.load_meeting_run("mr/escape")
 
 
+def test_store_rejects_dot_and_hidden_meeting_run_ids(tmp_path: Path):
+    store = MeetingRunStore(tmp_path)
+
+    for meeting_run_id in (".", "..", ".hidden"):
+        with pytest.raises(StoreError, match="invalid meeting_run_id"):
+            store.meeting_run_dir(meeting_run_id)
+
+
+def test_store_rejects_dot_checkpoint_ids(tmp_path: Path):
+    store = MeetingRunStore(tmp_path)
+    for checkpoint_id in (".", "..", ".hidden"):
+        with pytest.raises(StoreError, match="invalid checkpoint_id"):
+            store.save_checkpoint(
+                RecoveryCheckpoint(
+                    checkpoint_id=checkpoint_id,
+                    meeting_run_id="mr_001",
+                    state=MeetingRunState.ACTIVE,
+                )
+            )
+
+
 def test_store_reports_missing_and_corrupt_meeting_run_as_structured_errors(
     tmp_path: Path,
 ):
@@ -193,3 +214,4 @@ def test_append_jsonl_decision_and_audit_events_include_meeting_run_id(tmp_path:
     assert audit_event["meeting_run_id"] == "mr_001"
     assert audit_event["action"] == "validator_passed"
     assert "logged_at" in audit_event
+

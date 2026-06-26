@@ -123,7 +123,7 @@ def test_formatter_builds_discord_safe_summary_without_raw_worker_output():
     assert event.source == "meeting_run"
     assert event.source_id == "mr_006"
     assert "@everyone" not in event.content
-    assert "@everyone" in event.content
+    assert "@\u000beveryone" in event.content
     assert "raw transcript should never leak" not in event.content
     assert "conditional_pass" in event.content
     assert len(event.content) <= 2000
@@ -418,8 +418,10 @@ def test_live_discord_projection_sink_allows_thread_post_when_parent_channel_all
 
     result = LiveDiscordProjectionSink(
         env={"DISCORD_BOT_TOKEN": "token-from-env"},
-        http_post=lambda *args, **kwargs: calls.append((args, kwargs))
-        or {"status_code": 200, "json": {"id": "msg-thread"}},
+        http_post=lambda *args, **kwargs: (
+            calls.append((args, kwargs))
+            or {"status_code": 200, "json": {"id": "msg-thread"}}
+        ),
         api_base_url="https://discord.test/api/v10",
         boundary_policy=policy,
         profile="aicompanycontent",
@@ -431,7 +433,6 @@ def test_live_discord_projection_sink_allows_thread_post_when_parent_channel_all
     assert calls[0][0][0] == (
         "https://discord.test/api/v10/channels/thread-snowflake-1/messages"
     )
-
 
 
 def test_live_discord_projection_sink_uses_env_token_and_injected_http_client():
@@ -606,6 +607,26 @@ def test_live_discord_projection_sink_respects_explicit_empty_env(monkeypatch):
     assert result.status == "blocked"
     assert result.error == "missing_discord_bot_token"
     assert calls == []
+
+
+def test_live_discord_sink_default_never_uses_process_env_or_http(
+    monkeypatch,
+):
+    monkeypatch.setitem(os.environ, "DISCORD_BOT_TOKEN", "real-process-token")
+    event = DiscordProjectionEvent(
+        event_id="proj_default_guard",
+        meeting_run_id="mr_default_guard",
+        bot_role="tech_lead",
+        target_channel_id="channel-1",
+        content="hello",
+        source="meeting_run",
+        source_id="mr_default_guard",
+    )
+
+    result = LiveDiscordProjectionSink().publish(event)
+
+    assert result.status == "blocked"
+    assert result.error == "live_http_client_required"
 
 
 def test_live_discord_projection_sink_fails_closed_on_malformed_http_response():

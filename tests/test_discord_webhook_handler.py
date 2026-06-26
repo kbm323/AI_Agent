@@ -55,7 +55,9 @@ def _generate_keypair() -> tuple[str, str]:
     """
     sk = nacl.signing.SigningKey.generate()
     vk = sk.verify_key
-    return sk.encode(nacl.encoding.HexEncoder).decode(), vk.encode(nacl.encoding.HexEncoder).decode()
+    return sk.encode(nacl.encoding.HexEncoder).decode(), vk.encode(
+        nacl.encoding.HexEncoder
+    ).decode()
 
 
 def _sign_body(
@@ -401,7 +403,9 @@ class TestHandleApplicationCommand:
         assert result.parsed_interaction is not None
         assert result.parsed_interaction.user_id == "user_999"
 
-    def test_extracts_user_from_top_level(self, private_key: str, public_key: str) -> None:
+    def test_extracts_user_from_top_level(
+        self, private_key: str, public_key: str
+    ) -> None:
         """DM interactions have user at top level, not nested under member."""
         payload = {
             "id": "dm_cmd",
@@ -416,7 +420,9 @@ class TestHandleApplicationCommand:
         assert result.parsed_interaction is not None
         assert result.parsed_interaction.user_id == "dm_user_1"
 
-    def test_missing_data_returns_failure(self, private_key: str, public_key: str) -> None:
+    def test_missing_data_returns_failure(
+        self, private_key: str, public_key: str
+    ) -> None:
         payload = {
             "id": "no_data",
             "token": "tok",
@@ -452,7 +458,9 @@ class TestHandleApplicationCommand:
         assert result.parsed_interaction is not None
         assert result.parsed_interaction.channel_id == "nested_chan"
 
-    def test_flattens_subcommand_options(self, private_key: str, public_key: str) -> None:
+    def test_flattens_subcommand_options(
+        self, private_key: str, public_key: str
+    ) -> None:
         """Subcommands (type 1) nest their options — ensure flattening works."""
         payload = _make_slash_payload(
             command_name="meeting",
@@ -473,7 +481,9 @@ class TestHandleApplicationCommand:
         assert parsed is not None
         assert parsed.command_options == {"topic": "Design Review", "team": "Art"}
 
-    def test_flattens_subcommand_group_options(self, private_key: str, public_key: str) -> None:
+    def test_flattens_subcommand_group_options(
+        self, private_key: str, public_key: str
+    ) -> None:
         """Subcommand groups (type 2) nest further — ensure double flattening."""
         payload = _make_slash_payload(
             command_name="meeting",
@@ -591,9 +601,9 @@ class TestCommandRouting:
         assert response.data is not None
         assert response.data.get("flags") == DiscordMessageFlags.EPHEMERAL
 
-    def test_handler_exception_returns_error(self) -> None:
+    def test_handler_exception_returns_sanitized_error(self) -> None:
         def failing_handler(p: ParsedInteraction) -> InteractionResponse:
-            raise RuntimeError("handler exploded")
+            raise RuntimeError("token=supersecret handler exploded")
 
         register_command_handler("explode", failing_handler)
 
@@ -607,7 +617,9 @@ class TestCommandRouting:
         )
         response = route_command(parsed)
         assert response.data is not None
-        assert "handler exploded" in response.data["content"]
+        assert "command_handler_exception" in response.data["content"]
+        assert "supersecret" not in response.data["content"]
+        assert "handler exploded" not in response.data["content"]
         assert response.data.get("flags") == DiscordMessageFlags.EPHEMERAL
 
     def test_register_empty_name_raises(self) -> None:
@@ -742,7 +754,9 @@ class TestHandleWebhookEndToEnd:
         assert result.success is False
         assert "missing valid 'id'" in (result.error or "")
 
-    def test_result_is_always_webhookresult(self, private_key: str, public_key: str) -> None:
+    def test_result_is_always_webhookresult(
+        self, private_key: str, public_key: str
+    ) -> None:
         """handle_webhook never returns None — both success and failure paths."""
         # Success
         payload = _make_ping_payload()
@@ -765,14 +779,21 @@ class TestHandleWebhookEndToEnd:
         payload = _make_slash_payload(
             command_name="meeting",
             options=[
-                {"name": "agenda", "type": 3, "value": "뮤직비디오 오프닝 아이디어 회의"},
+                {
+                    "name": "agenda",
+                    "type": 3,
+                    "value": "뮤직비디오 오프닝 아이디어 회의",
+                },
             ],
         )
         request = _make_webhook_request(payload, private_key)
 
         result = handle_webhook(request, public_key)
         assert result.parsed_interaction is not None
-        assert result.parsed_interaction.command_options["agenda"] == "뮤직비디오 오프닝 아이디어 회의"
+        assert (
+            result.parsed_interaction.command_options["agenda"]
+            == "뮤직비디오 오프닝 아이디어 회의"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -831,5 +852,5 @@ class TestParsedInteractionEdgeCases:
             user_id="u1",
             channel_id="c1",
         )
-        with pytest.raises(Exception):  # FrozenInstanceError or similar
+        with pytest.raises(AttributeError):  # FrozenInstanceError or similar
             p.user_id = "new"  # type: ignore[misc]

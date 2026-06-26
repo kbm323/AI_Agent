@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -13,6 +14,17 @@ from .schemas import (
     WorkerTask,
     WorkerTaskRunner,
 )
+
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+
+
+def _is_safe_runtime_id(value: str) -> bool:
+    return bool(
+        value
+        and value not in {".", ".."}
+        and not value.startswith(".")
+        and _SAFE_ID_RE.fullmatch(value)
+    )
 
 
 class CorrectionActionKind(StrEnum):
@@ -114,6 +126,17 @@ class ValidatorExecutionPlanner:
         quota_policy: QuotaPolicy,
         active_provider: str,
     ) -> ValidatorExecutionPlan:
+        if not _is_safe_runtime_id(meeting_run_id):
+            return ValidatorExecutionPlan(
+                status="invalid_meeting_run_id",
+                quota_decision=PolicyDecision(
+                    allowed=False,
+                    reason="invalid_meeting_run_id",
+                    safe_summary="validator planner rejected unsafe meeting_run_id",
+                    next_state="paused",
+                    severity="warning",
+                ),
+            )
         quota_decision = quota_policy.evaluate(active_provider=active_provider)
         validator_roles = validators or ("glm_validator",)
         if not quota_decision.allowed:
