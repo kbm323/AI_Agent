@@ -129,6 +129,10 @@ class DiscordLiveBoundaryPolicy:
     preserves the currently verified Hermes-first posture: mention-gated bots,
     no free-response channels, no Administrator, and no Discord permission
     changes unless a later explicit live need is approved.
+
+    The optional ``channel_resolver`` maps symbolic channel identifiers (e.g.
+    ``"home:aicompanyceo:#전략-회의실"``) to real Discord snowflake IDs at
+    eval time. When ``None`` (default), symbolic names are compared as-is.
     """
 
     guild_id: str
@@ -138,6 +142,7 @@ class DiscordLiveBoundaryPolicy:
     require_mention: bool = True
     thread_require_mention: bool = True
     free_response_channels: tuple[str, ...] = ()
+    channel_resolver: Callable[[str], str] | None = None
 
     @classmethod
     def current_verified(cls) -> DiscordLiveBoundaryPolicy:
@@ -170,7 +175,15 @@ class DiscordLiveBoundaryPolicy:
         allowed_channel_id = self.allowed_channel_ids_by_profile.get(profile)
         if allowed_channel_id is None:
             return DiscordBoundaryDecision(False, "profile_not_allowed")
-        if channel_id != allowed_channel_id:
+        resolved_allowed = (
+            self.channel_resolver(allowed_channel_id)
+            if self.channel_resolver
+            else allowed_channel_id
+        )
+        resolved_incoming = (
+            self.channel_resolver(channel_id) if self.channel_resolver else channel_id
+        )
+        if resolved_incoming != resolved_allowed:
             return DiscordBoundaryDecision(False, "channel_not_allowed")
         if self.permission_mutation_allowed:
             return DiscordBoundaryDecision(False, "permission_mutation_not_allowed")

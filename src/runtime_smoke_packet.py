@@ -101,11 +101,11 @@ def run_runtime_smoke_packet(
             decision_log=decision_log,
             meetings_root=config.meetings_root,
         )
-    except Exception as exc:  # pragma: no cover - defensive boundary
+    except Exception:  # pragma: no cover - defensive boundary
         return RuntimeSmokeResult(
             success=False,
             stage="meeting_pipeline",
-            error=str(exc),
+            error="smoke_pipeline_error",
         )
 
     if not pipeline_result.success or pipeline_result.delivery_plan is None:
@@ -116,9 +116,7 @@ def run_runtime_smoke_packet(
         )
 
     meeting_id = (
-        pipeline_result.queued_item.meeting_id
-        if pipeline_result.queued_item
-        else ""
+        pipeline_result.queued_item.meeting_id if pipeline_result.queued_item else ""
     )
 
     try:
@@ -227,9 +225,9 @@ def run_runtime_smoke_packet(
                 }
             )
             openclaw_state = str(receipt.get("state") or "completed")
-        except Exception as exc:  # pragma: no cover - defensive boundary
+        except Exception:  # pragma: no cover - defensive boundary
             openclaw_state = "failed"
-            openclaw_error = str(exc)
+            openclaw_error = "smoke_openclaw_executor_error"
 
     overall_success = (
         qwen_result.success

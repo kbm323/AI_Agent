@@ -55,7 +55,9 @@ class KanbanCardStatus:
 
     def __post_init__(self) -> None:
         object.__setattr__(
-            self, "blocked_reason", _sanitize_text(self.blocked_reason),
+            self,
+            "blocked_reason",
+            _sanitize_text(self.blocked_reason),
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -310,9 +312,7 @@ class AutonomousDispatchLoop:
         created_refs: list[str] = []
         try:
             for card in plan.cards:
-                remote_parents = [
-                    local_to_remote[p] for p in card.parents
-                ]
+                remote_parents = [local_to_remote[p] for p in card.parents]
                 ref = self.client.create_card(
                     title=card.title,
                     body=card.body,
@@ -348,9 +348,13 @@ class AutonomousDispatchLoop:
             meeting_run_id=plan.meeting_run_id,
             dry_run=True,
             created_refs=refs,
-            local_to_remote_refs=dict(zip(
-                (c.card_id for c in plan.cards), refs, strict=False,
-            )),
+            local_to_remote_refs=dict(
+                zip(
+                    (c.card_id for c in plan.cards),
+                    refs,
+                    strict=False,
+                )
+            ),
         )
 
     def _poll_statuses(
@@ -499,15 +503,13 @@ class AutonomousDispatchLoop:
 
         total_cards = len(card_statuses)
         converged = (
-            completed >= total_cards
-            and blocked == 0
-            and failed == 0
-            and pending == 0
+            completed >= total_cards and blocked == 0 and failed == 0 and pending == 0
         )
 
         final_meeting_run_id = plan.meeting_run_id or dispatch.meeting_run_id
+        dispatch_ok = dispatch.ok and failed == 0 and blocked == 0
         return DispatchLoopResult(
-            ok=dispatch.ok,
+            ok=dispatch_ok,
             dry_run=dispatch.dry_run,
             meeting_run_id=final_meeting_run_id,
             round_number=round_number,
@@ -643,7 +645,8 @@ def run_phase18_autonomous_dispatch(
 
 def _priority_to_urgency(priority: str) -> str:
     return {"P0": "critical", "P1": "high", "P2": "normal", "P3": "low"}.get(
-        priority, "normal",
+        priority,
+        "normal",
     )
 
 
@@ -669,7 +672,9 @@ def _write_dispatch_artifact(
 def _atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent),
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
     )
     tmp_path = Path(tmp_name)
     try:

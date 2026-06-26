@@ -77,7 +77,7 @@ class MeetingRunStore:
         except Exception as exc:
             raise StoreError(
                 code="corrupt_meeting_run",
-                message=str(exc),
+                message="corrupt data: meeting run reconstruction failed",
                 meeting_run_id=meeting_run_id,
                 path=str(path),
             ) from exc
@@ -114,7 +114,7 @@ class MeetingRunStore:
         except Exception as exc:
             raise StoreError(
                 code="corrupt_checkpoint",
-                message=str(exc),
+                message="corrupt data: checkpoint reconstruction failed",
                 meeting_run_id=meeting_run_id,
                 path=str(path),
             ) from exc

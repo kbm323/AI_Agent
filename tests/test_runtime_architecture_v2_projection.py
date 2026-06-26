@@ -375,6 +375,65 @@ def test_phase24_live_boundary_policy_fails_closed_for_unknown_guild_or_channel(
     assert wrong_channel.reason == "channel_not_allowed"
 
 
+def test_live_discord_boundary_policy_resolves_symbolic_channels(tmp_path):
+    """channel_resolver maps symbolic names → real snowflakes at eval time."""
+    calls = []
+
+    def resolver(symbolic: str) -> str:
+        calls.append(symbolic)
+        mapping = {
+            "home:aicompanyceo:#전략-회의실": "987654321098765432",
+        }
+        return mapping.get(symbolic, symbolic)
+
+    policy = DiscordLiveBoundaryPolicy(
+        guild_id="1505600166676271244",
+        allowed_channel_ids_by_profile={
+            "aicompanyceo": "home:aicompanyceo:#전략-회의실",
+        },
+        channel_resolver=resolver,
+    )
+
+    # Allowed with correct snowflake
+    result = policy.evaluate(
+        profile="aicompanyceo",
+        guild_id="1505600166676271244",
+        channel_id="987654321098765432",
+    )
+    assert result.allowed is True
+    assert result.reason == "allowed"
+
+    # Blocked with wrong snowflake
+    result = policy.evaluate(
+        profile="aicompanyceo",
+        guild_id="1505600166676271244",
+        channel_id="111111111111111111",
+    )
+    assert result.allowed is False
+    assert result.reason == "channel_not_allowed"
+
+    # Resolver was called for both allowed check and incoming check
+    assert len(calls) >= 2
+    assert "home:aicompanyceo:#전략-회의실" in calls
+    assert "987654321098765432" in calls
+
+
+def test_live_discord_boundary_policy_no_resolver_uses_symbolic_as_is():
+    policy = DiscordLiveBoundaryPolicy(
+        guild_id="1505600166676271244",
+        allowed_channel_ids_by_profile={
+            "aicompanyceo": "home:aicompanyceo:#전략-회의실",
+        },
+    )
+    # Without resolver, symbolic name is compared literally
+    result = policy.evaluate(
+        profile="aicompanyceo",
+        guild_id="1505600166676271244",
+        channel_id="home:aicompanyceo:#전략-회의실",
+    )
+    assert result.allowed is True
+
+
 def test_live_discord_projection_sink_blocks_disallowed_boundary_before_http():
     calls = []
     policy = DiscordLiveBoundaryPolicy.current_verified()

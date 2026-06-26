@@ -44,8 +44,9 @@ from runtime_architecture_v2.schemas import (
 _UTC = UTC
 
 
-def _meeting_run(meeting_run_id: str = "mr-18-test-001",
-                 state=MeetingRunState.ACTIVE) -> MeetingRun:
+def _meeting_run(
+    meeting_run_id: str = "mr-18-test-001", state=MeetingRunState.ACTIVE
+) -> MeetingRun:
     return MeetingRun.create(
         meeting_run_id=meeting_run_id,
         trigger_text="팬 참여 쇼츠 데뷔 전략",
@@ -97,6 +98,7 @@ def _dispatch_result(
 # KanbanCardStatus
 # ---------------------------------------------------------------------------
 
+
 class TestKanbanCardStatusSchema:
     def test_card_status_fields(self) -> None:
         now = datetime.now(_UTC)
@@ -142,7 +144,7 @@ class TestKanbanCardStatusSchema:
             state="failed",
             claimed_by="",
             completed_at=None,
-            blocked_reason="api_key=sk-abc123secret leaked",
+            blocked_reason="api_key=*** leaked",
             reclaim_count=0,
             age_hours=0.1,
         )
@@ -155,6 +157,7 @@ class TestKanbanCardStatusSchema:
 # ---------------------------------------------------------------------------
 # RecoveryAction
 # ---------------------------------------------------------------------------
+
 
 class TestRecoveryActionSchema:
     def test_recovery_action_fields(self) -> None:
@@ -182,6 +185,7 @@ class TestRecoveryActionSchema:
 # ---------------------------------------------------------------------------
 # DispatchLoopResult
 # ---------------------------------------------------------------------------
+
 
 class TestDispatchLoopResultSchema:
     def test_result_fields(self) -> None:
@@ -255,6 +259,7 @@ class TestDispatchLoopResultSchema:
 # AutonomousDispatchLoop — dry-run
 # ---------------------------------------------------------------------------
 
+
 class TestAutonomousDispatchLoopDryRun:
     def test_dry_run_all_cards_complete(self, tmp_path: Path) -> None:
         loop = AutonomousDispatchLoop(
@@ -279,18 +284,35 @@ class TestAutonomousDispatchLoopDryRun:
         )
         statuses = (
             KanbanCardStatus(
-                "kb_mr-18_1", "mr-18-test-001", "worker", "completed",
-                "bot", datetime.now(_UTC), "", 0, 1.0,
+                "kb_mr-18_1",
+                "mr-18-test-001",
+                "worker",
+                "completed",
+                "bot",
+                datetime.now(_UTC),
+                "",
+                0,
+                1.0,
             ),
             KanbanCardStatus(
-                "kb_mr-18_2", "mr-18-test-001", "review", "completed",
-                "validator", datetime.now(_UTC), "", 0, 1.0,
+                "kb_mr-18_2",
+                "mr-18-test-001",
+                "review",
+                "completed",
+                "validator",
+                datetime.now(_UTC),
+                "",
+                0,
+                1.0,
             ),
         )
         dispatch = _dispatch_result(("kb_mr-18_1", "kb_mr-18_2"))
         result = loop._build_result(
-            plan=plan, dispatch=dispatch, card_statuses=statuses,
-            recovery_actions=(), round_number=1,
+            plan=plan,
+            dispatch=dispatch,
+            card_statuses=statuses,
+            recovery_actions=(),
+            round_number=1,
         )
         assert result.ok is True
         assert result.converged is True
@@ -323,8 +345,15 @@ class TestAutonomousDispatchLoopDryRun:
     def test_dry_run_not_converged_when_blocked(self) -> None:
         loop = AutonomousDispatchLoop(root=Path("/tmp"), dry_run=True)
         status = KanbanCardStatus(
-            "kb_mr_blocked", "mr-x", "worker", "blocked",
-            "bot", None, "rate limit", 0, 2.0,
+            "kb_mr_blocked",
+            "mr-x",
+            "worker",
+            "blocked",
+            "bot",
+            None,
+            "rate limit",
+            0,
+            2.0,
         )
         result = loop._build_result(
             plan=KanbanOperationPlan(
@@ -347,26 +376,76 @@ class TestAutonomousDispatchLoopDryRun:
         )
         assert result.converged is False
         assert result.blocked_count == 1
+        assert result.ok is False  # dispatch ok but cards blocked → fail
+
+    def test_dry_run_ok_false_when_cards_failed(self) -> None:
+        loop = AutonomousDispatchLoop(root=Path("/tmp"), dry_run=True)
+        failed_status = KanbanCardStatus(
+            "kb_mr_failed",
+            "mr-x",
+            "worker",
+            "failed",
+            "bot",
+            None,
+            "crash",
+            0,
+            0.5,
+        )
+        result = loop._build_result(
+            plan=KanbanOperationPlan(
+                ok=True,
+                meeting_run_id="mr-x",
+                cards=(),
+                scheduling_decision=SchedulingDecision(
+                    meeting_run_id="mr-x",
+                    kind=SchedulingKind.HERMES_KANBAN,
+                    hermes_primitive="kanban_card",
+                    reason="test",
+                ),
+                priority_decision=MagicMock(),
+                concurrency_limits={},
+            ),
+            dispatch=_dispatch_result(("kb_mr_failed",)),
+            card_statuses=(failed_status,),
+            recovery_actions=(),
+            round_number=1,
+        )
+        assert result.ok is False
+        assert result.failed_count == 1
 
 
 # ---------------------------------------------------------------------------
 # AutonomousDispatchLoop — live mode
 # ---------------------------------------------------------------------------
 
+
 class FakeKanbanClient:
     def __init__(self, *, should_fail: bool = False) -> None:
         self.created_cards: list[dict] = []
         self.should_fail = should_fail
 
-    def create_card(self, *, title: str, body: str, assignee: str, priority: str,
-                    parents: list[str], metadata: dict) -> str:
+    def create_card(
+        self,
+        *,
+        title: str,
+        body: str,
+        assignee: str,
+        priority: str,
+        parents: list[str],
+        metadata: dict,
+    ) -> str:
         if self.should_fail:
             raise RuntimeError("fake client failure")
         ref = f"card_ref:{len(self.created_cards)}"
-        self.created_cards.append({
-            "title": title, "assignee": assignee, "priority": priority,
-            "parents": parents, "ref": ref,
-        })
+        self.created_cards.append(
+            {
+                "title": title,
+                "assignee": assignee,
+                "priority": priority,
+                "parents": parents,
+                "ref": ref,
+            }
+        )
         return ref
 
 
@@ -386,9 +465,14 @@ class TestAutonomousDispatchLoopLive:
                 meeting_run_id="mr-18-live",
                 cards=(
                     KanbanCardSpec(
-                        card_id="kb_live_1", meeting_run_id="mr-18-live",
-                        kind="worker", title="task 1", body="body 1",
-                        assignee="bot_a", priority="P1", parents=(),
+                        card_id="kb_live_1",
+                        meeting_run_id="mr-18-live",
+                        kind="worker",
+                        title="task 1",
+                        body="body 1",
+                        assignee="bot_a",
+                        priority="P1",
+                        parents=(),
                         metadata={},
                     ),
                 ),
@@ -408,7 +492,9 @@ class TestAutonomousDispatchLoopLive:
 
     def test_live_dispatch_no_client(self, tmp_path: Path) -> None:
         loop = AutonomousDispatchLoop(
-            root=tmp_path, client=None, dry_run=False,
+            root=tmp_path,
+            client=None,
+            dry_run=False,
         )
         dispatch_result = loop._apply_dispatch(
             plan=KanbanOperationPlan(
@@ -431,7 +517,9 @@ class TestAutonomousDispatchLoopLive:
     def test_live_dispatch_client_failure(self, tmp_path: Path) -> None:
         client = FakeKanbanClient(should_fail=True)
         loop = AutonomousDispatchLoop(
-            root=tmp_path, client=client, dry_run=False,
+            root=tmp_path,
+            client=client,
+            dry_run=False,
         )
         dispatch_result = loop._apply_dispatch(
             plan=KanbanOperationPlan(
@@ -439,9 +527,14 @@ class TestAutonomousDispatchLoopLive:
                 meeting_run_id="mr-18-fail",
                 cards=(
                     KanbanCardSpec(
-                        card_id="kb_fail_1", meeting_run_id="mr-18-fail",
-                        kind="worker", title="t", body="b",
-                        assignee="bot", priority="P2", parents=(),
+                        card_id="kb_fail_1",
+                        meeting_run_id="mr-18-fail",
+                        kind="worker",
+                        title="t",
+                        body="b",
+                        assignee="bot",
+                        priority="P2",
+                        parents=(),
                         metadata={},
                     ),
                 ),
@@ -463,16 +556,26 @@ class TestAutonomousDispatchLoopLive:
 # Recovery — escalation
 # ---------------------------------------------------------------------------
 
+
 class TestRecoveryEscalation:
     def test_exceeding_max_reclaim_escalates(self, tmp_path: Path) -> None:
         loop = AutonomousDispatchLoop(
-            root=tmp_path, dry_run=True, max_reclaim_attempts=2,
+            root=tmp_path,
+            dry_run=True,
+            max_reclaim_attempts=2,
         )
         actions = loop._recover_cards(
             card_statuses=(
                 KanbanCardStatus(
-                    "kb_escalate", "mr-x", "worker", "blocked",
-                    "bot", None, "stuck", reclaim_count=2, age_hours=5.0,
+                    "kb_escalate",
+                    "mr-x",
+                    "worker",
+                    "blocked",
+                    "bot",
+                    None,
+                    "stuck",
+                    reclaim_count=2,
+                    age_hours=5.0,
                 ),
             ),
             round_number=1,
@@ -483,13 +586,22 @@ class TestRecoveryEscalation:
 
     def test_blocked_card_within_reclaim_retries(self, tmp_path: Path) -> None:
         loop = AutonomousDispatchLoop(
-            root=tmp_path, dry_run=True, max_reclaim_attempts=3,
+            root=tmp_path,
+            dry_run=True,
+            max_reclaim_attempts=3,
         )
         actions = loop._recover_cards(
             card_statuses=(
                 KanbanCardStatus(
-                    "kb_retry", "mr-x", "worker", "blocked",
-                    "bot", None, "rate limit", reclaim_count=1, age_hours=2.0,
+                    "kb_retry",
+                    "mr-x",
+                    "worker",
+                    "blocked",
+                    "bot",
+                    None,
+                    "rate limit",
+                    reclaim_count=1,
+                    age_hours=2.0,
                 ),
             ),
             round_number=1,
@@ -503,8 +615,15 @@ class TestRecoveryEscalation:
         actions = loop._recover_cards(
             card_statuses=(
                 KanbanCardStatus(
-                    "kb_done", "mr-x", "worker", "completed",
-                    "bot", datetime.now(_UTC), "", 0, 1.0,
+                    "kb_done",
+                    "mr-x",
+                    "worker",
+                    "completed",
+                    "bot",
+                    datetime.now(_UTC),
+                    "",
+                    0,
+                    1.0,
                 ),
             ),
             round_number=1,
@@ -515,6 +634,7 @@ class TestRecoveryEscalation:
 # ---------------------------------------------------------------------------
 # run_phase18_autonomous_dispatch (CLI pilot)
 # ---------------------------------------------------------------------------
+
 
 class TestPhase18CLIPilot:
     def test_dry_run_mode(self, tmp_path: Path) -> None:
@@ -565,6 +685,7 @@ class TestPhase18CLIPilot:
 # ---------------------------------------------------------------------------
 # Boundary: no secret/token/misuse leaks
 # ---------------------------------------------------------------------------
+
 
 class TestPhase18BoundarySafety:
     def test_card_status_rejects_token_in_blocked_reason(self) -> None:

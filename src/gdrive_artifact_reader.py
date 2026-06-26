@@ -9,7 +9,9 @@ Usage::
 
     from src.gdrive_auth import GDriveAuthenticator, GDriveAuthConfig
     from src.gdrive_artifact_reader import (
-        ArtifactReader, ReaderConfig, ArtifactType,
+        ArtifactReader,
+        ReaderConfig,
+        ArtifactType,
     )
 
     auth = GDriveAuthenticator(config)
@@ -41,23 +43,19 @@ Drive folder structure (same as writer)::
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from dataclasses import dataclass
 
-from .gdrive_auth import GDriveToken
 from .gdrive_artifact_writer import (
-    DEFAULT_ROOT_FOLDER_NAME,
     DEFAULT_REQUEST_TIMEOUT,
+    DEFAULT_ROOT_FOLDER_NAME,
     DRIVE_API_BASE,
-    FOLDER_MIME_TYPE,
     MIME_TYPES,
-    ArtifactType,
-    _get_drive_api_fn,
     _build_auth_header,
-    _url_encode,
     _find_folder,
+    _get_drive_api_fn,
+    _url_encode,
 )
-
+from .gdrive_auth import GDriveToken
 
 # ═════════════════════════════════════════════════════════════════════════
 # Data types
@@ -404,9 +402,7 @@ def _resolve_artifact_folder(
     if sub_name is None:
         return ""
 
-    sub = _find_folder(
-        token, sub_name, parent_id=meeting.folder_id, timeout=timeout
-    )
+    sub = _find_folder(token, sub_name, parent_id=meeting.folder_id, timeout=timeout)
     if sub is None:
         return ""
 
@@ -453,8 +449,7 @@ def find_artifacts(
         raise ValueError("meeting_id must not be empty")
     if artifact_type not in MIME_TYPES:
         raise ValueError(
-            f"artifact_type must be one of {list(MIME_TYPES)}, "
-            f"got '{artifact_type}'"
+            f"artifact_type must be one of {list(MIME_TYPES)}, got '{artifact_type}'"
         )
 
     folder_id = _resolve_artifact_folder(
@@ -485,7 +480,9 @@ def find_artifacts(
         files = _list_files_in_folder(
             token=token,
             folder_id=folder_id,
-            mime_type=MIME_TYPES[artifact_type] if artifact_type != "manifest" else None,
+            mime_type=MIME_TYPES[artifact_type]
+            if artifact_type != "manifest"
+            else None,
             query_extra=query_extra,
             timeout=timeout,
         )
@@ -567,10 +564,10 @@ def read_artifact_content(
 
     try:
         content, status = _download_file_content(token, file_id, timeout=timeout)
-    except OSError as exc:
+    except OSError:
         return ArtifactReadResult(
             success=False,
-            error=f"Network error reading file '{file_id}': {exc}",
+            error="network_error_reading_file",
         )
     except ValueError as exc:
         return ArtifactReadResult(
