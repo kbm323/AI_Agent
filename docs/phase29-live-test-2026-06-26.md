@@ -58,7 +58,7 @@ Published messages:
 | Profile | Bot | Channel | Message ID | Result |
 |---|---|---|---|---|
 | `aicompanyassistant` | `비서` | `#일일-브리핑` | `1520008626205360208` | PASS |
-| `aicompanyceo` | `대표` | `#전략-회의실` | `1520008629351088129` | PASS |
+| `aicompanyceo` | `대표` | `#회의실-전략결정` | `1520008629351088129` | PASS |
 | `aicompanycontent` | `콘텐츠팀장` | `#콘텐츠-메인` | `1520008632832622622` | PASS |
 | `aicompanyart` | `아트팀장` | `#아트-메인` | `1520008635806122004` | PASS |
 | `aicompanytech` | `기술팀장` | `#기술-메인` | `1520008639069425806` | PASS |

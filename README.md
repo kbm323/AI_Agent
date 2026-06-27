@@ -9,7 +9,7 @@ Hermes-first AI Virtual Entertainment Company runtime.
 | Profile | Username | Home Channel | Channel ID | Responsibility |
 |---------|----------|-------------|------------|----------------|
 | `aicompanyassistant` | `비서` | `#일일-브리핑` | `1507063720025522267` | Personal assistant: user intake, Second Brain, daily/weekly briefings, action-item extraction — assistant layer, not a company department role |
-| `aicompanyceo` | `대표` | `#전략-회의실` | `1505600167221526621` | CEO/Coordinator: company default entrypoint, request routing, final synthesis report, meeting open/close |
+| `aicompanyceo` | `대표` | `#회의실-전략결정` | `1505600167221526621` | CEO/Coordinator: company default entrypoint, request routing, final synthesis report, meeting open/close |
 | `aicompanycontent` | `콘텐츠팀장` | `#콘텐츠-메인` | `1505927982722580500` | Content Lead: planning, script, editing, thumbnail direction — content team consensus |
 | `aicompanyart` | `아트팀장` | `#아트-메인` | `1505928014800752671` | Art Lead: concept, character, rigging, animation, VFX, stage — art team opinions & risks |
 | `aicompanytech` | `기술팀장` | `#기술-메인` | `1505928578016219247` | Tech Lead: R&D, pipeline, infrastructure, development, automation — feasibility/execution status |
@@ -21,7 +21,7 @@ Hermes-first AI Virtual Entertainment Company runtime.
 | Channel | Typical traffic |
 |---------|----------------|
 | `#일일-브리핑` | Daily/weekly summaries, task reminders, personal memory & knowledge queries |
-| `#전략-회의실` | Multi-bot meeting coordination, final decision reports, executive routing |
+| `#회의실-전략결정` | Multi-bot meeting coordination, final decision reports, executive routing |
 | `#콘텐츠-메인` | Content proposals, script drafts, thumbnail direction, editing feedback |
 | `#아트-메인` | Concept art direction, character design feedback, animation reviews |
 | `#기술-메인` | Architecture decisions, pipeline status, incident reports, technical research |

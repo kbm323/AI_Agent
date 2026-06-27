@@ -186,7 +186,7 @@ accounts.
 | Hermes profile | Live Discord username | Live home channel | Responsibility | User @mention | Projection role |
 |---|---|---|---|---:|---|
 | `aicompanyassistant` | `비서` | `#일일-브리핑` | personal assistant / secretary: user intake, private/personal support, personal Second Brain, daily/weekly briefing, action-item extraction | yes | assistant/intake layer; not a company department role |
-| `aicompanyceo` | `대표` | `#전략-회의실` | CEO/Coordinator Bot: company default entrypoint, routing, final report | yes | final synthesis, meeting open/close |
+| `aicompanyceo` | `대표` | `#회의실-전략결정` | CEO/Coordinator Bot: company default entrypoint, routing, final report | yes | final synthesis, meeting open/close |
 | `aicompanycontent` | `콘텐츠팀장` | `#콘텐츠-메인` | Content Lead Bot: content, script, editing, thumbnail direction | yes | content team opinions/consensus |
 | `aicompanyart` | `아트팀장` | `#아트-메인` | Art Lead Bot: concept, character, rigging, animation, VFX, stage | yes | art team opinions/risks |
 | `aicompanytech` | `기술팀장` | `#기술-메인` | Tech Lead Bot: R&D, pipeline, infrastructure, development, automation | yes | technical feasibility/execution status |

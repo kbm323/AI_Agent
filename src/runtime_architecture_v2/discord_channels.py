@@ -51,7 +51,7 @@ def current_discord_channel_function_matrix() -> tuple[DiscordChannelFunction, .
     return (
         DiscordChannelFunction(
             channel_id="1505600167221526621",
-            name="전략-회의실",
+            name="회의실-전략결정",
             category="📋 경영",
             profile="aicompanyceo",
             primary_function="strategy_decision_room",
@@ -153,7 +153,7 @@ def current_discord_channel_function_matrix() -> tuple[DiscordChannelFunction, .
         ),
         DiscordChannelFunction(
             channel_id="1505931688327381042",
-            name="전체-메인",
+            name="전체-공지",
             category="🔀 크로스팀",
             primary_function="cross_team_announcements",
             purpose="회사 전체 공지와 크로스팀 공유를 위한 채널. 일일 브리핑과 분리한다.",

@@ -45,7 +45,7 @@ Current Discord-facing topology
   - 7 actual Discord-facing bot accounts total
   - 1 personal assistant/secretary: profile aicompanyassistant, live username `비서`, home channel #일일-브리핑
   - 6 company team-lead bot accounts:
-    - aicompanyceo / `대표` / #전략-회의실
+    - aicompanyceo / `대표` / #회의실-전략결정
     - aicompanycontent / `콘텐츠팀장` / #콘텐츠-메인
     - aicompanyart / `아트팀장` / #아트-메인
     - aicompanytech / `기술팀장` / #기술-메인

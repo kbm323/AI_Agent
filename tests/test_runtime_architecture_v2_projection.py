@@ -405,14 +405,14 @@ def test_live_discord_boundary_policy_resolves_symbolic_channels(tmp_path):
     def resolver(symbolic: str) -> str:
         calls.append(symbolic)
         mapping = {
-            "home:aicompanyceo:#전략-회의실": "987654321098765432",
+            "home:aicompanyceo:#회의실-전략결정": "987654321098765432",
         }
         return mapping.get(symbolic, symbolic)
 
     policy = DiscordLiveBoundaryPolicy(
         guild_id="1505600166676271244",
         allowed_channel_ids_by_profile={
-            "aicompanyceo": "home:aicompanyceo:#전략-회의실",
+            "aicompanyceo": "home:aicompanyceo:#회의실-전략결정",
         },
         channel_resolver=resolver,
     )
@@ -437,7 +437,7 @@ def test_live_discord_boundary_policy_resolves_symbolic_channels(tmp_path):
 
     # Resolver was called for both allowed check and incoming check
     assert len(calls) >= 2
-    assert "home:aicompanyceo:#전략-회의실" in calls
+    assert "home:aicompanyceo:#회의실-전략결정" in calls
     assert "987654321098765432" in calls
 
 
@@ -445,14 +445,14 @@ def test_live_discord_boundary_policy_no_resolver_uses_symbolic_as_is():
     policy = DiscordLiveBoundaryPolicy(
         guild_id="1505600166676271244",
         allowed_channel_ids_by_profile={
-            "aicompanyceo": "home:aicompanyceo:#전략-회의실",
+            "aicompanyceo": "home:aicompanyceo:#회의실-전략결정",
         },
     )
     # Without resolver, symbolic name is compared literally
     result = policy.evaluate(
         profile="aicompanyceo",
         guild_id="1505600166676271244",
-        channel_id="home:aicompanyceo:#전략-회의실",
+        channel_id="home:aicompanyceo:#회의실-전략결정",
     )
     assert result.allowed is True
 

@@ -134,7 +134,7 @@ class DiscordLiveBoundaryPolicy:
     changes unless a later explicit live need is approved.
 
     The optional ``channel_resolver`` maps symbolic channel identifiers (e.g.
-    ``"home:aicompanyceo:#전략-회의실"``) to real Discord snowflake IDs at
+    ``"home:aicompanyceo:#회의실-전략결정"``) to real Discord snowflake IDs at
     eval time. When ``None`` (default), symbolic names are compared as-is.
     """
 

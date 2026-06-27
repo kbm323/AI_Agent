@@ -55,7 +55,7 @@ def _valid_bounded_ops_evidence() -> BoundedOpsEvidence:
         allowed_window_hours=("09:00", "23:00"),
         allowed_channels=(
             "home:aicompanyassistant:#일일-브리핑",
-            "home:aicompanyceo:#전략-회의실",
+            "home:aicompanyceo:#회의실-전략결정",
         ),
         mention_gated=True,
     )
@@ -80,7 +80,7 @@ class TestTwentyFourHourLivePilotPolicy:
         ops = BoundedOpsEvidence(
             max_runs_per_hour=100,
             allowed_window_hours=("09:00", "23:00"),
-            allowed_channels=("home:aicompanyceo:#전략-회의실",),
+            allowed_channels=("home:aicompanyceo:#회의실-전략결정",),
             mention_gated=True,
         )
         decision = policy.evaluate(
@@ -96,7 +96,7 @@ class TestTwentyFourHourLivePilotPolicy:
         ops = BoundedOpsEvidence(
             max_runs_per_hour=5,
             allowed_window_hours=("09:00", "23:00"),
-            allowed_channels=("home:aicompanyceo:#전략-회의실",),
+            allowed_channels=("home:aicompanyceo:#회의실-전략결정",),
             mention_gated=False,
         )
         decision = policy.evaluate(
@@ -112,7 +112,7 @@ class TestTwentyFourHourLivePilotPolicy:
         ops = BoundedOpsEvidence(
             max_runs_per_hour=5,
             allowed_window_hours=("00:00", "23:59"),
-            allowed_channels=("home:aicompanyceo:#전략-회의실",),
+            allowed_channels=("home:aicompanyceo:#회의실-전략결정",),
             mention_gated=True,
         )
         decision = policy.evaluate(
@@ -160,7 +160,7 @@ class TestTwentyFourHourLivePilotPolicy:
         ops = BoundedOpsEvidence(
             max_runs_per_hour=-1,
             allowed_window_hours=("09:00", "23:00"),
-            allowed_channels=("home:aicompanyceo:#전략-회의실",),
+            allowed_channels=("home:aicompanyceo:#회의실-전략결정",),
             mention_gated=True,
         )
         decision = policy.evaluate(
@@ -176,7 +176,7 @@ class TestTwentyFourHourLivePilotPolicy:
         ops = BoundedOpsEvidence(
             max_runs_per_hour=0,
             allowed_window_hours=("09:00", "23:00"),
-            allowed_channels=("home:aicompanyceo:#전략-회의실",),
+            allowed_channels=("home:aicompanyceo:#회의실-전략결정",),
             mention_gated=True,
         )
         decision = policy.evaluate(
@@ -224,7 +224,7 @@ class TestTwentyFourHourLivePilotPolicy:
         ops = BoundedOpsEvidence(
             max_runs_per_hour=5,
             allowed_window_hours=("23:00", "09:00"),
-            allowed_channels=("home:aicompanyceo:#전략-회의실",),
+            allowed_channels=("home:aicompanyceo:#회의실-전략결정",),
             mention_gated=True,
         )
         decision = policy.evaluate(
@@ -242,7 +242,7 @@ class TestTwentyFourHourLivePilotPolicy:
             ops = BoundedOpsEvidence(
                 max_runs_per_hour=5,
                 allowed_window_hours=allowed_window_hours,
-                allowed_channels=("home:aicompanyceo:#전략-회의실",),
+                allowed_channels=("home:aicompanyceo:#회의실-전략결정",),
                 mention_gated=True,
             )
             decision = policy.evaluate(
@@ -374,7 +374,7 @@ class TestProductionReadinessVerdict:
         ops = BoundedOpsEvidence(
             max_runs_per_hour=1000,
             allowed_window_hours=("09:00", "23:00"),
-            allowed_channels=("home:aicompanyceo:#전략-회의실",),
+            allowed_channels=("home:aicompanyceo:#회의실-전략결정",),
             mention_gated=True,
         )
         verdict = ProductionReadinessVerdict.evaluate(

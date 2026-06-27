@@ -21,13 +21,13 @@ The live Discord projection allowlist is derived from that matrix through:
 
 | Category | Channel | ID | Home profile | Primary function | Function definition |
 |---|---|---:|---|---|---|
-| 📋 경영 | 전략-회의실 | `1505600167221526621` | `aicompanyceo` | strategy_decision_room | 최종 의사결정, 우선순위, Phase 승인/보류를 기록한다. |
+| 📋 경영 | 회의실-전략결정 | `1505600167221526621` | `aicompanyceo` | strategy_decision_room | 최종 의사결정, 우선순위, Phase 승인/보류를 기록한다. |
 | 📋 경영 | 일일-브리핑 | `1507063720025522267` | `aicompanyassistant` | user_daily_dashboard | 사용자가 매일 먼저 보는 회사 상태 요약과 다음 행동 대시보드. |
 | 🎬 콘텐츠제작팀 | 콘텐츠-메인 | `1505927982722580500` | `aicompanycontent` | content_story_planning | 스토리, 세계관, 대본, 콘텐츠 캘린더와 팬 참여 기획을 다룬다. |
 | 🎨 아트팀 | 아트-메인 | `1505928014800752671` | `aicompanyart` | visual_creative_assets | 캐릭터, 배경, 무드보드, 이미지 프롬프트와 비주얼 리뷰를 다룬다. |
 | ⚙️ 기술팀 | 기술-메인 | `1505928578016219247` | `aicompanytech` | build_ops_incident | 구현, 인프라, 테스트, 배포, 장애 분석과 기술 의사결정을 다룬다. |
 | 📣 마케팅팀 | 마케팅-메인 | `1505931658426060970` | `aicompanymarketing` | audience_growth_branding | 팬덤, 브랜딩, SNS, 시장성, 출시/홍보 전략을 다룬다. |
-| 🔀 크로스팀 | 전체-메인 | `1505931688327381042` | - | cross_team_announcements | 회사 전체 공지와 크로스팀 공유를 위한 채널. 일일 브리핑과 분리한다. |
+| 🔀 크로스팀 | 전체-공지 | `1505931688327381042` | - | cross_team_announcements | 회사 전체 공지와 크로스팀 공유를 위한 채널. 일일 브리핑과 분리한다. |
 | 🔀 크로스팀 | 전체-리뷰 | `1507063654397378561` | `aicompanyquality` | qa_risk_release_gate | QA, 법무/저작권/개인정보 리스크, pass/revise/reject release gate를 기록한다. |
 | 🔀 크로스팀 | 프로젝트-허브 | `1507235292694974645` | - | project_thread_index | 프로젝트별 thread/index, MeetingRun 링크, Phase 산출물 위치를 추적한다. |
 | ⚙️ 관리 | 마스터-컨트롤 | `1505931705582878830` | - | operator_control_plane | 운영자 전용 상태 확인, quota 확인, 긴급 중단, live smoke 결과를 다룬다. |
@@ -35,14 +35,14 @@ The live Discord projection allowlist is derived from that matrix through:
 
 ## Non-overlap rules
 
-### 일일-브리핑 vs 전체-메인
+### 일일-브리핑 vs 전체-공지
 
 - `일일-브리핑`: 사용자 개인이 매일 먼저 보는 상태 요약과 다음 행동.
-- `전체-메인`: 회사 전체 공지와 크로스팀 공유.
+- `전체-공지`: 회사 전체 공지와 크로스팀 공유.
 
-### 전략-회의실 vs 프로젝트-허브
+### 회의실-전략결정 vs 프로젝트-허브
 
-- `전략-회의실`: 결정하는 곳.
+- `회의실-전략결정`: 결정하는 곳.
 - `프로젝트-허브`: 결정된 프로젝트를 추적하는 곳.
 
 ### 전체-리뷰 vs 시스템-로그
@@ -60,7 +60,7 @@ The live Discord projection allowlist is derived from that matrix through:
 Home projection is allowed only for these 7 profiles:
 
 - `aicompanyassistant` → `일일-브리핑`
-- `aicompanyceo` → `전략-회의실`
+- `aicompanyceo` → `회의실-전략결정`
 - `aicompanycontent` → `콘텐츠-메인`
 - `aicompanyart` → `아트-메인`
 - `aicompanytech` → `기술-메인`
@@ -69,7 +69,7 @@ Home projection is allowed only for these 7 profiles:
 
 The following channels are intentionally not 7-bot home projection channels:
 
-- `전체-메인`
+- `전체-공지`
 - `프로젝트-허브`
 - `마스터-컨트롤`
 - `시스템-로그`

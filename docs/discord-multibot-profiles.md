@@ -4,7 +4,7 @@
 
 | Profile | Bot | Role | Home Channel | Channel ID |
 |---|---|---|---|---|
-| `aicompanyceo` | 버추얼컴퍼니-대표 | CEO/Coordinator | #전략-회의실 | `1505600167221526621` |
+| `aicompanyceo` | 버추얼컴퍼니-대표 | CEO/Coordinator | #회의실-전략결정 | `1505600167221526621` |
 | `aicompanyassistant` | 개인비서-Hermes | Personal Assistant | #일일-브리핑 | `1507063720025522267` |
 | `aicompanycontent` | 버추얼컴퍼니-콘텐츠팀장 | Content Lead | #콘텐츠-메인 | `1505927982722580500` |
 | `aicompanyart` | 버추얼컴퍼니-아트팀장 | Art Lead | #아트-메인 | `1505928014800752671` |

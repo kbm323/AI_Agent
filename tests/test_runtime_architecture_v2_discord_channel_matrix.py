@@ -18,13 +18,13 @@ def test_channel_function_matrix_records_actual_live_inventory():
     assert len(matrix) == 11
     by_name = {channel.name: channel for channel in matrix}
     assert set(by_name) == {
-        "전략-회의실",
+        "회의실-전략결정",
         "일일-브리핑",
         "콘텐츠-메인",
         "아트-메인",
         "기술-메인",
         "마케팅-메인",
-        "전체-메인",
+        "전체-공지",
         "전체-리뷰",
         "프로젝트-허브",
         "마스터-컨트롤",
@@ -33,7 +33,7 @@ def test_channel_function_matrix_records_actual_live_inventory():
 
     assert by_name["일일-브리핑"].category == "📋 경영"
     assert by_name["일일-브리핑"].primary_function == "user_daily_dashboard"
-    assert by_name["전체-메인"].primary_function == "cross_team_announcements"
+    assert by_name["전체-공지"].primary_function == "cross_team_announcements"
     assert by_name["전체-리뷰"].primary_function == "qa_risk_release_gate"
     assert by_name["프로젝트-허브"].primary_function == "project_thread_index"
     assert by_name["마스터-컨트롤"].primary_function == "operator_control_plane"
@@ -62,7 +62,7 @@ def test_non_home_channels_have_distinct_functions_and_no_projection_profile():
     non_home = [channel for channel in matrix if not channel.is_home_channel]
 
     assert {channel.name for channel in non_home} == {
-        "전체-메인",
+        "전체-공지",
         "프로젝트-허브",
         "마스터-컨트롤",
         "시스템-로그",

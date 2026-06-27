@@ -39,7 +39,7 @@ The current verified policy records:
 Guild: Entertainment / 1505600166676271244
 Profiles: 7
 - aicompanyassistant / #일일-브리핑
-- aicompanyceo / #전략-회의실
+- aicompanyceo / #회의실-전략결정
 - aicompanycontent / #콘텐츠-메인
 - aicompanyart / #아트-메인
 - aicompanytech / #기술-메인
