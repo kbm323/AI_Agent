@@ -101,6 +101,7 @@ relevant detailed architecture section.
    - Company team leads: CEO, Content, Art, Tech, Marketing, Quality/Validation.
    - 29-role registry is the internal company org chart, not 29 Discord bot accounts.
    - Business Support / Legal / Finance / HR are internal roles, not live Discord bots by default.
+   - Discord channels are company operation surfaces, not merely bot rooms; the current live channel function matrix is `docs/discord-channel-function-matrix.md` and `src/runtime_architecture_v2/discord_channels.py`.
 
 7. Personal assistant is separate from the company org chart
    - The assistant handles user intake, personal support, personal Second Brain, schedules/briefings, and action item extraction.

@@ -15,6 +15,9 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.runtime_architecture_v2.discord_channels import (
+    current_discord_home_channel_ids_by_profile,
+)
 from src.runtime_architecture_v2.schemas import (
     DiscordProjectionEvent,
     MeetingRun,
@@ -150,15 +153,7 @@ class DiscordLiveBoundaryPolicy:
 
         return cls(
             guild_id="1505600166676271244",
-            allowed_channel_ids_by_profile={
-                "aicompanyassistant": "1507063720025522267",
-                "aicompanyceo": "1505600167221526621",
-                "aicompanycontent": "1505927982722580500",
-                "aicompanyart": "1505928014800752671",
-                "aicompanytech": "1505928578016219247",
-                "aicompanymarketing": "1505931658426060970",
-                "aicompanyquality": "1507063654397378561",
-            },
+            allowed_channel_ids_by_profile=current_discord_home_channel_ids_by_profile(),
         )
 
     def evaluate(
