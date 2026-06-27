@@ -21,6 +21,7 @@ from .projection import (
     DiscordLiveBoundaryPolicy,
     FakeDiscordProjectionSink,
     LiveDiscordProjectionSink,
+    LiveDiscordThreadManager,
     ProjectionPublishResult,
     SharedMeetingThreadProjectionPolicy,
     _default_discord_http_post,
@@ -207,6 +208,9 @@ class MultiBotPilotResult:
     bot_participants: tuple[str, ...]
     rounds_completed: int
     projection_messages_posted: int
+    meeting_thread_id: str = ""
+    meeting_thread_status: str = ""
+    meeting_thread_error: str = ""
     error: str = ""
 
     def to_cli_dict(self) -> dict[str, object]:
@@ -224,6 +228,9 @@ class MultiBotPilotResult:
             "escalation_required": self.session.escalation_required,
             "consensus_summary": self.session.consensus_summary,
             "projection_statuses": [r.status for r in self.projection_results],
+            "meeting_thread_id": self.meeting_thread_id,
+            "meeting_thread_status": self.meeting_thread_status,
+            "meeting_thread_error": self.meeting_thread_error,
             "error": self.error,
             "ok": self.ok,
         }
@@ -524,6 +531,10 @@ def run_phase14_multi_bot_pilot(
     live_discord: bool = False,
     env: Mapping[str, str] | None = None,
     target_channel_id: str = "phase14-channel",
+    target_thread_id: str = "",
+    create_meeting_thread: bool = True,
+    thread_name: str = "Phase14 팀장 회의",
+    discord_http_post: Callable[..., Mapping[str, object]] | None = None,
 ) -> MultiBotPilotResult:
     """Run the Phase 14 multi-bot operational protocol pilot."""
 
@@ -631,28 +642,76 @@ def run_phase14_multi_bot_pilot(
         validation_ids=tuple(verdict.validation_id for verdict in validation_verdicts),
     )
 
-    # Produce projections for all visible bot messages
+    # Produce projections for all visible bot messages. In live Discord mode,
+    # Phase 29 requires one CEO-owned shared meeting thread so each team lead
+    # appears in the same user-visible conversation instead of separate channel
+    # summaries. If the thread cannot be created/verified, fail closed before
+    # posting any bot messages.
     projection_results: list[ProjectionPublishResult] = []
     visible_count = 0
-    for round_data in session.rounds:
-        for msg in round_data.messages:
-            if not msg.visible_on_discord:
-                continue
-            result = route_bot_projection(
-                msg,
-                live_discord=live_discord,
-                target_channel_id=target_channel_id,
-                env=env,
+    meeting_thread_id = target_thread_id
+    meeting_thread_status = "not_requested"
+    meeting_thread_error = ""
+    shared_thread_policy: SharedMeetingThreadProjectionPolicy | None = None
+    boundary_policy = DiscordLiveBoundaryPolicy.current_verified()
+    if live_discord:
+        if create_meeting_thread and not meeting_thread_id:
+            manager = LiveDiscordThreadManager(
+                env=(
+                    dict(env)
+                    if env is not None
+                    else _discord_env_for_profile("aicompanyceo")
+                ),
+                http_post=discord_http_post or _default_discord_http_post,
+                boundary_policy=boundary_policy,
+                profile="aicompanyceo",
+                guild_id=boundary_policy.guild_id,
             )
-            projection_results.append(result)
-            if result.status == "published":
-                visible_count += 1
+            thread = manager.create_meeting_thread(
+                parent_channel_id=target_channel_id,
+                name=thread_name,
+            )
+            meeting_thread_status = thread.status
+            meeting_thread_id = thread.thread_id
+            meeting_thread_error = thread.error
+            if thread.status != "created":
+                final_state = MeetingRunState.FAILED
+                error = "live_discord_thread_blocked"
+                run = replace(run, state=final_state)
+        elif meeting_thread_id:
+            meeting_thread_status = "provided"
 
-    if live_discord and any(
-        result.status != "published" for result in projection_results
+        if meeting_thread_id and final_state == MeetingRunState.COMPLETED:
+            shared_thread_policy = SharedMeetingThreadProjectionPolicy(
+                boundary_policy=boundary_policy,
+                parent_channel_id=target_channel_id,
+                thread_id=meeting_thread_id,
+            )
+
+    if final_state == MeetingRunState.COMPLETED:
+        for round_data in session.rounds:
+            for msg in round_data.messages:
+                if not msg.visible_on_discord:
+                    continue
+                result = route_bot_projection(
+                    msg,
+                    live_discord=live_discord,
+                    target_channel_id=target_channel_id,
+                    target_thread_id=meeting_thread_id,
+                    env=env,
+                    discord_http_post=discord_http_post,
+                    shared_thread_policy=shared_thread_policy,
+                )
+                projection_results.append(result)
+                if result.status == "published":
+                    visible_count += 1
+
+    if live_discord and (
+        not projection_results
+        or any(result.status != "published" for result in projection_results)
     ):
         final_state = MeetingRunState.FAILED
-        error = "live_discord_publish_blocked"
+        error = error or "live_discord_publish_blocked"
         run = replace(run, state=final_state)
 
     _report_path = _write_phase13_report(
@@ -687,6 +746,9 @@ def run_phase14_multi_bot_pilot(
         bot_participants=participants,
         rounds_completed=len(session.rounds),
         projection_messages_posted=visible_count,
+        meeting_thread_id=meeting_thread_id,
+        meeting_thread_status=meeting_thread_status,
+        meeting_thread_error=meeting_thread_error,
         error=error,
     )
 

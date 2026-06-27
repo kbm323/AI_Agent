@@ -457,6 +457,82 @@ def test_route_bot_projection_to_shared_meeting_thread_uses_role_profile_token()
     assert "[콘텐츠 팀장]" in kwargs["json_body"]["content"]
 
 
+def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messages(
+    tmp_path: Path,
+):
+    calls = []
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout='{"ok": true}',
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    def fake_http_post(*args, **kwargs):
+        calls.append((args, kwargs))
+        url = args[0]
+        if url.endswith("/channels/1505600167221526621/threads"):
+            return {"status_code": 201, "json": {"id": "thread-phase14"}}
+        if url.endswith("/channels/thread-phase14/messages"):
+            return {"status_code": 200, "json": {"id": f"msg-{len(calls)}"}}
+        return {"status_code": 404, "json": {}}
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=1,
+        command_runner=command_runner,
+        live_discord=True,
+        env={"DISCORD_BOT_TOKEN": "test-token"},
+        target_channel_id="1505600167221526621",
+        thread_name="테스트 팀장 회의",
+        discord_http_post=fake_http_post,
+    )
+
+    assert result.ok is True
+    assert result.meeting_thread_status == "created"
+    assert result.meeting_thread_id == "thread-phase14"
+    assert result.projection_messages_posted == 6
+    assert len(result.projection_results) == 6
+    urls = [args[0] for args, _kwargs in calls]
+    assert urls[0].endswith("/channels/1505600167221526621/threads")
+    assert all(url.endswith("/channels/thread-phase14/messages") for url in urls[1:])
+
+
+def test_phase14_live_discord_thread_creation_failure_fails_closed(tmp_path: Path):
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout='{"ok": true}',
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=1,
+        command_runner=command_runner,
+        live_discord=True,
+        env={},
+        target_channel_id="1505600167221526621",
+        discord_http_post=lambda *args, **kwargs: {
+            "status_code": 201,
+            "json": {"id": "should-not-call"},
+        },
+    )
+
+    assert result.ok is False
+    assert result.error == "live_discord_thread_blocked"
+    assert result.meeting_thread_status == "blocked"
+    assert result.meeting_thread_error == "missing_discord_bot_token"
+    assert result.projection_results == ()
+
+
 # ── Pilot Dry-run Tests ─────────────────────────────────────────────────
 
 
@@ -594,9 +670,10 @@ def test_phase14_live_discord_blocked_marks_result_not_ok(tmp_path: Path):
     )
 
     assert result.ok is False
-    assert result.error == "live_discord_publish_blocked"
+    assert result.error == "live_discord_thread_blocked"
     assert result.meeting_run.state == MeetingRunState.FAILED
-    assert all(r.status == "blocked" for r in result.projection_results)
+    assert result.meeting_thread_error == "channel_not_allowed"
+    assert result.projection_results == ()
 
 
 # ── Pilot Request Fixture Tests ─────────────────────────────────────────
