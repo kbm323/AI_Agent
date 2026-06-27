@@ -117,6 +117,15 @@ class ProjectionPublishResult:
 
 
 @dataclass(frozen=True)
+class ThreadCreateResult:
+    """Result of creating a live Discord meeting thread."""
+
+    status: str
+    thread_id: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True)
 class DiscordBoundaryDecision:
     """Allowlist decision for a live Discord projection boundary."""
 
@@ -191,12 +200,61 @@ class DiscordLiveBoundaryPolicy:
         return DiscordBoundaryDecision(True, "allowed")
 
 
+@dataclass(frozen=True)
+class SharedMeetingThreadProjectionPolicy:
+    """Allow verified team-lead profiles to post into one CEO-owned meeting thread."""
+
+    boundary_policy: DiscordLiveBoundaryPolicy
+    parent_channel_id: str
+    thread_id: str
+    owner_profile: str = "aicompanyceo"
+
+    def evaluate(
+        self,
+        *,
+        profile: str,
+        guild_id: str,
+        parent_channel_id: str,
+        thread_id: str,
+    ) -> DiscordBoundaryDecision:
+        if guild_id != self.boundary_policy.guild_id:
+            return DiscordBoundaryDecision(False, "guild_not_allowed")
+        if profile not in self.boundary_policy.allowed_channel_ids_by_profile:
+            return DiscordBoundaryDecision(False, "profile_not_allowed")
+        verified_parent = self.boundary_policy.allowed_channel_ids_by_profile.get(
+            self.owner_profile
+        )
+        if parent_channel_id != self.parent_channel_id:
+            return DiscordBoundaryDecision(False, "shared_parent_mismatch")
+        if parent_channel_id != verified_parent:
+            return DiscordBoundaryDecision(False, "shared_parent_not_allowed")
+        if thread_id != self.thread_id:
+            return DiscordBoundaryDecision(False, "shared_thread_mismatch")
+        if self.boundary_policy.permission_mutation_allowed:
+            return DiscordBoundaryDecision(False, "permission_mutation_not_allowed")
+        if self.boundary_policy.administrator_allowed:
+            return DiscordBoundaryDecision(False, "administrator_not_allowed")
+        if (
+            not self.boundary_policy.require_mention
+            or not self.boundary_policy.thread_require_mention
+        ):
+            return DiscordBoundaryDecision(False, "mention_gate_required")
+        if self.boundary_policy.free_response_channels:
+            return DiscordBoundaryDecision(False, "free_response_not_allowed")
+        return DiscordBoundaryDecision(True, "allowed")
+
+
 def _sanitize_discord_content(content: str) -> str:
     sanitized = _BEARER_SECRET_RE.sub("bearer [redacted]", content)
     sanitized = _SECRET_ASSIGNMENT_RE.sub(r"\1[redacted]", sanitized)
     sanitized = sanitized.replace("@everyone", f"@{_SAFE_MENTION_BREAK}everyone")
     sanitized = sanitized.replace("@here", f"@{_SAFE_MENTION_BREAK}here")
     return sanitized[:_DISCORD_CONTENT_LIMIT]
+
+
+def _sanitize_discord_thread_name(name: str) -> str:
+    sanitized = _sanitize_discord_content(name).replace("\n", " ").strip()
+    return sanitized[:100]
 
 
 def _bullet_list(label: str, values: Iterable[str]) -> str:
@@ -374,6 +432,7 @@ class LiveDiscordProjectionSink:
         api_base_url: str = "https://discord.com/api/v10",
         timeout_seconds: int = 15,
         boundary_policy: DiscordLiveBoundaryPolicy | None = None,
+        shared_thread_policy: SharedMeetingThreadProjectionPolicy | None = None,
         profile: str = "",
         guild_id: str = "",
     ) -> None:
@@ -382,6 +441,7 @@ class LiveDiscordProjectionSink:
         self.api_base_url = api_base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.boundary_policy = boundary_policy
+        self.shared_thread_policy = shared_thread_policy
         self.profile = profile
         self.guild_id = guild_id
 
@@ -399,7 +459,20 @@ class LiveDiscordProjectionSink:
                 error="live_http_client_required",
             )
         post_channel_id = event.target_thread_id or event.target_channel_id
-        if self.boundary_policy is not None:
+        if event.target_thread_id and self.shared_thread_policy is not None:
+            decision = self.shared_thread_policy.evaluate(
+                profile=self.profile,
+                guild_id=self.guild_id,
+                parent_channel_id=event.target_channel_id,
+                thread_id=event.target_thread_id,
+            )
+            if not decision.allowed:
+                return ProjectionPublishResult(
+                    event_id=event.event_id,
+                    status="blocked",
+                    error=decision.reason,
+                )
+        elif self.boundary_policy is not None:
             decision = self.boundary_policy.evaluate(
                 profile=self.profile,
                 guild_id=self.guild_id,
@@ -467,6 +540,100 @@ class LiveDiscordProjectionSink:
         )
 
 
+class LiveDiscordThreadManager:
+    """Create live Discord meeting threads through an injected HTTP client."""
+
+    def __init__(
+        self,
+        *,
+        env: Mapping[str, str] | None = None,
+        http_post: Callable[..., Mapping[str, Any]] | None = None,
+        api_base_url: str = "https://discord.com/api/v10",
+        timeout_seconds: int = 15,
+        boundary_policy: DiscordLiveBoundaryPolicy | None = None,
+        profile: str = "aicompanyceo",
+        guild_id: str = "",
+    ) -> None:
+        self.env = {} if env is None else env
+        self.http_post = http_post
+        self.api_base_url = api_base_url.rstrip("/")
+        self.timeout_seconds = timeout_seconds
+        self.boundary_policy = boundary_policy
+        self.profile = profile
+        self.guild_id = guild_id
+
+    def create_meeting_thread(
+        self,
+        *,
+        parent_channel_id: str,
+        name: str,
+        auto_archive_duration: int = 60,
+    ) -> ThreadCreateResult:
+        thread_name = _sanitize_discord_thread_name(name)
+        if not parent_channel_id.strip():
+            return ThreadCreateResult(
+                status="rejected", error="parent_channel_required"
+            )
+        if not thread_name:
+            return ThreadCreateResult(status="rejected", error="thread_name_required")
+        if self.http_post is None:
+            return ThreadCreateResult(
+                status="blocked", error="live_http_client_required"
+            )
+        if self.boundary_policy is not None:
+            decision = self.boundary_policy.evaluate(
+                profile=self.profile,
+                guild_id=self.guild_id,
+                channel_id=parent_channel_id,
+            )
+            if not decision.allowed:
+                return ThreadCreateResult(status="blocked", error=decision.reason)
+        token = self.env.get("DISCORD_BOT_TOKEN", "").strip()
+        if not token:
+            return ThreadCreateResult(
+                status="blocked", error="missing_discord_bot_token"
+            )
+        try:
+            response = self.http_post(
+                f"{self.api_base_url}/channels/{parent_channel_id}/threads",
+                headers={
+                    "Authorization": f"Bot {token}",
+                    "Content-Type": "application/json",
+                },
+                json_body={
+                    "name": thread_name,
+                    "type": 11,
+                    "auto_archive_duration": auto_archive_duration,
+                    "invitable": False,
+                },
+                timeout_seconds=self.timeout_seconds,
+            )
+        except Exception:
+            return ThreadCreateResult(status="failed", error="discord_http_exception")
+        if not isinstance(response, Mapping):
+            return ThreadCreateResult(
+                status="failed", error="discord_http_invalid_response"
+            )
+        try:
+            raw_status = response.get("status_code")
+            status_code = int(raw_status) if raw_status is not None else 0
+        except (TypeError, ValueError):
+            return ThreadCreateResult(
+                status="failed", error="discord_http_invalid_status"
+            )
+        if not 200 <= status_code < 300:
+            return ThreadCreateResult(
+                status="failed", error=f"discord_http_{status_code}"
+            )
+        payload = response.get("json") or {}
+        thread_id = str(payload.get("id") if isinstance(payload, Mapping) else "")
+        if not thread_id:
+            return ThreadCreateResult(
+                status="failed", error="discord_thread_id_missing"
+            )
+        return ThreadCreateResult(status="created", thread_id=thread_id)
+
+
 @dataclass(frozen=True)
 class HermesCommandSurfacePolicy:
     """Policy documenting that Phase 6 uses Hermes-native command ingress."""
@@ -502,7 +669,10 @@ __all__ = [
     "FakeDiscordProjectionSink",
     "HermesCommandSurfacePolicy",
     "LiveDiscordProjectionSink",
+    "LiveDiscordThreadManager",
     "ProjectionPublishResult",
+    "SharedMeetingThreadProjectionPolicy",
     "TeamBotTopology",
+    "ThreadCreateResult",
     "default_team_bot_topology",
 ]

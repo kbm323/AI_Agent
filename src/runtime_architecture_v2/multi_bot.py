@@ -22,6 +22,7 @@ from .projection import (
     FakeDiscordProjectionSink,
     LiveDiscordProjectionSink,
     ProjectionPublishResult,
+    SharedMeetingThreadProjectionPolicy,
     _default_discord_http_post,
     _sanitize_discord_content,
 )
@@ -222,9 +223,7 @@ class MultiBotPilotResult:
             "consensus_reached": self.session.consensus_reached,
             "escalation_required": self.session.escalation_required,
             "consensus_summary": self.session.consensus_summary,
-            "projection_statuses": [
-                r.status for r in self.projection_results
-            ],
+            "projection_statuses": [r.status for r in self.projection_results],
             "error": self.error,
             "ok": self.ok,
         }
@@ -284,8 +283,10 @@ def route_bot_projection(
     *,
     live_discord: bool = False,
     target_channel_id: str = "",
+    target_thread_id: str = "",
     env: Mapping[str, str] | None = None,
     discord_http_post: Callable[..., Mapping[str, object]] | None = None,
+    shared_thread_policy: SharedMeetingThreadProjectionPolicy | None = None,
 ) -> ProjectionPublishResult:
     """Route a BotMessage through the correct persona projection.
 
@@ -313,6 +314,7 @@ def route_bot_projection(
         meeting_run_id=message.meeting_run_id,
         bot_role=message.bot_role,
         target_channel_id=resolved_target_channel_id or "phase14-channel",
+        target_thread_id=target_thread_id,
         content=full,
         source="multi_bot_meeting",
         source_id=f"{message.bot_role}_r{message.round}",
@@ -323,6 +325,7 @@ def route_bot_projection(
             env=sink_env,
             http_post=discord_http_post or _default_discord_http_post,
             boundary_policy=boundary_policy,
+            shared_thread_policy=shared_thread_policy,
             profile=profile,
             guild_id=boundary_policy.guild_id,
         )
@@ -411,9 +414,7 @@ def run_meeting_phase(
                 )
             )
         meeting_rounds.append(
-            MeetingRound(
-                round_number=2, phase="rebuttals", messages=tuple(round2_msgs)
-            )
+            MeetingRound(round_number=2, phase="rebuttals", messages=tuple(round2_msgs))
         )
 
     # Consensus check — simple heuristic
@@ -470,9 +471,8 @@ def _build_phase14_worker_tasks(
             f"Phase 14 permits at most 2 live workers, got {live_worker_count}"
         )
     root = Path(root)
-    roles: tuple[str, ...] = (
-        getattr(route, "live_worker_roles", ())
-        + getattr(route, "fake_worker_roles", ())
+    roles: tuple[str, ...] = getattr(route, "live_worker_roles", ()) + getattr(
+        route, "fake_worker_roles", ()
     )
     if not roles:
         roles = ("content_lead", "marketing_lead", "quality_lead")
@@ -611,9 +611,7 @@ def run_phase14_multi_bot_pilot(
         session=session,
     )
 
-    all_ok = all(
-        task.state == WorkerTaskState.SUCCEEDED for task in completed_tasks
-    )
+    all_ok = all(task.state == WorkerTaskState.SUCCEEDED for task in completed_tasks)
 
     validation_verdicts = _build_phase13_validation_verdicts(run, completed_tasks)
     _validation_decision = ValidationPolicy().decide(
@@ -630,9 +628,7 @@ def run_phase14_multi_bot_pilot(
     run = replace(
         run,
         state=final_state,
-        validation_ids=tuple(
-            verdict.validation_id for verdict in validation_verdicts
-        ),
+        validation_ids=tuple(verdict.validation_id for verdict in validation_verdicts),
     )
 
     # Produce projections for all visible bot messages
@@ -835,7 +831,13 @@ def _live_bot_content(
 
     try:
         result = command_runner(
-            ["opencode-go", "--model", str(policy.get("preferred", policy.get("primary_model", "glm-5.1"))), "--prompt", prompt],
+            [
+                "opencode-go",
+                "--model",
+                str(policy.get("preferred", policy.get("primary_model", "glm-5.1"))),
+                "--prompt",
+                prompt,
+            ],
             timeout_seconds=300,
             workdir=workdir,
         )

@@ -17,6 +17,11 @@ from src.runtime_architecture_v2.multi_bot import (
     run_phase14_multi_bot_pilot,
 )
 from src.runtime_architecture_v2.pilot import Phase13PilotModeError
+from src.runtime_architecture_v2.projection import (
+    DiscordLiveBoundaryPolicy,
+    LiveDiscordThreadManager,
+    SharedMeetingThreadProjectionPolicy,
+)
 from src.runtime_architecture_v2.schemas import (
     MeetingRunState,
 )
@@ -69,13 +74,15 @@ def test_meeting_round_holds_multiple_bot_messages():
 
 
 def test_multi_bot_session_consensus_state_tracking():
-    msgs = (BotMessage(
+    msgs = (
+        BotMessage(
             bot_role="content_lead",
             meeting_run_id="mr_test",
             round=1,
             msg_type="opinion",
             content="의견",
-        ),)
+        ),
+    )
     rounds = (MeetingRound(round_number=1, phase="opinions", messages=msgs),)
     session = MultiBotSession(
         meeting_run_id="mr_test",
@@ -237,16 +244,19 @@ def test_route_bot_projection_live_discord_without_token(tmp_path: Path):
     assert result.status == "blocked"
 
 
-def test_phase14_profile_env_loader_reads_only_discord_token(tmp_path: Path, monkeypatch):
+def test_phase14_profile_env_loader_reads_only_discord_token(
+    tmp_path: Path, monkeypatch
+):
     fake_home = tmp_path / "home"
     profile_dir = fake_home / ".hermes" / "profiles" / "aicompanycontent"
     profile_dir.mkdir(parents=True)
     (profile_dir / ".env").write_text(
-        "DISCORD_BOT_TOKEN=bot-token-123\n"
-        "OPENCODE_GO_API_KEY=must-not-load\n",
+        "DISCORD_BOT_TOKEN=bot-token-123\nOPENCODE_GO_API_KEY=must-not-load\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr("src.runtime_architecture_v2.multi_bot.Path.home", lambda: fake_home)
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.multi_bot.Path.home", lambda: fake_home
+    )
 
     env = _discord_env_for_profile("aicompanycontent")
 
@@ -291,7 +301,10 @@ def test_route_bot_projection_profile_home_routes_to_verified_channel():
         live_discord=True,
         target_channel_id="profile-home",
         env={"DISCORD_BOT_TOKEN": "token-from-env"},
-        discord_http_post=lambda *args, **kwargs: calls.append((args, kwargs)) or {"status_code": 200, "json": {"id": "posted-1"}},
+        discord_http_post=lambda *args, **kwargs: (
+            calls.append((args, kwargs))
+            or {"status_code": 200, "json": {"id": "posted-1"}}
+        ),
     )
 
     assert result.status == "published"
@@ -340,8 +353,7 @@ def test_route_bot_projection_env_none_loads_only_profile_discord_token(
     profile_dir = fake_home / ".hermes" / "profiles" / "aicompanycontent"
     profile_dir.mkdir(parents=True)
     (profile_dir / ".env").write_text(
-        "DISCORD_BOT_TOKEN=bot-token-123\n"
-        "OPENCODE_GO_API_KEY=must-not-leak\n",
+        "DISCORD_BOT_TOKEN=bot-token-123\nOPENCODE_GO_API_KEY=must-not-leak\n",
         encoding="utf-8",
     )
     calls = []
@@ -350,7 +362,9 @@ def test_route_bot_projection_env_none_loads_only_profile_discord_token(
         calls.append((args, kwargs))
         return {"status_code": 200, "json": {"id": "posted-profile-env"}}
 
-    monkeypatch.setattr("src.runtime_architecture_v2.multi_bot.Path.home", lambda: fake_home)
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.multi_bot.Path.home", lambda: fake_home
+    )
     monkeypatch.setattr(
         "src.runtime_architecture_v2.multi_bot._default_discord_http_post",
         fake_default_http_post,
@@ -376,6 +390,71 @@ def test_route_bot_projection_env_none_loads_only_profile_discord_token(
     _args, kwargs = calls[0]
     assert kwargs["headers"]["Authorization"] == "Bot bot-token-123"
     assert "must-not-leak" not in str(kwargs)
+
+
+def test_live_discord_thread_manager_creates_public_thread_without_ping_parse():
+    calls = []
+
+    def fake_http_post(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {"status_code": 201, "json": {"id": "thread-123"}}
+
+    manager = LiveDiscordThreadManager(
+        env={"DISCORD_BOT_TOKEN": "ceo-token"},
+        http_post=fake_http_post,
+    )
+
+    result = manager.create_meeting_thread(
+        parent_channel_id="1505600167221526621",
+        name="LG 트윈스 갤러리 회의",
+    )
+
+    assert result.status == "created"
+    assert result.thread_id == "thread-123"
+    assert calls
+    args, kwargs = calls[0]
+    assert args[0].endswith("/channels/1505600167221526621/threads")
+    assert kwargs["json_body"]["name"] == "LG 트윈스 갤러리 회의"
+    assert kwargs["json_body"]["type"] == 11
+    assert kwargs["json_body"]["invitable"] is False
+    assert kwargs["headers"]["Authorization"] == "Bot ceo-token"
+
+
+def test_route_bot_projection_to_shared_meeting_thread_uses_role_profile_token():
+    calls = []
+    policy = SharedMeetingThreadProjectionPolicy(
+        boundary_policy=DiscordLiveBoundaryPolicy.current_verified(),
+        parent_channel_id="1505600167221526621",
+        thread_id="thread-123",
+    )
+    msg = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_shared_thread",
+        round=1,
+        msg_type="opinion",
+        content="콘텐츠팀장 의견입니다.",
+    )
+
+    result = route_bot_projection(
+        msg,
+        live_discord=True,
+        target_channel_id="1505600167221526621",
+        target_thread_id="thread-123",
+        env={"DISCORD_BOT_TOKEN": "content-token"},
+        shared_thread_policy=policy,
+        discord_http_post=lambda *args, **kwargs: (
+            calls.append((args, kwargs))
+            or {"status_code": 200, "json": {"id": "message-1"}}
+        ),
+    )
+
+    assert result.status == "published"
+    assert result.discord_message_id == "message-1"
+    assert calls
+    args, kwargs = calls[0]
+    assert args[0].endswith("/channels/thread-123/messages")
+    assert kwargs["headers"]["Authorization"] == "Bot content-token"
+    assert "[콘텐츠 팀장]" in kwargs["json_body"]["content"]
 
 
 # ── Pilot Dry-run Tests ─────────────────────────────────────────────────
@@ -466,7 +545,9 @@ def test_phase14_live_worker_mode_with_injected_runner(tmp_path: Path):
     assert result.live_worker_count == 2
     assert result.fake_worker_count == 1
     assert len(calls) >= 1
-    assert {call[2] for call in calls if len(call) >= 3 and call[1] == "--model"} == {"qwen3.7-max"}
+    assert {call[2] for call in calls if len(call) >= 3 and call[1] == "--model"} == {
+        "qwen3.7-max"
+    }
     policies = {task.role: task.model_policy for task in result.worker_tasks}
     assert policies["content_lead"]["role_id"] == "content-director"
     assert policies["content_lead"]["projection_profile"] == "aicompanycontent"
