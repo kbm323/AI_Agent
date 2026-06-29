@@ -18,9 +18,10 @@ from pathlib import Path
 from typing import Any
 
 from src.append_only_log import AppendOnlyDecisionLog
-from src.meeting_orchestration_pipeline import (
-    MeetingPipelineRequest,
-    process_meeting_request,
+from src.runtime_architecture_v2.gateway_bridge import (
+    GatewayMeetingTrigger,
+    GatewayMeetingResult,
+    run_meeting_from_gateway,
 )
 from src.openclaw_approval import OpenClawAction, evaluate_hitl_approval
 from src.openclaw_execution_mode import decide_execution_mode
@@ -95,11 +96,12 @@ def run_runtime_smoke_packet(
     try:
         queue = PriorityMeetingQueue(max_concurrent=1)
         decision_log = AppendOnlyDecisionLog()
-        pipeline_result = process_meeting_request(
-            _request_from_discord_payload(payload),
-            queue=queue,
-            decision_log=decision_log,
-            meetings_root=config.meetings_root,
+        trigger = _request_trigger_from_discord_payload(payload)
+        pipeline_result = run_meeting_from_gateway(
+            trigger,
+            root=config.meetings_root,
+            live_discord=False,
+            create_thread=False,
         )
     except Exception:  # pragma: no cover - defensive boundary
         return RuntimeSmokeResult(
@@ -108,25 +110,23 @@ def run_runtime_smoke_packet(
             error="smoke_pipeline_error",
         )
 
-    if not pipeline_result.success or pipeline_result.delivery_plan is None:
+    if not pipeline_result.success:
         return RuntimeSmokeResult(
             success=False,
             stage="meeting_pipeline",
             error=pipeline_result.error or "meeting pipeline failed",
         )
 
-    meeting_id = (
-        pipeline_result.queued_item.meeting_id if pipeline_result.queued_item else ""
-    )
+    meeting_id = pipeline_result.meeting_run_id
 
     try:
         thread_receipt = dependencies.post_thread(
-            pipeline_result.delivery_plan.primary.thread_id,
-            pipeline_result.delivery_plan.primary.content,
+            pipeline_result.thread_id,
+            pipeline_result.summary,
         )
         cross_receipt = dependencies.cross_post(
-            pipeline_result.delivery_plan.cross_post.channel_id,
-            pipeline_result.delivery_plan.cross_post.content,
+            "",
+            pipeline_result.summary,
         )
     except Exception as exc:
         return RuntimeSmokeResult(
@@ -253,17 +253,14 @@ def run_runtime_smoke_packet(
     )
 
 
-def _request_from_discord_payload(payload: dict[str, Any]) -> MeetingPipelineRequest:
+def _request_trigger_from_discord_payload(payload: dict[str, Any]) -> GatewayMeetingTrigger:
     channel_id = str(payload.get("channel_id") or "")
-    return MeetingPipelineRequest(
+    return GatewayMeetingTrigger(
         text=_extract_option(payload, "topic") or _extract_option(payload, "text"),
         user_id=_extract_user_id(payload),
         channel_id=channel_id,
-        thread_id=str(payload.get("thread_id") or channel_id),
         guild_id=str(payload.get("guild_id") or ""),
-        result_channel_id=_extract_option(payload, "result_channel_id") or channel_id,
-        created_at=_created_at_from_payload(payload),
-        force_meeting_intent=_is_meeting_slash_command(payload),
+        thread_id=str(payload.get("thread_id") or channel_id),
     )
 
 

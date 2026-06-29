@@ -1,104 +1,71 @@
-"""Discord slash-command bridge into the meeting orchestration pipeline.
+"""Discord meeting bridge — wired into Runtime Architecture v2.
 
-This adapter is still pure and testable: it receives a parsed Discord
-interaction payload from ``handler_router``, calls the integrated meeting
-pipeline, and returns a Discord interaction response dict.  Live HTTP posting
-is handled by outer Discord infrastructure.
+This adapter receives Discord interaction payloads (slash commands or mention
+triggers) and routes them into the unified Runtime Architecture v2 pipeline
+via ``gateway_bridge``.
+
+Old pipeline (meeting_orchestration_pipeline / meeting_creation_dispatcher) is
+deprecated.  All new meeting flows go through this single bridge.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from src.append_only_log import AppendOnlyDecisionLog
-from src.handler_router import HandlerRegistry, create_default_registry
-from src.knowledge_retrieval_service import KnowledgeItem
-from src.meeting_creation_dispatcher import OrchestratorCallable
-from src.meeting_orchestration_pipeline import (
-    MeetingPipelineRequest,
-    process_meeting_request,
+from src.runtime_architecture_v2.gateway_bridge import (
+    GatewayMeetingResult,
+    GatewayMeetingTrigger,
+    run_meeting_from_gateway,
 )
-from src.meeting_trigger import MeetingConfig
-from src.priority_queue import PriorityMeetingQueue
 
 CHANNEL_MESSAGE_WITH_SOURCE = 4
 EPHEMERAL = 64
 
 
-def build_meeting_handler(
-    *,
-    queue: PriorityMeetingQueue,
-    knowledge_items: tuple[KnowledgeItem, ...] = (),
-    decision_log: AppendOnlyDecisionLog | None = None,
-    meetings_root: str | None = None,
-    config: MeetingConfig | None = None,
-    orchestrator: OrchestratorCallable | None = None,
-):
-    """Build a Discord handler callable for the ``/meeting`` command."""
+def handle_discord_meeting_request(payload: dict[str, Any]) -> dict[str, Any]:
+    """Handle a meeting request from Discord (slash command or mention).
 
-    def handle(payload: dict[str, Any]) -> dict[str, Any]:
-        topic = _extract_option(payload, "topic") or _extract_option(payload, "text")
-        if not topic or not topic.strip():
-            return _ephemeral_error("회의 주제가 비어 있습니다. /meeting topic:<주제> 형식으로 요청해 주세요.")
-
-        channel_id = str(payload.get("channel_id") or "")
-        thread_id = str(payload.get("thread_id") or channel_id)
-        result_channel_id = _extract_option(payload, "result_channel_id") or channel_id
-        request = MeetingPipelineRequest(
-            text=topic,
-            user_id=_extract_user_id(payload),
-            channel_id=channel_id,
-            thread_id=thread_id,
-            guild_id=str(payload.get("guild_id") or ""),
-            result_channel_id=result_channel_id,
-            created_at=_created_at_from_payload(payload),
-            force_meeting_intent=True,
+    Returns a Discord interaction response dict.
+    """
+    topic = _extract_option(payload, "topic") or _extract_option(payload, "text")
+    if not topic or not topic.strip():
+        return _ephemeral_error(
+            "회의 주제가 비어 있습니다. /meeting topic:<주제> 형식으로 요청해 주세요."
         )
-        result = process_meeting_request(
-            request,
-            queue=queue,
-            knowledge_items=knowledge_items,
-            decision_log=decision_log,
-            meetings_root=meetings_root,
-            config=config,
-            orchestrator=orchestrator,
-        )
-        if not result.success:
-            return _ephemeral_error(result.error or "회의 생성에 실패했습니다.")
 
-        assert result.delivery_plan is not None
-        assert result.queued_item is not None
-        status = "즉시 시작" if result.queued_item.meeting_id in queue.running_ids else "대기열 등록"
-        content = f"{result.delivery_plan.primary.content}\n상태: {status}\n회의 ID: {result.queued_item.meeting_id}"
-        return {"type": CHANNEL_MESSAGE_WITH_SOURCE, "data": {"content": content}}
+    channel_id = str(payload.get("channel_id") or "")
+    user_id = _extract_user_id(payload)
+    guild_id = str(payload.get("guild_id") or "1505600166676271244")
+    thread_id = str(payload.get("thread_id") or channel_id)
+    force_meeting = _extract_option(payload, "force_meeting") or "true"
 
-    return handle
+    if force_meeting.lower() not in ("true", "1", "yes"):
+        return _deferred_response("회의 의도를 감지하지 못했습니다.")
 
-
-def build_meeting_registry(
-    *,
-    queue: PriorityMeetingQueue,
-    knowledge_items: tuple[KnowledgeItem, ...] = (),
-    decision_log: AppendOnlyDecisionLog | None = None,
-    meetings_root: str | None = None,
-    config: MeetingConfig | None = None,
-    orchestrator: OrchestratorCallable | None = None,
-) -> HandlerRegistry:
-    """Create the default Discord registry with the meeting handler wired in."""
-
-    registry = create_default_registry()
-    registry.register(
-        "meeting",
-        build_meeting_handler(
-            queue=queue,
-            knowledge_items=knowledge_items,
-            decision_log=decision_log,
-            meetings_root=meetings_root,
-            config=config,
-            orchestrator=orchestrator,
-        ),
+    trigger = GatewayMeetingTrigger(
+        text=topic,
+        user_id=user_id,
+        channel_id=channel_id,
+        guild_id=guild_id,
+        thread_id=thread_id,
     )
-    return registry
+
+    result: GatewayMeetingResult = run_meeting_from_gateway(
+        trigger,
+        live_discord=True,
+        create_thread=True,
+    )
+
+    if not result.success:
+        return {
+            "type": CHANNEL_MESSAGE_WITH_SOURCE,
+            "data": {"content": f"❌ 회의 실행 실패: {result.error}"},
+        }
+
+    return {
+        "type": CHANNEL_MESSAGE_WITH_SOURCE,
+        "data": {"content": result.summary},
+    }
 
 
 def _extract_option(payload: dict[str, Any], name: str) -> str:
@@ -127,13 +94,6 @@ def _extract_user_id(payload: dict[str, Any]) -> str:
     return "unknown-user"
 
 
-def _created_at_from_payload(payload: dict[str, Any]) -> int:
-    raw = payload.get("id")
-    if isinstance(raw, str) and raw.isdigit():
-        return int(raw)
-    return 0
-
-
 def _ephemeral_error(message: str) -> dict[str, Any]:
     return {
         "type": CHANNEL_MESSAGE_WITH_SOURCE,
@@ -141,4 +101,8 @@ def _ephemeral_error(message: str) -> dict[str, Any]:
     }
 
 
-__all__ = ["build_meeting_handler", "build_meeting_registry"]
+def _deferred_response(message: str) -> dict[str, Any]:
+    return {
+        "type": CHANNEL_MESSAGE_WITH_SOURCE,
+        "data": {"content": message},
+    }
