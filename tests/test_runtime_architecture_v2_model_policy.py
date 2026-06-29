@@ -53,6 +53,24 @@ def test_every_policy_exposes_worker_model_fields() -> None:
         assert as_dict["projection_profile"] == policy.projection_profile
 
 
+def test_runtime_worker_policies_do_not_select_unsupported_deepseek_v3() -> None:
+    policies = load_role_model_policies(RULES_PATH)
+
+    unsupported = {
+        role_id: policy.to_worker_model_policy()
+        for role_id, policy in policies.items()
+        if policy.primary_model == "deepseek-v3"
+        or "deepseek-v3" in policy.fallback_chain
+    }
+
+    assert unsupported == {}
+
+
+def test_legacy_meeting_roles_use_supported_live_models() -> None:
+    assert get_role_model_policy("ceo_coordinator", path=RULES_PATH).primary_model == "deepseek-v4-pro"
+    assert get_role_model_policy("tech_lead", path=RULES_PATH).primary_model == "deepseek-v4-pro"
+
+
 def test_projection_profiles_keep_29_roles_behind_7_discord_profiles() -> None:
     assert projection_profile_for_role("content-director", path=RULES_PATH) == "aicompanycontent"
     assert projection_profile_for_role("scriptwriter", path=RULES_PATH) == "aicompanycontent"

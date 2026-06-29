@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import importlib
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -124,6 +125,9 @@ OpenCodeGoCommandRunner = Callable[..., object]
 
 
 def _prompt_for_task(task: WorkerTask) -> str:
+    custom_prompt = str(task.hermes_refs.get("prompt") or "").strip()
+    if custom_prompt:
+        return custom_prompt
     return (
         f"Execute Runtime Architecture v2 worker task {task.worker_task_id} "
         f"as role {task.role}. Return structured JSON."
@@ -168,8 +172,19 @@ def _default_hermes_provider_completion(
 
     started = time.monotonic()
     hermes_root = Path.home() / ".hermes" / "hermes-agent"
-    if hermes_root.is_dir() and str(hermes_root) not in sys.path:
-        sys.path.insert(0, str(hermes_root))
+    hermes_python = _hermes_runtime_python(hermes_root)
+    if hermes_python is not None and hermes_python.resolve() != Path(sys.executable).resolve():
+        return _run_hermes_provider_completion_subprocess(
+            hermes_python=hermes_python,
+            hermes_root=hermes_root,
+            provider=provider,
+            model=model,
+            prompt=prompt,
+            timeout_seconds=timeout_seconds,
+            started=started,
+        )
+
+    _ensure_hermes_runtime_import_paths(hermes_root)
 
     try:
         resolve_runtime_provider = importlib.import_module(
@@ -264,13 +279,22 @@ class HermesProviderWorkerRunner:
     def collect(self, task: WorkerTask) -> WorkerTask:
         _require_running(task)
         prompt = _prompt_for_task(task)
-        model = str(task.model_policy.get("preferred") or self.model)
-        result = self.completion_runner(
-            self.provider,
-            model,
-            prompt,
-            self.timeout_seconds,
-        )
+        provider = str(task.model_policy.get("provider") or self.provider)
+        models = _model_attempts(task.model_policy, default_model=self.model)
+        attempted_models: list[str] = []
+        results: list[HermesProviderRunResult] = []
+        for model in models:
+            attempted_models.append(model)
+            result = self.completion_runner(
+                provider,
+                model,
+                prompt,
+                self.timeout_seconds,
+            )
+            results.append(result)
+            if _state_for_provider_result(result) == WorkerTaskState.SUCCEEDED:
+                break
+        result = results[-1]
         output_path = Path(task.output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         state = _state_for_provider_result(result)
@@ -285,11 +309,12 @@ class HermesProviderWorkerRunner:
             "status": result.status,
             "runner": "hermes_provider",
             "provider": result.provider,
-            "model": result.model or model,
+            "model": result.model or attempted_models[-1],
+            "attempted_models": attempted_models,
             "content": sanitize_worker_output(result.content),
             "error": sanitized_error,
             "duration_seconds": result.duration_seconds,
-            "api_calls": result.api_calls,
+            "api_calls": sum(r.api_calls for r in results),
             "completed": result.completed,
             "timed_out": result.timed_out,
         }
@@ -304,6 +329,182 @@ class HermesProviderWorkerRunner:
 # Compatibility name during the cleanup phase.  The implementation is Hermes-first;
 # it no longer executes opencode-go via subprocess.
 OpenCodeGoWorkerRunner = HermesProviderWorkerRunner
+
+
+def _ensure_hermes_runtime_import_paths(hermes_root: Path) -> None:
+    """Expose Hermes source and bundled venv deps when called from repo Python."""
+
+    paths: list[Path] = []
+    if hermes_root.is_dir():
+        paths.append(hermes_root)
+        paths.extend(sorted(hermes_root.glob("venv/lib/python*/site-packages")))
+        paths.extend(sorted(hermes_root.glob("venv/lib/python*/dist-packages")))
+    for path in reversed(paths):
+        text = str(path)
+        if text not in sys.path:
+            sys.path.insert(0, text)
+
+
+def _hermes_runtime_python(hermes_root: Path) -> Path | None:
+    """Return Hermes' own Python interpreter when its bundled venv exists."""
+
+    for candidate in (
+        hermes_root / "venv" / "bin" / "python",
+        hermes_root / "venv" / "bin" / "python3",
+    ):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _run_hermes_provider_completion_subprocess(
+    *,
+    hermes_python: Path,
+    hermes_root: Path,
+    provider: str,
+    model: str,
+    prompt: str,
+    timeout_seconds: int,
+    started: float,
+) -> HermesProviderRunResult:
+    """Call Hermes provider runtime in its venv to avoid ABI dependency skew."""
+
+    child_code = r'''
+import json
+import sys
+
+data = json.loads(sys.stdin.read())
+sys.path.insert(0, data["hermes_root"])
+
+try:
+    from hermes_cli.runtime_provider import resolve_runtime_provider
+    from run_agent import AIAgent
+
+    runtime = resolve_runtime_provider(
+        requested=data["provider"],
+        target_model=data["model"],
+    )
+    agent = AIAgent(
+        provider=runtime["provider"],
+        api_mode=runtime["api_mode"],
+        base_url=runtime["base_url"],
+        api_key=runtime["api_key"],
+        model=data["model"],
+        enabled_toolsets=[],
+        disabled_toolsets=["*"],
+        max_iterations=1,
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+    )
+    result = agent.run_conversation(
+        data["prompt"],
+        system_message=(
+            "You are a single AI_Agent worker role. Do not call tools. "
+            "Return only the role output requested by the prompt."
+        ),
+        conversation_history=[],
+    )
+    content = str(result.get("final_response") or "").strip()
+    completed = bool(result.get("completed")) and bool(content)
+    print(json.dumps({
+        "status": "succeeded" if completed else "failed",
+        "content": content,
+        "provider": str(result.get("provider") or runtime["provider"]),
+        "model": str(result.get("model") or data["model"]),
+        "error": "" if completed else "hermes_provider_empty_response",
+        "api_calls": int(result.get("api_calls") or 0),
+        "completed": completed,
+    }, ensure_ascii=False))
+except Exception as exc:
+    print(json.dumps({
+        "status": "failed",
+        "provider": data["provider"],
+        "model": data["model"],
+        "error": f"hermes_provider_error: {exc}",
+        "completed": False,
+    }, ensure_ascii=False))
+'''
+    payload = json.dumps(
+        {
+            "hermes_root": str(hermes_root),
+            "provider": provider,
+            "model": model,
+            "prompt": prompt,
+        },
+        ensure_ascii=False,
+    )
+    try:
+        completed = subprocess.run(
+            [str(hermes_python), "-c", child_code],
+            input=payload,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds + 30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return HermesProviderRunResult(
+            status="timed_out",
+            provider=provider,
+            model=model,
+            error=f"hermes_provider_timeout: {exc}",
+            duration_seconds=round(time.monotonic() - started, 4),
+            timed_out=True,
+        )
+
+    try:
+        response = json.loads(completed.stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError):
+        return HermesProviderRunResult(
+            status="failed",
+            provider=provider,
+            model=model,
+            error="hermes_provider_error: invalid subprocess response",
+            duration_seconds=round(time.monotonic() - started, 4),
+        )
+
+    status = str(response.get("status") or "failed")
+    if completed.returncode != 0 and status == "succeeded":
+        status = "failed"
+    return HermesProviderRunResult(
+        status=status,
+        content=str(response.get("content") or ""),
+        provider=str(response.get("provider") or provider),
+        model=str(response.get("model") or model),
+        error=str(response.get("error") or ""),
+        duration_seconds=round(time.monotonic() - started, 4),
+        api_calls=int(response.get("api_calls") or 0),
+        completed=bool(response.get("completed")) and status == "succeeded",
+    )
+
+
+def _model_attempts(
+    model_policy: dict[str, object],
+    *,
+    default_model: str,
+) -> list[str]:
+    """Return primary plus fallback models, deduplicated in execution order."""
+
+    primary = str(
+        model_policy.get("preferred")
+        or model_policy.get("primary_model")
+        or default_model
+    ).strip()
+    raw_fallbacks = model_policy.get("fallback_chain") or []
+    if isinstance(raw_fallbacks, str):
+        fallback_values = [raw_fallbacks]
+    else:
+        try:
+            fallback_values = list(raw_fallbacks)  # type: ignore[arg-type]
+        except TypeError:
+            fallback_values = []
+
+    attempts: list[str] = []
+    for candidate in [primary, *[str(value).strip() for value in fallback_values]]:
+        if candidate and candidate not in attempts:
+            attempts.append(candidate)
+    return attempts or [default_model]
 
 
 def _legacy_command_runner_adapter(

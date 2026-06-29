@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import src.runtime_architecture_v2.multi_bot as multi_bot_module
 from src.runtime_architecture_v2.multi_bot import (
     BOT_PERSONAS,
     BotMessage,
@@ -24,6 +25,7 @@ from src.runtime_architecture_v2.projection import (
 )
 from src.runtime_architecture_v2.schemas import (
     MeetingRunState,
+    WorkerTaskState,
 )
 from src.runtime_architecture_v2.workers import OpenCodeGoRunResult
 
@@ -154,6 +156,64 @@ def test_meeting_phase_with_one_live_bot(tmp_path: Path):
 
     assert len(session.rounds) == 2
     assert len(calls) >= 2  # opinion + rebuttal for live bot
+
+
+def test_meeting_phase_live_bot_uses_trigger_text_in_hermes_prompt(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from src.runtime_architecture_v2.pilot import create_phase13_meeting_run
+
+    prompts: list[str] = []
+
+    class CapturingRunner:
+        def __init__(self, **kwargs):
+            pass
+
+        def dispatch(self, task):
+            prompts.append(task.hermes_refs["prompt"])
+            return task.__class__.from_dict({**task.to_dict(), "state": "running"})
+
+        def collect(self, task):
+            Path(task.output_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(task.output_path).write_text(
+                json.dumps(
+                    {
+                        "status": "succeeded",
+                        "content": "정보 쇼츠 안건을 반영한 콘텐츠 의견입니다.",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            return task.__class__.from_dict(
+                {**task.to_dict(), "state": WorkerTaskState.SUCCEEDED}
+            )
+
+    monkeypatch.setattr(multi_bot_module, "OpenCodeGoWorkerRunner", CapturingRunner)
+    run = create_phase13_meeting_run(
+        tmp_path,
+        {
+            "pilot_id": "phase14_test",
+            "trigger_text": "정보 쇼츠 유튜브 콘텐츠 회의",
+            "user_id": "u",
+            "channel_id": "c",
+            "thread_id": "",
+        },
+    )
+
+    session = run_meeting_phase(
+        run,
+        participants=("content_lead",),
+        rounds=1,
+        live_bot_roles=("content_lead",),
+        fake_bot_roles=(),
+        command_runner=None,
+        workdir=str(tmp_path),
+    )
+
+    assert "정보 쇼츠 유튜브 콘텐츠 회의" in prompts[0]
+    assert session.rounds[0].messages[0].content == "정보 쇼츠 안건을 반영한 콘텐츠 의견입니다."
 
 
 def test_meeting_phase_rejects_no_participants(tmp_path: Path):
@@ -687,6 +747,16 @@ def test_phase14_pilot_request_is_stable():
     assert request["live_bot_roles"] == ["content_lead", "marketing_lead"]
     assert request["fake_bot_roles"] == ["quality_lead"]
     assert "openclaw" not in json.dumps(request, ensure_ascii=False).lower()
+
+
+def test_phase14_gateway_trigger_text_overrides_static_pilot_request(tmp_path: Path):
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="dry-run",
+        trigger_text="정보 쇼츠 유튜브 콘텐츠 회의",
+    )
+
+    assert result.meeting_run.trigger["text"] == "정보 쇼츠 유튜브 콘텐츠 회의"
 
 
 # ── CLI Tests ───────────────────────────────────────────────────────────

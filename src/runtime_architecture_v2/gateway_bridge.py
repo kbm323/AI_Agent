@@ -164,6 +164,7 @@ def run_meeting_from_gateway(
             target_thread_id=trigger.thread_id,
             create_meeting_thread=create_thread,
             thread_name=thread_name,
+            trigger_text=trigger.text,
             discord_http_post=post,
             live_bot_roles_override=bot_roles,
             fake_bot_roles_override=(),

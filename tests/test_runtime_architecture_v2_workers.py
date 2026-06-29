@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from src.runtime_architecture_v2.schemas import (
@@ -13,6 +14,9 @@ from src.runtime_architecture_v2.workers import (
     HermesProviderRunResult,
     HermesProviderWorkerRunner,
     WorkerRunError,
+    _ensure_hermes_runtime_import_paths,
+    _hermes_runtime_python,
+    _prompt_for_task,
 )
 
 
@@ -132,6 +136,87 @@ def test_hermes_provider_worker_runner_dispatches_packet_and_collects_via_inject
     assert output["runner"] == "hermes_provider"
     assert output["provider"] == "opencode-go"
     assert output["api_calls"] == 1
+
+
+def test_worker_task_custom_prompt_overrides_generic_role_prompt(tmp_path: Path):
+    task = WorkerTask.from_dict(
+        {
+            **_task(tmp_path, "wt_custom_prompt").to_dict(),
+            "hermes_refs": {"prompt": "회의 안건: 정보 쇼츠 유튜브 콘텐츠"},
+        }
+    )
+
+    assert _prompt_for_task(task) == "회의 안건: 정보 쇼츠 유튜브 콘텐츠"
+
+
+def test_hermes_provider_worker_runner_uses_fallback_chain_after_failed_primary(
+    tmp_path: Path,
+):
+    calls = []
+
+    def completion_runner(provider: str, model: str, prompt: str, timeout_seconds: int):
+        calls.append(model)
+        if model == "unsupported-primary":
+            return HermesProviderRunResult(
+                status="failed",
+                provider=provider,
+                model=model,
+                error="Model unsupported-primary is not supported",
+                completed=False,
+            )
+        return HermesProviderRunResult(
+            status="succeeded",
+            content='{"status":"ok after fallback"}',
+            provider=provider,
+            model=model,
+            duration_seconds=0.25,
+            api_calls=1,
+            completed=True,
+        )
+
+    task = WorkerTask.from_dict(
+        {
+            **_task(tmp_path, "wt_fallback").to_dict(),
+            "model_policy": {
+                "preferred": "unsupported-primary",
+                "fallback_chain": ["supported-fallback"],
+            },
+        }
+    )
+    runner = HermesProviderWorkerRunner(completion_runner=completion_runner)
+
+    collected = runner.collect(runner.dispatch(task))
+
+    assert calls == ["unsupported-primary", "supported-fallback"]
+    assert collected.state == WorkerTaskState.SUCCEEDED
+    assert collected.error == ""
+    output = json.loads(Path(collected.output_path).read_text(encoding="utf-8"))
+    assert output["model"] == "supported-fallback"
+    assert output["attempted_models"] == ["unsupported-primary", "supported-fallback"]
+
+
+def test_hermes_provider_worker_runner_adds_hermes_venv_dependencies_to_import_path(
+    tmp_path: Path,
+    monkeypatch,
+):
+    hermes_root = tmp_path / "hermes-agent"
+    site_packages = hermes_root / "venv" / "lib" / "python3.11" / "site-packages"
+    site_packages.mkdir(parents=True)
+    monkeypatch.setattr(sys, "path", [])
+
+    _ensure_hermes_runtime_import_paths(hermes_root)
+
+    assert str(hermes_root) in sys.path
+    assert str(site_packages) in sys.path
+
+
+def test_hermes_provider_worker_runner_finds_hermes_venv_python(tmp_path: Path):
+    hermes_root = tmp_path / "hermes-agent"
+    python_bin = hermes_root / "venv" / "bin" / "python"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.write_text("", encoding="utf-8")
+
+    assert _hermes_runtime_python(hermes_root) == python_bin
 
 
 def test_hermes_provider_worker_runner_returns_structured_timeout_without_crashing(

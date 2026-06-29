@@ -57,7 +57,7 @@ roles:
     model:
       provider: opencode-go
       name: qwen-max
-      fallback: deepseek-v3
+      fallback: deepseek-v4-pro
     expertise_tags:
       - creative_direction
     description: "Content team leader"
@@ -70,7 +70,7 @@ roles:
     model:
       provider: opencode-go
       name: qwen-max
-      fallback: deepseek-v3
+      fallback: deepseek-v4-pro
     expertise_tags:
       - scriptwriting
     description: "Writes scripts"
@@ -84,7 +84,7 @@ roles:
     model:
       provider: opencode-go
       name: qwen-max
-      fallback: deepseek-v3
+      fallback: deepseek-v4-pro
     expertise_tags:
       - visual_direction
     description: "Art team leader"
@@ -97,7 +97,7 @@ roles:
     model:
       provider: opencode-go
       name: qwen-max
-      fallback: deepseek-v3
+      fallback: deepseek-v4-pro
     expertise_tags:
       - character_design
     description: "Character designer"
@@ -110,7 +110,7 @@ roles:
     discord_name: "⚙️ TechDirector"
     model:
       provider: opencode-go
-      name: deepseek-v3
+      name: deepseek-v4-pro
       fallback: qwen-max
     expertise_tags:
       - technical_architecture
@@ -123,7 +123,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: deepseek-v3
+      name: deepseek-v4-pro
       fallback: qwen-max
     expertise_tags:
       - backend
@@ -138,7 +138,7 @@ roles:
     model:
       provider: opencode-go
       name: qwen-max
-      fallback: deepseek-v3
+      fallback: deepseek-v4-pro
     expertise_tags:
       - marketing_strategy
     description: "Marketing team leader"
@@ -151,7 +151,7 @@ roles:
     model:
       provider: opencode-go
       name: qwen-max
-      fallback: deepseek-v3
+      fallback: deepseek-v4-pro
     expertise_tags:
       - brand_strategy
     description: "Brand strategist"
@@ -178,7 +178,7 @@ roles:
     model:
       provider: opencode-go
       name: glm-5.1
-      fallback: deepseek-v3
+      fallback: deepseek-v4-pro
     expertise_tags:
       - legal_review
     description: "Legal reviewer"
@@ -191,7 +191,7 @@ roles:
     discord_name: "🛠️ ExecutionLead"
     model:
       provider: opencode-go
-      name: deepseek-v3
+      name: deepseek-v4-pro
       fallback: qwen-max
     expertise_tags:
       - tool_execution

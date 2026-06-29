@@ -593,7 +593,7 @@ class TestRealWorldYamlFragments:
             model:
               provider: opencode-go
               name: qwen-max
-              fallback: deepseek-v3
+              fallback: deepseek-v4-pro
             expertise_tags:
               - visual_direction
               - art_style

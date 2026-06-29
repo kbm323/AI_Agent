@@ -36,7 +36,7 @@ Usage::
         expertise_tags=("visual_direction", "art_style"),
         model_provider="opencode-go",
         model_name="qwen-max",
-        model_fallback="deepseek-v3",
+        model_fallback="deepseek-v4-pro",
     )
     result = generate_opinion(
         persona=persona,
@@ -82,7 +82,7 @@ class PersonaDefinition:
         expertise_tags: Topic tags this role handles for routing.
         model_provider: LLM provider name (e.g. ``opencode-go``).
         model_name: Primary model identifier (e.g. ``qwen-max``).
-        model_fallback: Fallback model (e.g. ``deepseek-v3``).
+        model_fallback: Fallback model (e.g. ``deepseek-v4-pro``).
         persona_description: Optional extended persona context
                              (loaded from ``persona.md``).
         spec_version: Semantic version of this agent spec.
@@ -106,7 +106,7 @@ class PersonaDefinition:
     model_name: str = "qwen-max"
     """Primary model identifier."""
 
-    model_fallback: str = "deepseek-v3"
+    model_fallback: str = "deepseek-v4-pro"
     """Fallback model identifier."""
 
     role_type: str = "worker"

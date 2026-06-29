@@ -70,7 +70,7 @@ def art_director_persona() -> PersonaDefinition:
             "ui_ux_oversight",
         ),
         model_name="qwen-max",
-        model_fallback="deepseek-v3",
+        model_fallback="deepseek-v4-pro",
         persona_description=(
             "You are the Art Director of an AI entertainment company. "
             "Your visual identity decisions shape every creative output."
@@ -93,7 +93,7 @@ def tech_director_persona() -> PersonaDefinition:
             "infrastructure",
             "security_oversight",
         ),
-        model_name="deepseek-v3",
+        model_name="deepseek-v4-pro",
         model_fallback="qwen-max",
     )
 
@@ -108,7 +108,7 @@ def marketing_worker_persona() -> PersonaDefinition:
         role_type="worker",
         expertise_tags=("sns_strategy", "content_planning", "audience_growth"),
         model_name="qwen-max",
-        model_fallback="deepseek-v3",
+        model_fallback="deepseek-v4-pro",
     )
 
 
@@ -233,7 +233,7 @@ class TestPersonaDefinition:
         assert p.role_id == "test-role"
         assert p.model_provider == "opencode-go"  # default
         assert p.model_name == "qwen-max"  # default
-        assert p.model_fallback == "deepseek-v3"  # default
+        assert p.model_fallback == "deepseek-v4-pro"  # default
         assert p.role_type == "worker"  # default
 
     def test_full_persona_construction(
@@ -248,7 +248,7 @@ class TestPersonaDefinition:
         assert "visual_direction" in p.expertise_tags
         assert len(p.expertise_tags) == 6
         assert p.model_name == "qwen-max"
-        assert p.model_fallback == "deepseek-v3"
+        assert p.model_fallback == "deepseek-v4-pro"
         assert len(p.persona_description) > 0
 
     def test_empty_role_id_raises_value_error(self) -> None:
@@ -532,8 +532,8 @@ class TestBuildOpencodeCommand:
 
     def test_whitespace_trimmed(self) -> None:
         """Leading/trailing whitespace should be stripped."""
-        cmd = build_opencode_command("  deepseek-v3  ", "  /tmp/p.json  ")
-        assert cmd[2] == "deepseek-v3"
+        cmd = build_opencode_command("  deepseek-v4-pro  ", "  /tmp/p.json  ")
+        assert cmd[2] == "deepseek-v4-pro"
         assert cmd[4] == "/tmp/p.json"
 
 
@@ -724,7 +724,7 @@ class TestGenerateOpinion:
         self,
         tech_director_persona: PersonaDefinition,
     ) -> None:
-        """Tech director should use deepseek-v3 model."""
+        """Tech director should use deepseek-v4-pro model."""
         valid_json = json.dumps(
             {
                 "persona_id": "tech-director",
@@ -744,11 +744,11 @@ class TestGenerateOpinion:
         )
 
         assert result.success is True
-        assert result.model_name == "deepseek-v3"
+        assert result.model_name == "deepseek-v4-pro"
         # Verify command used correct model
         assert len(runner.calls) == 1  # type: ignore[attr-defined]
         cmd = runner.calls[0]["command"]  # type: ignore[attr-defined]
-        assert "deepseek-v3" in cmd
+        assert "deepseek-v4-pro" in cmd
 
     def test_worker_persona_generates_opinion(
         self,
@@ -1239,7 +1239,7 @@ class TestSequentialIsolation:
         assert "tech-director" not in prompt_a
         assert "테크 디렉터" not in prompt_a
         assert "tech-engineering" not in prompt_a
-        assert "deepseek-v3" not in prompt_a
+        assert "deepseek-v4-pro" not in prompt_a
 
         # Tech director prompt must NOT contain art director identity
         assert "art-director" not in prompt_b
@@ -1300,7 +1300,7 @@ class TestSequentialIsolation:
         # Cross-verify: A's result has no B data and vice versa
         assert result_a.role_id != result_b.role_id
         assert result_a.model_name == "qwen-max"
-        assert result_b.model_name == "deepseek-v3"
+        assert result_b.model_name == "deepseek-v4-pro"
         assert "tech-director" not in result_a.raw_llm_output
         assert "art-director" not in result_b.raw_llm_output
 
@@ -1344,7 +1344,7 @@ class TestSequentialIsolation:
         # Runner B should have received tech-director model
         assert len(runner_b.calls) == 1  # type: ignore[attr-defined]
         cmd_b = runner_b.calls[0]["command"]  # type: ignore[attr-defined]
-        assert "deepseek-v3" in cmd_b
+        assert "deepseek-v4-pro" in cmd_b
 
         # Each runner received exactly one call — no cross-contamination
         assert cmd_a != cmd_b
@@ -1443,7 +1443,7 @@ class TestConcurrentIsolation:
 
         # Model independence
         assert result_a.model_name == "qwen-max"
-        assert result_b.model_name == "deepseek-v3"
+        assert result_b.model_name == "deepseek-v4-pro"
 
         # Content independence — A's content must NOT appear in B's result
         assert "neon-noir" in result_a.opinion_packet["opinion_content"]  # type: ignore[index]
@@ -1457,7 +1457,7 @@ class TestConcurrentIsolation:
 
         # Each runner received the correct model
         assert "qwen-max" in runner_a.calls[0]["command"]  # type: ignore[attr-defined]
-        assert "deepseek-v3" in runner_b.calls[0]["command"]  # type: ignore[attr-defined]
+        assert "deepseek-v4-pro" in runner_b.calls[0]["command"]  # type: ignore[attr-defined]
 
     def test_concurrent_many_personas_all_independent(self) -> None:
         """Multiple concurrent persona generations must all be independent."""
@@ -1465,9 +1465,9 @@ class TestConcurrentIsolation:
 
         roles = [
             ("art-director", "qwen-max", "Neon-noir palette recommendation"),
-            ("tech-director", "deepseek-v3", "Microservices architecture"),
+            ("tech-director", "deepseek-v4-pro", "Microservices architecture"),
             ("sns-strategist", "qwen-max", "TikTok-first content strategy"),
-            ("scriptwriter", "deepseek-v3", "Three-act narrative structure"),
+            ("scriptwriter", "deepseek-v4-pro", "Three-act narrative structure"),
         ]
 
         results: list = [None] * len(roles)  # type: ignore[assignment]
@@ -1669,7 +1669,7 @@ class TestOutputIndependence:
         assert result_a.role_id == "art-director"
         assert result_b.role_id == "tech-director"
         assert result_a.model_name == "qwen-max"
-        assert result_b.model_name == "deepseek-v3"
+        assert result_b.model_name == "deepseek-v4-pro"
 
         # Packet scoping
         assert result_a.opinion_packet["persona_id"] == "art-director"  # type: ignore[index]

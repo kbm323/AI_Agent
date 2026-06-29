@@ -11,6 +11,7 @@ worker, and projection boundaries.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -536,6 +537,7 @@ def run_phase14_multi_bot_pilot(
     target_thread_id: str = "",
     create_meeting_thread: bool = True,
     thread_name: str = "Phase14 팀장 회의",
+    trigger_text: str | None = None,
     discord_http_post: Callable[..., Mapping[str, object]] | None = None,
     live_bot_roles_override: tuple[str, ...] | None = None,
     fake_bot_roles_override: tuple[str, ...] | None = None,
@@ -565,6 +567,8 @@ def run_phase14_multi_bot_pilot(
         )
     root = Path(root)
     request = build_phase14_pilot_request()
+    if trigger_text is not None:
+        request["trigger_text"] = trigger_text
     if live_bot_roles_override is not None:
         request["live_bot_roles"] = list(live_bot_roles_override)
     if fake_bot_roles_override is not None:
@@ -913,13 +917,35 @@ def _live_bot_content(
         f"한국어로 답변하고, 다른 팀장을 존중하는 전문적인 어조를 유지하세요."
     )
 
-    if command_runner is None:
-        return _fake_bot_content(role, round_num, msg_type)
-
     try:
         policy = worker_model_policy_for_role(role)
     except KeyError:
         policy = {"preferred": "glm-5.1", "primary_model": "glm-5.1"}
+
+    if command_runner is None:
+        task_id = f"msg_{run.meeting_run_id}_{round_num}_{role}_{msg_type}"
+        run_dir = Path(workdir) / "runtime" / "meeting_runs" / run.meeting_run_id
+        task = WorkerTask(
+            worker_task_id=task_id,
+            meeting_run_id=run.meeting_run_id,
+            role=role,
+            runner=WorkerTaskRunner.OPENCODE_GO,
+            packet_path=str(run_dir / "packets" / f"{task_id}.json"),
+            output_path=str(run_dir / "worker_outputs" / f"{task_id}.json"),
+            model_policy=policy,
+            hermes_refs={"prompt": prompt},
+        )
+        runner = OpenCodeGoWorkerRunner(timeout_seconds=300, workdir=workdir)
+        completed = runner.collect(runner.dispatch(task))
+        if completed.state == WorkerTaskState.SUCCEEDED:
+            try:
+                payload = Path(completed.output_path).read_text(encoding="utf-8")
+                content = str(json.loads(payload).get("content") or "").strip()
+                if content:
+                    return content
+            except (OSError, ValueError, TypeError):
+                pass
+        return _fake_bot_content(role, round_num, msg_type)
 
     try:
         result = command_runner(

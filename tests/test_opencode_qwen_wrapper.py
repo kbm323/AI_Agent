@@ -172,7 +172,7 @@ class TestBuildOpencodeCommand:
     def test_different_models_produce_different_commands(self) -> None:
         """Different model names produce different command lists."""
         cmd_a = build_opencode_command("qwen-max", "/tmp/a.json")
-        cmd_b = build_opencode_command("deepseek-v3", "/tmp/a.json")
+        cmd_b = build_opencode_command("deepseek-v4-pro", "/tmp/a.json")
         assert cmd_a != cmd_b
 
     def test_different_files_produce_different_commands(self) -> None:

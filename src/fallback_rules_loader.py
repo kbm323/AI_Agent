@@ -64,7 +64,7 @@ class ModelSpec:
     Attributes:
         provider: LLM provider name (e.g. ``"opencode-go"``).
         name: Primary model identifier (e.g. ``"qwen-max"``).
-        fallback: Fallback model identifier (e.g. ``"deepseek-v3"``).
+        fallback: Fallback model identifier (e.g. ``"deepseek-v4-pro"``).
     """
 
     provider: str
