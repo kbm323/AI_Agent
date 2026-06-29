@@ -145,14 +145,9 @@ def run_meeting_from_gateway(
             error="no_meeting_intent",
         )
 
-    # Build per-profile token envs (one env per bot role)
-    profile_envs: dict[str, dict[str, str]] = {}
-    for role in bot_roles:
-        profile = role  # The role name matches the Hermes profile name
-        profile_envs[role] = _build_profile_env(profile)
-
-    # CEO env for thread creation
-    ceo_env = profile_envs.get("ceo_coordinator", {})
+    # CEO env is used only for thread creation. Individual bot projections
+    # load their own profile tokens from the role→profile map in multi_bot.py.
+    ceo_env = _build_profile_env("aicompanyceo")
 
     # Derive a thread name from the trigger text
     thread_name = _derive_thread_name(trigger.text)
@@ -163,7 +158,7 @@ def run_meeting_from_gateway(
         result: MultiBotPilotResult = run_phase14_multi_bot_pilot(
             root=root,
             mode="live-worker" if live_discord else "dry-run",
-            max_live_workers=min(len(bot_roles), 2) if live_discord else 0,
+            max_live_workers=len(bot_roles) if live_discord else 0,
             live_discord=live_discord,
             env=ceo_env,
             target_channel_id=trigger.channel_id,
@@ -171,6 +166,8 @@ def run_meeting_from_gateway(
             create_meeting_thread=create_thread,
             thread_name=thread_name,
             discord_http_post=post,
+            live_bot_roles_override=bot_roles,
+            fake_bot_roles_override=(),
         )
     except Exception as exc:
         return GatewayMeetingResult(

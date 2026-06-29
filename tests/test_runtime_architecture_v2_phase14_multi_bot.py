@@ -586,15 +586,15 @@ def test_phase14_dry_run_rejects_live_discord_before_sink(tmp_path: Path):
         raise AssertionError("dry-run must reject live Discord projection")
 
 
-def test_phase14_live_worker_mode_rejects_more_than_two_workers(tmp_path: Path):
+def test_phase14_live_worker_mode_rejects_more_than_configured_workers(tmp_path: Path):
     try:
         run_phase14_multi_bot_pilot(
-            root=tmp_path, mode="live-worker", max_live_workers=3
+            root=tmp_path, mode="live-worker", max_live_workers=4
         )
     except Phase13PilotModeError as exc:
         assert exc.code == "invalid_live_worker_count"
     else:  # pragma: no cover
-        raise AssertionError("must reject more than 2 live workers")
+        raise AssertionError("must reject more live workers than configured roles")
 
 
 def test_phase14_live_worker_mode_with_injected_runner(tmp_path: Path):

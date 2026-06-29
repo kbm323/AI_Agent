@@ -248,7 +248,7 @@ def _profile_for_bot_role(bot_role: str) -> str:
         "marketing_lead": "aicompanymarketing",
         "quality_lead": "aicompanyquality",
         "validation_audit": "aicompanyquality",
-        "business_support_lead": "aicompanyceo",
+        "business_support_lead": "aicompanyassistant",
     }.get(bot_role, "aicompanyceo")
 
 
@@ -468,21 +468,21 @@ def _build_phase14_worker_tasks(
     *,
     live_worker_count: int = 2,
 ) -> tuple[WorkerTask, ...]:
-    """Build Phase 14 worker tasks allowing up to 2 live workers.
+    """Build Phase 14 worker tasks allowing all configured live workers.
 
-    Uses the same task structure as Phase 13 but relaxes the single-worker
-    limit so multi-bot pilots can dispatch 2 live workers.
+    Uses the same task structure as Phase 13 but removes the old pilot-only
+    two-worker cap so the production gateway can run every team-lead bot.
     """
-    if live_worker_count < 0 or live_worker_count > 2:
-        raise ValueError(
-            f"Phase 14 permits at most 2 live workers, got {live_worker_count}"
-        )
     root = Path(root)
     roles: tuple[str, ...] = getattr(route, "live_worker_roles", ()) + getattr(
         route, "fake_worker_roles", ()
     )
     if not roles:
         roles = ("content_lead", "marketing_lead", "quality_lead")
+    if live_worker_count < 0 or live_worker_count > len(roles):
+        raise ValueError(
+            f"Phase 14 permits 0..{len(roles)} live workers, got {live_worker_count}"
+        )
     live_roles = set(roles[:live_worker_count])
     tasks: list[WorkerTask] = []
     for index, role in enumerate(roles, start=1):
@@ -535,6 +535,8 @@ def run_phase14_multi_bot_pilot(
     create_meeting_thread: bool = True,
     thread_name: str = "Phase14 팀장 회의",
     discord_http_post: Callable[..., Mapping[str, object]] | None = None,
+    live_bot_roles_override: tuple[str, ...] | None = None,
+    fake_bot_roles_override: tuple[str, ...] | None = None,
 ) -> MultiBotPilotResult:
     """Run the Phase 14 multi-bot operational protocol pilot."""
 
@@ -559,14 +561,12 @@ def run_phase14_multi_bot_pilot(
             "invalid_live_discord_mode",
             "dry-run cannot publish through live Discord projection",
         )
-    if mode == "live-worker" and max_live_workers not in (1, 2):
-        raise Phase13PilotModeError(
-            "invalid_live_worker_count",
-            "Phase 14 live-worker mode requires --max-live-workers 1 or 2",
-        )
-
     root = Path(root)
     request = build_phase14_pilot_request()
+    if live_bot_roles_override is not None:
+        request["live_bot_roles"] = list(live_bot_roles_override)
+    if fake_bot_roles_override is not None:
+        request["fake_bot_roles"] = list(fake_bot_roles_override)
     run = create_phase13_meeting_run(root, request)
     store = MeetingRunStore(root)
     route = build_phase13_route(run)
@@ -584,8 +584,36 @@ def run_phase14_multi_bot_pilot(
         if isinstance(fake_bot_roles_raw, list)
         else ()
     )
+    if mode == "live-worker" and (
+        max_live_workers < 1 or max_live_workers > len(live_bot_roles)
+    ):
+        raise Phase13PilotModeError(
+            "invalid_live_worker_count",
+            f"Phase 14 live-worker mode requires 1..{len(live_bot_roles)} live workers",
+        )
+    all_requested_roles = live_bot_roles + fake_bot_roles
+    if all_requested_roles:
+        validators = tuple(
+            role
+            for role in all_requested_roles
+            if role in {"quality_lead", "validation_audit"}
+        ) or (all_requested_roles[-1],)
+        route = replace(
+            route,
+            primary_role=all_requested_roles[0],
+            supporting_roles=all_requested_roles[1:],
+            live_worker_roles=live_bot_roles,
+            fake_worker_roles=fake_bot_roles,
+            routing_result=replace(
+                route.routing_result,
+                teams=all_requested_roles,
+                worker_roles=all_requested_roles,
+                validators=validators,
+                rationale="Gateway-driven Runtime v2 meeting route for all configured team-lead bots.",
+            ),
+        )
     active_live_bot_roles = live_bot_roles[:live_count]
-    participants = live_bot_roles + fake_bot_roles
+    participants = all_requested_roles
     active_fake_bot_roles = tuple(
         role for role in participants if role not in active_live_bot_roles
     )
@@ -698,7 +726,7 @@ def run_phase14_multi_bot_pilot(
                     live_discord=live_discord,
                     target_channel_id=target_channel_id,
                     target_thread_id=meeting_thread_id,
-                    env=env,
+                    env=None,
                     discord_http_post=discord_http_post,
                     shared_thread_policy=shared_thread_policy,
                 )
