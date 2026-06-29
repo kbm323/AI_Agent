@@ -117,7 +117,7 @@ relevant detailed architecture section.
    - `NOTION_SECOND_BRAIN_ROOT_PAGE_ID` points to `SECOND BRAIN OS`.
    - `NOTION_SCHEDULE_DATA_SOURCE_ID` points to the `할 일` data source.
    - `NOTION_IDEA_DATA_SOURCE_ID` points to the `노트` data source.
-   - Worker subprocess env propagation must include both `NOTION_API_KEY` and `NOTION_API_TOKEN` aliases so opencode-go workers and Notion CLI/HTTP clients can use the same token without printing it.
+   - Worker provider execution is Hermes-first; provider/auth/model credentials stay in Hermes runtime. Notion adapters may still use `NOTION_API_KEY` / `NOTION_API_TOKEN` aliases, but worker model credentials must not be copied into subprocess env.
    - AI-created schedule/idea records should stay under `SECOND BRAIN OS`; use PAT/MCP only when explicitly choosing a broader user-scoped access model.
 
 9. Safety posture
@@ -667,7 +667,7 @@ Discord mention
 -> MeetingRun created
 -> routing says execution_required
 -> WorkerTask packet_written
--> opencode-go CLI dispatched
+-> Hermes provider worker dispatched
 -> output_collected
 -> GLM risk review
 -> Codex audit if code/critical
@@ -902,8 +902,8 @@ Hermes provider/auth/model config
 Hermes approvals/redaction/toolsets
 Hermes Kanban/background/cron where applicable
 adapter modules
-CLI wrappers
-JSON packet files
+Hermes provider adapters
+AI_Agent WorkerTask packet files
 project-local MeetingRun artifacts
 Discord projection adapters
 Ouroboros seed/evaluator artifacts

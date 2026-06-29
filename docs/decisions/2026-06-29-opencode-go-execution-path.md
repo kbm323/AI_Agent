@@ -8,9 +8,9 @@
 
 ## 1. Decision
 
-**Approved architecture decision:** choose **Option C — Hermes Provider Integration**.
+**Approved architecture decision:** **Option C — Hermes Provider Integration** is now the implemented default worker direction for Runtime Architecture v2 cleanup.
 
-**Short-term rule:** do **not** make direct HTTP from AI_Agent the default live worker path. Option B may only be used as a temporary compatibility bridge if a Hermes provider API gap is explicitly confirmed and documented.
+**Short-term rule:** direct HTTP from AI_Agent remains prohibited as the default live worker path. Legacy CLI injection is retained only for compatibility tests/debug; the default production path is Hermes provider runtime.
 
 ```text
 Approved target:

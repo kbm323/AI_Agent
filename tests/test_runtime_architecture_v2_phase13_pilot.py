@@ -156,7 +156,13 @@ def test_phase13_live_worker_mode_uses_injected_runner(tmp_path: Path):
     assert result.live_worker_count == 1
     assert result.fake_worker_count == 2
     assert len(calls) == 1
-    assert calls[0][:3] == ["opencode-go", "--model", "qwen3.7-max"]
+    assert calls[0][:5] == [
+        "hermes-provider",
+        "--provider",
+        "opencode-go",
+        "--model",
+        "qwen3.7-max",
+    ]
     assert result.worker_tasks[0].state == WorkerTaskState.SUCCEEDED
 
 
@@ -308,7 +314,7 @@ def test_phase13_live_worker_failure_returns_structured_result(tmp_path: Path):
     output = json.loads(
         Path(result.worker_tasks[0].output_path).read_text(encoding="utf-8")
     )
-    assert output["error"] == "opencode_go_runner_exception"
+    assert output["error"].startswith("legacy_runner_adapter_error")
     assert "raw provider token" not in json.dumps(output)
 
 

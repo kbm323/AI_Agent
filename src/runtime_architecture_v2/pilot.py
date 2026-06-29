@@ -599,6 +599,12 @@ def _output_summary(task: WorkerTask) -> str:
         stdout_summary = _summarize_opencode_stdout(str(payload.get("stdout") or ""))
         if stdout_summary:
             return stdout_summary
+        content_summary = _summarize_opencode_stdout(str(payload.get("content") or ""))
+        if content_summary:
+            return content_summary
+        content = str(payload.get("content") or "").strip()
+        if content and "\n" not in content:
+            return _sanitize_report(content)[:240]
         return "structured output written"
     return str(payload.get("error") or payload.get("status") or "failed")
 

@@ -8,11 +8,8 @@ providers can be swapped in later without changing the MeetingRun contract.
 from __future__ import annotations
 
 import json
-import os
 import re
-import subprocess
 import tempfile
-import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field, replace
@@ -311,19 +308,18 @@ class RoleOutputProvider(Protocol):
 
 
 @dataclass(frozen=True)
-class OpenCodeGoCallResult:
-    """Sanitized provenance for one opencode-go role call."""
+class HermesProviderCallResult:
+    """Sanitized provenance for one Hermes provider role call."""
 
     role: str
     round_name: str
     status: str
     provider: str
     model: str
-    executable: str
-    exit_code: int
     duration_sec: float
     timed_out: bool = False
-    stderr: str = ""
+    error: str = ""
+    api_calls: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -332,39 +328,41 @@ class OpenCodeGoCallResult:
             "status": self.status,
             "provider": self.provider,
             "model": self.model,
-            "executable": self.executable,
-            "exit_code": self.exit_code,
             "duration_sec": self.duration_sec,
             "timed_out": self.timed_out,
-            "stderr": self.stderr,
+            "error": self.error,
+            "api_calls": self.api_calls,
         }
 
 
-class OpenCodeGoRunner(Protocol):
-    """Callable subprocess boundary for opencode-go."""
+OpenCodeGoCallResult = HermesProviderCallResult
+
+
+class HermesRoleRunner(Protocol):
+    """Callable Hermes provider boundary for one role prompt."""
 
     def __call__(
         self,
-        argv: list[str],
-        *,
-        input_text: str,
+        provider: str,
+        model: str,
+        prompt: str,
         timeout_sec: int,
-        env: dict[str, str],
-    ) -> dict[str, object]:
-        """Run opencode-go and return a subprocess-like result mapping."""
+    ) -> object:
+        """Run a Hermes provider completion and return a normalized result."""
         ...
 
 
 @dataclass
-class OpenCodeGoRoleOutputProvider:
-    """RoleOutputProvider backed by opencode-go with injectable runner."""
+class HermesRoleOutputProvider:
+    """RoleOutputProvider backed by Hermes provider/auth/model runtime."""
 
-    runner: OpenCodeGoRunner | None = None
-    executable: str = "opencode-go"
+    runner: HermesRoleRunner | None = None
+    provider: str = "opencode-go"
     model: str = "glm-5.2"
+    executable: str = ""
     timeout_sec: int = 120
     env: dict[str, str] = field(default_factory=dict)
-    last_results: list[OpenCodeGoCallResult] = field(default_factory=list)
+    last_results: list[HermesProviderCallResult] = field(default_factory=list)
 
     def generate(self, *, role: str, round_name: str, trigger: Phase30Trigger) -> str:
         prompt = _build_opencode_role_prompt(
@@ -372,70 +370,134 @@ class OpenCodeGoRoleOutputProvider:
             round_name=round_name,
             trigger=trigger,
         )
-        context_path = _write_opencode_context_file(prompt)
-        argv = [
-            self.executable,
-            "--model",
-            self.model,
-            "--context-file",
-            str(context_path),
-            "--timeout-seconds",
-            str(self.timeout_sec),
-            "--prompt",
-            prompt,
-            "--format",
-            "json",
-        ]
-        started = time.monotonic()
-        runner = self.runner or _default_opencode_go_runner
-        try:
-            result = runner(
-                argv,
-                input_text=prompt,
-                timeout_sec=self.timeout_sec,
-                env={**os.environ, **self.env},
-            )
-        finally:
-            context_path.unlink(missing_ok=True)
-        duration = _coerce_float(result.get("duration_sec"), time.monotonic() - started)
-        exit_code = _coerce_int(result.get("returncode"), 1)
-        timed_out = bool(result.get("timed_out", False))
-        stderr = _sanitize_text(str(result.get("stderr") or ""))
-        stdout = str(result.get("stdout") or "")
+        from .workers import _default_hermes_provider_completion
 
-        if exit_code != 0 or timed_out:
+        runner = self.runner or _default_hermes_provider_completion
+        result = _run_role_provider(
+            runner,
+            provider=self.provider,
+            model=self.model,
+            prompt=prompt,
+            timeout_sec=self.timeout_sec,
+            executable=self.executable or "hermes-provider",
+            env=self.env,
+        )
+        status = str(getattr(result, "status", "failed") or "failed")
+        timed_out = bool(getattr(result, "timed_out", False))
+        duration = _coerce_float(getattr(result, "duration_seconds", 0.0), 0.0)
+        error = _sanitize_text(str(getattr(result, "error", "") or ""))
+        content = _sanitize_text(str(getattr(result, "content", "") or ""))
+        api_calls = _coerce_int(getattr(result, "api_calls", 0), 0)
+
+        if status != "succeeded" or timed_out or not content:
             self.last_results.append(
-                OpenCodeGoCallResult(
+                HermesProviderCallResult(
                     role=role,
                     round_name=round_name,
                     status="failed",
-                    provider="opencode-go",
+                    provider=self.provider,
                     model=self.model,
-                    executable=self.executable,
-                    exit_code=exit_code,
                     duration_sec=duration,
                     timed_out=timed_out,
-                    stderr=stderr,
+                    error=error or "hermes_provider_role_output_failed",
+                    api_calls=api_calls,
                 )
             )
-            return "BLOCKER: opencode-go role output failed"
+            return "BLOCKER: Hermes provider role output failed"
 
-        content = _extract_opencode_content(stdout)
         self.last_results.append(
-            OpenCodeGoCallResult(
+            HermesProviderCallResult(
                 role=role,
                 round_name=round_name,
                 status="ok",
-                provider="opencode-go",
+                provider=self.provider,
                 model=self.model,
-                executable=self.executable,
-                exit_code=exit_code,
                 duration_sec=duration,
                 timed_out=False,
-                stderr=stderr,
+                error=error,
+                api_calls=api_calls,
             )
         )
         return content
+
+
+# Compatibility names during the cleanup phase.  They now route through Hermes,
+# not through an opencode-go subprocess.
+OpenCodeGoRunner = HermesRoleRunner
+OpenCodeGoRoleOutputProvider = HermesRoleOutputProvider
+
+
+def _run_role_provider(
+    runner: HermesRoleRunner,
+    *,
+    provider: str,
+    model: str,
+    prompt: str,
+    timeout_sec: int,
+    executable: str,
+    env: dict[str, str],
+) -> object:
+    """Run the Hermes role provider, adapting old injected tests only."""
+
+    try:
+        return runner(provider, model, prompt, timeout_sec)
+    except TypeError:
+        legacy = runner(  # type: ignore[misc]
+            [
+                executable,
+                "--provider",
+                provider,
+                "--model",
+                model,
+                "--prompt",
+                prompt,
+            ],
+            input_text=prompt,
+            timeout_sec=timeout_sec,
+            env=env,
+        )
+        return _legacy_role_result_to_hermes_result(
+            legacy,
+            provider=provider,
+            model=model,
+        )
+
+
+def _legacy_role_result_to_hermes_result(
+    legacy: dict[str, object],
+    *,
+    provider: str,
+    model: str,
+) -> object:
+    from .workers import HermesProviderRunResult
+
+    exit_code = _coerce_int(legacy.get("returncode"), 1)
+    timed_out = bool(legacy.get("timed_out", False))
+    stdout = str(legacy.get("stdout") or "")
+    stderr = _sanitize_text(str(legacy.get("stderr") or ""))
+    duration = _coerce_float(legacy.get("duration_sec"), 0.0)
+    content = _extract_text_from_provider_payload(stdout)
+    completed = exit_code == 0 and not timed_out and bool(content)
+    return HermesProviderRunResult(
+        status="succeeded" if completed else ("timed_out" if timed_out else "failed"),
+        content=content,
+        provider=provider,
+        model=model,
+        error=stderr,
+        duration_seconds=duration,
+        completed=completed,
+        timed_out=timed_out,
+    )
+
+
+def _extract_text_from_provider_payload(stdout: str) -> str:
+    parsed = _try_json(stdout)
+    if isinstance(parsed, dict):
+        for key in ("content", "text", "message", "output"):
+            value = parsed.get(key)
+            if isinstance(value, str) and value.strip():
+                return _sanitize_text(value)
+    return _sanitize_text(stdout)
 
 
 @dataclass(frozen=True)
@@ -1110,94 +1172,6 @@ def _build_opencode_role_prompt(
             "start with BLOCKER:.",
         ]
     )
-
-
-def _write_opencode_context_file(prompt: str) -> Path:
-    fd, tmp_name = tempfile.mkstemp(
-        prefix="phase31-opencode-context-", suffix=".md", text=True
-    )
-    with open(fd, "w", encoding="utf-8", closefd=True) as handle:
-        handle.write(prompt)
-        handle.write("\n")
-    return Path(tmp_name)
-
-
-def _default_opencode_go_runner(
-    argv: list[str],
-    *,
-    input_text: str,
-    timeout_sec: int,
-    env: dict[str, str],
-) -> dict[str, object]:
-    started = time.monotonic()
-    try:
-        del input_text
-        completed = subprocess.run(
-            argv,
-            check=False,
-            text=True,
-            capture_output=True,
-            timeout=timeout_sec,
-            env=env,
-        )
-        return {
-            "returncode": completed.returncode,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-            "duration_sec": time.monotonic() - started,
-            "timed_out": False,
-        }
-    except subprocess.TimeoutExpired as exc:
-        return {
-            "returncode": 124,
-            "stdout": exc.stdout or "",
-            "stderr": "opencode-go timed out",
-            "duration_sec": time.monotonic() - started,
-            "timed_out": True,
-        }
-    except OSError:
-        return {
-            "returncode": 127,
-            "stdout": "",
-            "stderr": "opencode-go executable unavailable",
-            "duration_sec": time.monotonic() - started,
-            "timed_out": False,
-        }
-
-
-def _extract_opencode_content(stdout: str) -> str:
-    parsed = _try_json(stdout)
-    if isinstance(parsed, dict):
-        content = _first_text_field(parsed)
-        if content:
-            return _sanitize_text(content)
-    if isinstance(parsed, list):
-        for item in reversed(parsed):
-            if isinstance(item, dict):
-                content = _first_text_field(item)
-                if content:
-                    return _sanitize_text(content)
-    for line in reversed(stdout.splitlines()):
-        parsed_line = _try_json(line)
-        if isinstance(parsed_line, dict):
-            content = _first_text_field(parsed_line)
-            if content:
-                return _sanitize_text(content)
-    cleaned = _sanitize_text(stdout)
-    return cleaned or "BLOCKER: opencode-go role output was empty"
-
-
-def _first_text_field(payload: dict[str, object]) -> str:
-    for key in ("content", "text", "message", "output"):
-        value = payload.get(key)
-        if isinstance(value, str) and value.strip():
-            return value
-    part = payload.get("part")
-    if isinstance(part, dict):
-        value = part.get("text")
-        if isinstance(value, str) and value.strip():
-            return value
-    return ""
 
 
 def _try_json(text: str) -> object:

@@ -10,8 +10,8 @@ from src.runtime_architecture_v2.schemas import (
 )
 from src.runtime_architecture_v2.workers import (
     FakeWorkerRunner,
-    OpenCodeGoRunResult,
-    OpenCodeGoWorkerRunner,
+    HermesProviderRunResult,
+    HermesProviderWorkerRunner,
     WorkerRunError,
 )
 
@@ -86,79 +86,95 @@ def test_collect_requires_dispatched_task(tmp_path: Path):
         raise AssertionError("collect should reject non-running task")
 
 
-def test_opencode_go_worker_runner_dispatches_packet_and_collects_via_injected_cli(
+def test_hermes_provider_worker_runner_dispatches_packet_and_collects_via_injected_provider(
     tmp_path: Path,
 ):
     calls = []
 
-    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+    def completion_runner(provider: str, model: str, prompt: str, timeout_seconds: int):
         calls.append(
-            {"command": command, "timeout_seconds": timeout_seconds, "workdir": workdir}
+            {
+                "provider": provider,
+                "model": model,
+                "prompt": prompt,
+                "timeout_seconds": timeout_seconds,
+            }
         )
-        return OpenCodeGoRunResult(
-            exit_code=0,
-            stdout='{"status":"ok"}',
-            stderr="",
-            timeout_occurred=False,
+        return HermesProviderRunResult(
+            status="succeeded",
+            content='{"status":"ok"}',
+            provider=provider,
+            model=model,
+            duration_seconds=0.5,
+            api_calls=1,
+            completed=True,
         )
 
-    runner = OpenCodeGoWorkerRunner(
-        command_runner=command_runner,
+    runner = HermesProviderWorkerRunner(
+        completion_runner=completion_runner,
         timeout_seconds=33,
-        workdir=str(tmp_path),
     )
-    dispatched = runner.dispatch(_task(tmp_path, "wt_opencode"))
+    dispatched = runner.dispatch(_task(tmp_path, "wt_hermes"))
     collected = runner.collect(dispatched)
 
     assert dispatched.state == WorkerTaskState.RUNNING
     assert collected.state == WorkerTaskState.SUCCEEDED
     assert collected.error == ""
     assert len(calls) == 1
-    command = calls[0]["command"]
-    assert command[:3] == ["opencode-go", "--model", "fake"]
-    assert "--context-file" in command
+    assert calls[0]["provider"] == "opencode-go"
+    assert calls[0]["model"] == "fake"
     assert calls[0]["timeout_seconds"] == 33
     packet = json.loads(Path(dispatched.packet_path).read_text(encoding="utf-8"))
-    assert packet["worker_task"]["worker_task_id"] == "wt_opencode"
-    assert packet["runner"] == "opencode_go"
+    assert packet["worker_task"]["worker_task_id"] == "wt_hermes"
+    assert packet["runner"] == "hermes_provider"
     output = json.loads(Path(collected.output_path).read_text(encoding="utf-8"))
     assert output["status"] == "succeeded"
-    assert output["exit_code"] == 0
+    assert output["runner"] == "hermes_provider"
+    assert output["provider"] == "opencode-go"
+    assert output["api_calls"] == 1
 
 
-def test_opencode_go_worker_runner_returns_structured_timeout_without_crashing(
+def test_hermes_provider_worker_runner_returns_structured_timeout_without_crashing(
     tmp_path: Path,
 ):
-    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
-        return OpenCodeGoRunResult(
-            exit_code=-1,
-            stdout="partial",
-            stderr="timeout",
-            timeout_occurred=True,
+    def completion_runner(provider: str, model: str, prompt: str, timeout_seconds: int):
+        return HermesProviderRunResult(
+            status="timed_out",
+            provider=provider,
+            model=model,
+            error="provider timeout",
+            timed_out=True,
         )
 
-    runner = OpenCodeGoWorkerRunner(command_runner=command_runner)
+    runner = HermesProviderWorkerRunner(completion_runner=completion_runner)
     timed_out = runner.collect(runner.dispatch(_task(tmp_path, "wt_timeout_live")))
 
     assert timed_out.state == WorkerTaskState.TIMED_OUT
-    assert timed_out.error == "opencode_go_timeout"
+    assert timed_out.error == "provider timeout"
     output = json.loads(Path(timed_out.output_path).read_text(encoding="utf-8"))
     assert output["status"] == "timed_out"
-    assert output["timeout_occurred"] is True
+    assert output["timed_out"] is True
 
 
-def test_opencode_go_worker_runner_fails_closed_when_injected_runner_raises(
+def test_hermes_provider_worker_runner_fails_closed_and_sanitizes_error(
     tmp_path: Path,
 ):
-    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
-        raise RuntimeError("runner exploded with secret token")
+    def completion_runner(provider: str, model: str, prompt: str, timeout_seconds: int):
+        return HermesProviderRunResult(
+            status="failed",
+            provider=provider,
+            model=model,
+            error="api_key=secret_token_123",
+            completed=False,
+        )
 
-    runner = OpenCodeGoWorkerRunner(command_runner=command_runner)
-    failed = runner.collect(runner.dispatch(_task(tmp_path, "wt_runner_exception")))
+    runner = HermesProviderWorkerRunner(completion_runner=completion_runner)
+    failed = runner.collect(runner.dispatch(_task(tmp_path, "wt_provider_fail")))
 
     assert failed.state == WorkerTaskState.FAILED
-    assert failed.error == "opencode_go_runner_exception"
+    assert "secret_token_123" not in failed.error
+    assert "[redacted]" in failed.error
     output = json.loads(Path(failed.output_path).read_text(encoding="utf-8"))
     assert output["status"] == "failed"
-    assert output["error"] == "opencode_go_runner_exception"
-    assert "secret token" not in json.dumps(output)
+    assert "secret_token_123" not in json.dumps(output)
+    assert "[redacted]" in output["error"]
