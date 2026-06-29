@@ -99,6 +99,8 @@ relevant detailed architecture section.
    - Live Discord-facing bots = 7 accounts in the Entertainment guild.
    - Personal assistant: `aicompanyassistant` / live username `비서`.
    - Company team leads: CEO, Content, Art, Tech, Marketing, Quality/Validation.
+   - Company meetings use the 6 company bots as the visible meeting participants.
+   - The assistant is not a regular company-meeting speaker; it may join after the decision only for personal ToDo/Notion follow-up suggestions.
    - 29-role registry is the internal company org chart, not 29 Discord bot accounts.
    - Business Support / Legal / Finance / HR are internal roles, not live Discord bots by default.
    - Discord channels are company operation surfaces, not merely bot rooms; the current live channel function matrix is `docs/discord-channel-function-matrix.md` and `src/runtime_architecture_v2/discord_channels.py`.
@@ -106,6 +108,8 @@ relevant detailed architecture section.
 7. Personal assistant is separate from the company org chart
    - The assistant handles user intake, personal support, personal Second Brain, schedules/briefings, and action item extraction.
    - It can reference company outputs, but it is not one of the 29 company roles.
+   - In company meetings, the assistant does not replace PM/owner authority; the CEO/Coordinator bot owns visible PM/chair responsibilities.
+   - After a company meeting ends, the assistant may propose personal follow-up tasks or Notion entries, but personal ToDos/schedules require user confirmation before mutation.
 
 8. Company and personal knowledge are separated
    - Company Second Brain stores company strategy/research/meeting decisions.
@@ -191,6 +195,24 @@ The 7 live accounts are 1 personal assistant plus 6 company team-lead bots. The
 29-role registry is an internal org chart and does not mean 29 Discord bot
 accounts.
 
+Company meeting visibility rule:
+
+```text
+meeting body: 6 company bots
+  - 대표 / CEO + PM chair
+  - 콘텐츠팀장
+  - 아트팀장
+  - 기술팀장
+  - 마케팅팀장
+  - 품질관리팀장
+
+post-meeting optional follow-up: 비서
+  - personal ToDo candidates
+  - personal schedule candidates
+  - Notion action-item suggestions
+  - no personal Notion mutation without user confirmation
+```
+
 | Hermes profile | Live Discord username | Live home channel | Responsibility | User @mention | Projection role |
 |---|---|---|---|---:|---|
 | `aicompanyassistant` | `비서` | `#일일-브리핑` | personal assistant / secretary: user intake, private/personal support, personal Second Brain, daily/weekly briefing, action-item extraction | yes | assistant/intake layer; not a company department role |
@@ -218,6 +240,14 @@ Internal specialists are workers, not Discord bot accounts.
 Examples: content_pd, script_writer, concept_artist, rigger, pipeline_rd,
 web_app_developer, legal_reviewer, data_analyst, business_support_lead,
 partnership_manager, finance_hr, qa_specialist.
+
+PM ownership:
+
+```text
+visible company meeting PM/chair -> 대표 / CEO Coordinator
+internal PM/business-support work -> business_support_lead / project_manager workers
+personal follow-up PM/ToDo assistant -> 비서 after the meeting, confirmation-gated
+```
 
 Research and support are capabilities delegated to the relevant team or internal
 role, not separate Discord lead bots by default:
@@ -298,13 +328,18 @@ or `/summon` are not core requirements unless Hermes Gateway officially
 supports the required custom slash-command surface or a separate Discord
 adapter is deliberately added.
 
+Current decision: natural-language `@대표 ... 회의/검토/분석...` is the default
+meeting UX. `/meeting` may be added later only as an optional force/debug path;
+it must not become the required everyday command path.
+
 Priority order:
 
 ```text
-1. Hermes existing Discord command and gateway behavior
-2. Hermes-supported custom skill/command surface
-3. Bot mention natural-language command
-4. Separate Discord Adapter that implements standalone slash commands
+1. Bot mention natural-language command, routed by Gateway pre-handler when available
+2. Hermes existing Discord command and gateway behavior
+3. Hermes-supported custom skill/command surface
+4. Optional /meeting force/debug command
+5. Separate Discord Adapter that implements standalone slash commands
 ```
 
 Default meeting initiation:

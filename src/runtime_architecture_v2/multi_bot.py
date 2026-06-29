@@ -248,7 +248,9 @@ def _profile_for_bot_role(bot_role: str) -> str:
         "marketing_lead": "aicompanymarketing",
         "quality_lead": "aicompanyquality",
         "validation_audit": "aicompanyquality",
-        "business_support_lead": "aicompanyassistant",
+        # Business support is an internal org-chart role, not the personal
+        # assistant bot. If it is ever projected, the CEO summarizes it.
+        "business_support_lead": "aicompanyceo",
     }.get(bot_role, "aicompanyceo")
 
 

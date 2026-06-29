@@ -117,7 +117,6 @@ def run_meeting_from_gateway(
         "art_lead",
         "tech_lead",
         "marketing_lead",
-        "business_support_lead",
         "validation_audit",
     ),
     rounds: int = 2,
@@ -218,7 +217,6 @@ BOT_PERSONA_DISPLAY: dict[str, str] = {
     "art_lead": "아트 팀장",
     "tech_lead": "기술 팀장",
     "marketing_lead": "마케팅 팀장",
-    "business_support_lead": "사업지원 팀장",
     "validation_audit": "검증 팀장",
 }
 
