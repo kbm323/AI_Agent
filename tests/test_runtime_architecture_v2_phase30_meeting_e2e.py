@@ -249,17 +249,21 @@ def test_phase31_opencode_provider_uses_injected_runner_and_sanitizes_output():
 
     assert output == "실제 역할 의견입니다. bearer [redacted] @\u000beveryone"
     assert len(calls) == 1
-    assert calls[0]["argv"][:3] == ["opencode-go-test", "--model", "glm-5.2"]
-    assert "--context-file" in calls[0]["argv"]
+    assert calls[0]["argv"][:5] == [
+        "opencode-go-test",
+        "--provider",
+        "opencode-go",
+        "--model",
+        "glm-5.2",
+    ]
     assert "--prompt" in calls[0]["argv"]
-    assert "--timeout-seconds" in calls[0]["argv"]
     assert "glm-5.2" in calls[0]["argv"]
     assert "content_lead" in calls[0]["input_text"]
     assert "opinion" in calls[0]["input_text"]
     assert "credential-value" not in calls[0]["input_text"]
     assert calls[0]["timeout_sec"] == 17
     assert provider.last_results[0].status == "ok"
-    assert provider.last_results[0].exit_code == 0
+    assert provider.last_results[0].provider == "opencode-go"
     assert provider.last_results[0].model == "glm-5.2"
 
 
@@ -281,11 +285,11 @@ def test_phase31_opencode_provider_fail_closed_on_nonzero_exit():
         trigger=normalize_phase30_gateway_input({"content": "리스크 검토"}),
     )
 
-    assert output.startswith("BLOCKER: opencode-go role output failed")
+    assert output.startswith("BLOCKER: Hermes provider role output failed")
     assert "BADTOKEN" not in output
     assert "super-secret" not in output
     assert provider.last_results[0].status == "failed"
-    assert provider.last_results[0].exit_code == 2
+    assert provider.last_results[0].error == "opencode failed credential-redacted"
 
 
 def test_phase31_e2e_records_opencode_provenance_when_provider_is_used(

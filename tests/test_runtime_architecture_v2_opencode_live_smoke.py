@@ -1,3 +1,10 @@
+"""Hermes provider live-smoke boundary tests.
+
+These tests intentionally avoid opencode-go CLI/subprocess. They exercise the
+same fail-closed and sanitization semantics through injected Hermes provider
+results.
+"""
+
 from __future__ import annotations
 
 import json
@@ -9,8 +16,8 @@ from src.runtime_architecture_v2.schemas import (
     WorkerTaskState,
 )
 from src.runtime_architecture_v2.workers import (
-    OpenCodeGoRunResult,
-    OpenCodeGoSmokeRunner,
+    HermesProviderRunResult,
+    HermesProviderWorkerRunner,
 )
 
 
@@ -18,109 +25,68 @@ def _task(tmp_path: Path) -> WorkerTask:
     return WorkerTask(
         worker_task_id="wt_live_smoke",
         meeting_run_id="mr_live_smoke",
-        role="glm_validator",
-        runner=WorkerTaskRunner.OPENCODE_GO,
+        role="content_lead",
+        runner=WorkerTaskRunner.HERMES_WRAPPER,
         packet_path=str(tmp_path / "packets" / "wt_live_smoke.json"),
         output_path=str(tmp_path / "outputs" / "wt_live_smoke.json"),
-        model_policy={"preferred": "glm-5.1", "execution_role": "validator"},
+        model_policy={"preferred": "glm-5.2"},
     )
 
 
-def test_smoke_runner_invokes_opencode_go_with_injected_runner_and_writes_output(
-    tmp_path: Path,
-):
-    calls: list[dict[str, object]] = []
-
-    def runner(command: list[str], timeout_seconds: int, workdir: str | None):
-        calls.append(
-            {"command": command, "timeout_seconds": timeout_seconds, "workdir": workdir}
-        )
-        return OpenCodeGoRunResult(
-            exit_code=0,
-            stdout='{"status":"ok","message":"OPENCODE_GO_SMOKE_OK"}',
-            stderr="",
-            timeout_occurred=False,
+def test_hermes_provider_smoke_succeeds_with_expected_output(tmp_path: Path):
+    def completion_runner(provider: str, model: str, prompt: str, timeout_seconds: int):
+        return HermesProviderRunResult(
+            status="succeeded",
+            content='{"status":"ok"}',
+            provider=provider,
+            model=model,
+            completed=True,
+            api_calls=1,
         )
 
-    task = _task(tmp_path)
-    completed = OpenCodeGoSmokeRunner(
-        command_runner=runner,
-        timeout_seconds=45,
-        workdir=str(tmp_path),
-    ).run(task, prompt="Return OPENCODE_GO_SMOKE_OK", context={"smoke": True})
+    runner = HermesProviderWorkerRunner(completion_runner=completion_runner)
+    completed = runner.collect(runner.dispatch(_task(tmp_path)))
 
     assert completed.state == WorkerTaskState.SUCCEEDED
-    assert completed.error == ""
-    assert len(calls) == 1
-    command = calls[0]["command"]
-    assert command[:3] == ["opencode-go", "--model", "glm-5.1"]
-    assert "--context-file" in command
-    assert "--prompt" in command
-    assert calls[0]["timeout_seconds"] == 45
     output = json.loads(Path(completed.output_path).read_text(encoding="utf-8"))
-    assert output["status"] == "succeeded"
-    assert output["exit_code"] == 0
-    assert output["stdout"] == '{"status":"ok","message":"OPENCODE_GO_SMOKE_OK"}'
-    assert output["timeout_occurred"] is False
-    assert "opencode-go" in output["command"][0]
+    assert output["runner"] == "hermes_provider"
+    assert output["provider"] == "opencode-go"
+    assert output["model"] == "glm-5.2"
+    assert output["content"] == '{"status":"ok"}'
 
 
-def test_smoke_runner_reports_nonzero_exit_as_structured_failure(tmp_path: Path):
-    def runner(command: list[str], timeout_seconds: int, workdir: str | None):
-        return OpenCodeGoRunResult(
-            exit_code=2,
-            stdout="",
-            stderr="context file not found",
-            timeout_occurred=False,
+def test_hermes_provider_smoke_fails_closed_on_provider_error(tmp_path: Path):
+    def completion_runner(provider: str, model: str, prompt: str, timeout_seconds: int):
+        return HermesProviderRunResult(
+            status="failed",
+            provider=provider,
+            model=model,
+            error="provider unavailable",
+            completed=False,
         )
 
-    failed = OpenCodeGoSmokeRunner(command_runner=runner).run(
-        _task(tmp_path), prompt="smoke", context={}
-    )
+    runner = HermesProviderWorkerRunner(completion_runner=completion_runner)
+    failed = runner.collect(runner.dispatch(_task(tmp_path)))
 
     assert failed.state == WorkerTaskState.FAILED
-    assert failed.error == "opencode_go_exit_2"
     output = json.loads(Path(failed.output_path).read_text(encoding="utf-8"))
     assert output["status"] == "failed"
-    assert output["stderr"] == "context file not found"
+    assert output["error"] == "provider unavailable"
 
 
-def test_smoke_runner_can_require_expected_stdout_token(tmp_path: Path):
-    def runner(command: list[str], timeout_seconds: int, workdir: str | None):
-        return OpenCodeGoRunResult(
-            exit_code=0,
-            stdout='{"status":"ok","message":"different"}',
-            stderr="",
-            timeout_occurred=False,
+def test_hermes_provider_smoke_times_out_fail_closed(tmp_path: Path):
+    def completion_runner(provider: str, model: str, prompt: str, timeout_seconds: int):
+        return HermesProviderRunResult(
+            status="timed_out",
+            provider=provider,
+            model=model,
+            error="timeout",
+            timed_out=True,
         )
 
-    failed = OpenCodeGoSmokeRunner(
-        command_runner=runner,
-        expected_stdout_contains="OPENCODE_GO_SMOKE_OK",
-    ).run(_task(tmp_path), prompt="smoke", context={})
-
-    assert failed.state == WorkerTaskState.FAILED
-    assert failed.error == "opencode_go_missing_expected_output"
-    output = json.loads(Path(failed.output_path).read_text(encoding="utf-8"))
-    assert output["status"] == "failed"
-    assert output["expected_stdout_contains"] == "OPENCODE_GO_SMOKE_OK"
-
-
-def test_smoke_runner_reports_timeout_as_structured_timeout(tmp_path: Path):
-    def runner(command: list[str], timeout_seconds: int, workdir: str | None):
-        return OpenCodeGoRunResult(
-            exit_code=-1,
-            stdout="partial",
-            stderr="timeout",
-            timeout_occurred=True,
-        )
-
-    timed_out = OpenCodeGoSmokeRunner(command_runner=runner).run(
-        _task(tmp_path), prompt="smoke", context={}
-    )
+    runner = HermesProviderWorkerRunner(completion_runner=completion_runner)
+    timed_out = runner.collect(runner.dispatch(_task(tmp_path)))
 
     assert timed_out.state == WorkerTaskState.TIMED_OUT
-    assert timed_out.error == "opencode_go_timeout"
     output = json.loads(Path(timed_out.output_path).read_text(encoding="utf-8"))
-    assert output["status"] == "timed_out"
-    assert output["timeout_occurred"] is True
+    assert output["timed_out"] is True

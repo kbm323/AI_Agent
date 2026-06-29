@@ -122,16 +122,16 @@ Phase 29   24h Live Pilot & Production Runbook
 - deterministic security / quota / observability policy gates
 - deterministic end-to-end simulation CLI
 - live Discord projection sink behind injected HTTP/env boundary
-- opencode-go WorkerRunner behind injected subprocess boundary
+- Hermes provider WorkerRunner behind injected provider/auth boundary
 - quota-gated GLM/Codex validator execution planner
 - Phase 11 final verification record
 - Phase 12.1 Discord REST live projection smoke record
 
 실제 외부 경계 검증 완료:
-- opencode-go CLI discovery
+- Hermes opencode-go provider resolution
 - Hermes binary discovery
-- OpenCode binary discovery
-- opencode-go live smoke 1회 성공
+- Hermes provider auth/base_url discovery
+- Hermes opencode-go provider live probe success
 - Phase 12.1 Discord REST live projection smoke record
 - Phase 12.2 opencode-go worker live smoke record
 - Phase 12.3 Discord permission inventory and hardening decision
@@ -427,10 +427,10 @@ Discord projection:
 - unit tests inject http_post, so no live Discord call occurs during tests
 - message content is sanitized and allowed_mentions disables mention parsing
 
-opencode-go workers:
-- OpenCodeGoWorkerRunner implements WorkerRunner
-- packet writing and command construction are deterministic
-- command_runner is injectable; tests cover success and timeout without live CLI calls
+Hermes provider workers:
+- HermesProviderWorkerRunner implements WorkerRunner
+- WorkerTask packet writing is deterministic and repo-controlled
+- provider/auth/model execution is delegated to Hermes runtime; tests cover success, timeout, and provider errors without live calls
 
 validators:
 - ValidatorExecutionPlanner builds GLM/Codex validator worker tasks as OPENCODE_GO
@@ -444,7 +444,7 @@ validators:
 Phase 4.5 verified the local live boundary:
 
 ```text
-opencode-go -> opencode run --model opencode-go/<model> --context-file <packet>
+AI_Agent WorkerTask -> Hermes provider runtime -> opencode-go provider
 ```
 
 The smoke runner writes outputs under ignored runtime paths and classifies:

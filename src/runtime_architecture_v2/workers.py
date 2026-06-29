@@ -1,35 +1,23 @@
 """Worker execution boundaries for Runtime Architecture v2.
 
-This module keeps live execution behind explicit runner boundaries. Unit tests
-use FakeWorkerRunner; opencode-go integration is added as dry-run command and
-packet construction before any live subprocess execution.
+The live worker boundary is Hermes-first: AI_Agent owns WorkerTask state and
+payload/evidence files, while provider/auth/model/fallback resolution is
+delegated to Hermes' provider runtime.  Legacy opencode-go CLI execution is
+not part of the default production path.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import shutil
-import subprocess
+import importlib
+import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
 from .schemas import WorkerTask, WorkerTaskState
-
-
-@dataclass(frozen=True)
-class OpenCodeGoRunResult:
-    exit_code: int
-    stdout: str
-    stderr: str
-    timeout_occurred: bool = False
-    duration_seconds: float = 0.0
-
-
-OpenCodeGoCommandRunner = Callable[[list[str], int, str | None], OpenCodeGoRunResult]
 
 
 @dataclass(frozen=True)
@@ -77,13 +65,7 @@ class FakeWorkerRunner:
         return replace(task, state=WorkerTaskState.RUNNING)
 
     def collect(self, task: WorkerTask) -> WorkerTask:
-        if task.state != WorkerTaskState.RUNNING:
-            raise WorkerRunError(
-                code="task_not_running",
-                message="worker task must be running before collect",
-                worker_task_id=task.worker_task_id,
-            )
-
+        _require_running(task)
         if self._timeout:
             return replace(task, state=WorkerTaskState.TIMED_OUT, error="timeout")
         if self._fail_with:
@@ -110,62 +92,35 @@ class FakeWorkerRunner:
         )
 
 
-class OpenCodeGoPacketWrapper:
-    """Build opencode-go packets and commands without executing them."""
+@dataclass(frozen=True)
+class HermesProviderRunResult:
+    """Normalized result from Hermes provider execution."""
 
-    def __init__(self, *, binary: str = "opencode-go") -> None:
-        self.binary = binary
+    status: str
+    content: str = ""
+    provider: str = "opencode-go"
+    model: str = ""
+    error: str = ""
+    duration_seconds: float = 0.0
+    api_calls: int = 0
+    completed: bool = False
+    timed_out: bool = False
 
-    def write_packet(
-        self,
-        task: WorkerTask,
-        *,
-        prompt: str,
-        context: dict[str, object],
-    ) -> Path:
-        packet_path = Path(task.packet_path)
-        packet_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "worker_task": task.to_dict(),
-            "prompt": prompt,
-            "context": dict(context),
-            "dry_run": True,
-            "runner": "opencode_go",
-        }
-        packet_path.write_text(
-            json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        return packet_path
 
-    def build_command(
-        self,
-        task: WorkerTask,
-        *,
-        packet_path: Path,
-        timeout_seconds: int = 300,
-        output_format: str = "json",
-    ) -> list[str]:
-        model = str(task.model_policy.get("preferred") or task.role)
-        prompt = self._prompt_from_packet(packet_path)
-        return [
-            self.binary,
-            "--model",
-            model,
-            "--context-file",
-            str(packet_path),
-            "--timeout-seconds",
-            str(timeout_seconds),
-            "--prompt",
-            prompt,
-            "--format",
-            output_format,
-        ]
+@dataclass(frozen=True)
+class OpenCodeGoRunResult:
+    """Legacy injected-runner result shape used only by compatibility tests."""
 
-    @staticmethod
-    def _prompt_from_packet(packet_path: Path) -> str:
-        payload = json.loads(packet_path.read_text(encoding="utf-8"))
-        return str(payload.get("prompt") or "")
+    exit_code: int
+    stdout: str
+    stderr: str
+    timeout_occurred: bool = False
+    duration_seconds: float = 0.0
+
+HermesProviderCompletionRunner = Callable[
+    [str, str, str, int], HermesProviderRunResult
+]
+OpenCodeGoCommandRunner = Callable[..., object]
 
 
 def _prompt_for_task(task: WorkerTask) -> str:
@@ -175,335 +130,252 @@ def _prompt_for_task(task: WorkerTask) -> str:
     )
 
 
-def _explicit_env_for_subprocess(env: Mapping[str, str] | None) -> dict[str, str]:
-    """Return a scrubbed env that preserves PATH for executable discovery only.
-
-    The caller's env mapping remains authoritative: provider tokens are not
-    inherited from the parent process. PATH is carried over only when the caller
-    did not explicitly provide one, because opencode-go launches the underlying
-    opencode binary by name.
-    """
-    result = dict(env or {})
-    if "PATH" not in result and os.environ.get("PATH"):
-        result["PATH"] = os.environ["PATH"]
-    return result
+def _worker_context(task: WorkerTask) -> dict[str, object]:
+    return {
+        "worker_task": task.to_dict(),
+        "runner": "hermes_provider",
+        "provider": "opencode-go",
+    }
 
 
-def _resolve_executable_for_explicit_env(command: list[str]) -> list[str]:
-    """Resolve argv[0] before running with an explicit scrubbed env.
-
-    Worker runners intentionally pass an explicit env mapping (often `{}`) so
-    live tests cannot accidentally inherit tokens or provider credentials from
-    the process environment. A fully scrubbed env also removes PATH, so a bare
-    executable such as `opencode-go` would fail lookup even when installed. We
-    resolve only the executable path before the env is scrubbed; credentials are
-    still not inherited by the child process.
-    """
-    if not command:
-        return command
-    executable = command[0]
-    if "/" in executable:
-        return command
-    resolved = shutil.which(executable)
-    if not resolved:
-        return command
-    return [resolved, *command[1:]]
+def _write_worker_packet(task: WorkerTask, *, prompt: str) -> Path:
+    packet_path = Path(task.packet_path)
+    packet_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "worker_task": task.to_dict(),
+        "prompt": prompt,
+        "context": _worker_context(task),
+        "runner": "hermes_provider",
+    }
+    packet_path.write_text(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return packet_path
 
 
-def _default_opencode_go_runner(
-    command: list[str],
+def _default_hermes_provider_completion(
+    provider: str,
+    model: str,
+    prompt: str,
     timeout_seconds: int,
-    workdir: str | None,
-    *,
-    env: Mapping[str, str] | None = None,
-) -> OpenCodeGoRunResult:
-    start = time.monotonic()
-    try:
-        completed = subprocess.run(
-            _resolve_executable_for_explicit_env(command),
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            cwd=workdir,
-            env=_explicit_env_for_subprocess(env),
-        )
-        return OpenCodeGoRunResult(
-            exit_code=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-            timeout_occurred=False,
-            duration_seconds=round(time.monotonic() - start, 4),
-        )
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
-        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
-        return OpenCodeGoRunResult(
-            exit_code=-1,
-            stdout=stdout,
-            stderr=stderr,
-            timeout_occurred=True,
-            duration_seconds=round(time.monotonic() - start, 4),
-        )
-    except OSError as exc:
-        return OpenCodeGoRunResult(
-            exit_code=-1,
-            stdout="",
-            stderr=f"OSError: {exc}",
-            timeout_occurred=False,
-            duration_seconds=round(time.monotonic() - start, 4),
-        )
+) -> HermesProviderRunResult:
+    """Call Hermes' provider runtime through a minimal no-tools AIAgent.
 
-
-def _sanitize_command_for_persistence(command: list[str]) -> list[str]:
-    """Redact secret-like values from persisted command metadata."""
-
-    from .worker_boundary_smoke import sanitize_worker_output
-
-    return [sanitize_worker_output(str(part)) for part in command]
-
-
-class OpenCodeGoWorkerRunner:
-    """WorkerRunner implementation for opencode-go packet execution.
-
-    The command runner is injectable; unit tests use a fake callable and never
-    execute a live CLI. The default runner is the actual subprocess boundary.
+    This intentionally uses Hermes' provider/auth/model surface instead of
+    constructing HTTP clients or loading provider credentials in AI_Agent.
     """
+
+    started = time.monotonic()
+    hermes_root = Path.home() / ".hermes" / "hermes-agent"
+    if hermes_root.is_dir() and str(hermes_root) not in sys.path:
+        sys.path.insert(0, str(hermes_root))
+
+    try:
+        resolve_runtime_provider = importlib.import_module(
+            "hermes_cli.runtime_provider"
+        ).resolve_runtime_provider
+        AIAgent = importlib.import_module("run_agent").AIAgent
+
+        runtime = resolve_runtime_provider(
+            requested=provider,
+            target_model=model,
+        )
+        agent = AIAgent(
+            provider=runtime["provider"],
+            api_mode=runtime["api_mode"],
+            base_url=runtime["base_url"],
+            api_key=runtime["api_key"],
+            model=model,
+            enabled_toolsets=[],
+            disabled_toolsets=["*"],
+            max_iterations=1,
+            quiet_mode=True,
+            skip_context_files=True,
+            skip_memory=True,
+        )
+        result = agent.run_conversation(
+            prompt,
+            system_message=(
+                "You are a single AI_Agent worker role. Do not call tools. "
+                "Return only the role output requested by the prompt."
+            ),
+            conversation_history=[],
+        )
+        content = str(result.get("final_response") or "").strip()
+        completed = bool(result.get("completed")) and bool(content)
+        return HermesProviderRunResult(
+            status="succeeded" if completed else "failed",
+            content=content,
+            provider=str(result.get("provider") or runtime["provider"]),
+            model=str(result.get("model") or model),
+            error="" if completed else "hermes_provider_empty_response",
+            duration_seconds=round(time.monotonic() - started, 4),
+            api_calls=int(result.get("api_calls") or 0),
+            completed=completed,
+        )
+    except TimeoutError as exc:
+        return HermesProviderRunResult(
+            status="timed_out",
+            provider=provider,
+            model=model,
+            error=f"hermes_provider_timeout: {exc}",
+            duration_seconds=round(time.monotonic() - started, 4),
+            timed_out=True,
+        )
+    except Exception as exc:
+        return HermesProviderRunResult(
+            status="failed",
+            provider=provider,
+            model=model,
+            error=f"hermes_provider_error: {exc}",
+            duration_seconds=round(time.monotonic() - started, 4),
+        )
+
+
+class HermesProviderWorkerRunner:
+    """WorkerRunner backed by Hermes provider/auth/model runtime."""
 
     def __init__(
         self,
         *,
-        wrapper: OpenCodeGoPacketWrapper | None = None,
+        provider: str = "opencode-go",
+        model: str = "glm-5.2",
+        completion_runner: HermesProviderCompletionRunner | None = None,
         command_runner: OpenCodeGoCommandRunner | None = None,
-        timeout_seconds: int = 300,
-        output_format: str = "json",
+        timeout_seconds: int = 120,
         workdir: str | None = None,
-        command_env: Mapping[str, str] | None = None,
+        **_legacy_kwargs: object,
     ) -> None:
-        self.wrapper = wrapper or OpenCodeGoPacketWrapper()
-        self.command_env = dict(command_env or {})
-        if command_runner is None:
-            self.command_runner = (
-                lambda command, timeout_seconds, workdir: _default_opencode_go_runner(
-                    command,
-                    timeout_seconds,
-                    workdir,
-                    env=self.command_env,
-                )
-            )
-        else:
-            self.command_runner = command_runner
-        self.timeout_seconds = timeout_seconds
-        self.output_format = output_format
+        self.provider = provider
+        self.model = model
         self.workdir = workdir
+        self.completion_runner = (
+            completion_runner
+            or _legacy_command_runner_adapter(command_runner)
+            or _default_hermes_provider_completion
+        )
+        self.timeout_seconds = timeout_seconds
 
     def dispatch(self, task: WorkerTask) -> WorkerTask:
-        self.wrapper.write_packet(
-            task,
-            prompt=_prompt_for_task(task),
-            context={"worker_task": task.to_dict()},
-        )
+        _write_worker_packet(task, prompt=_prompt_for_task(task))
         return replace(task, state=WorkerTaskState.RUNNING)
 
     def collect(self, task: WorkerTask) -> WorkerTask:
-        if task.state != WorkerTaskState.RUNNING:
-            raise WorkerRunError(
-                code="task_not_running",
-                message="worker task must be running before collect",
-                worker_task_id=task.worker_task_id,
-            )
-        packet_path = Path(task.packet_path)
-        command = self.wrapper.build_command(
-            task,
-            packet_path=packet_path,
-            timeout_seconds=self.timeout_seconds,
-            output_format=self.output_format,
+        _require_running(task)
+        prompt = _prompt_for_task(task)
+        model = str(task.model_policy.get("preferred") or self.model)
+        result = self.completion_runner(
+            self.provider,
+            model,
+            prompt,
+            self.timeout_seconds,
         )
-        try:
-            result = self.command_runner(command, self.timeout_seconds, self.workdir)
-        except Exception:
-            output_path = Path(task.output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(
-                json.dumps(
-                    {
-                        "meeting_run_id": task.meeting_run_id,
-                        "worker_task_id": task.worker_task_id,
-                        "status": "failed",
-                        "command": _sanitize_command_for_persistence(command),
-                        "error": "opencode_go_runner_exception",
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    indent=2,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            return replace(
-                task,
-                state=WorkerTaskState.FAILED,
-                error="opencode_go_runner_exception",
-                output_path=str(output_path),
-            )
-        status, state, error = OpenCodeGoSmokeRunner._classify_result(result)
         output_path = Path(task.output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        state = _state_for_provider_result(result)
         from .worker_boundary_smoke import sanitize_worker_output
+        sanitized_error = sanitize_worker_output(result.error)
+        error = sanitized_error if state != WorkerTaskState.SUCCEEDED else ""
 
-        stdout_to_write = sanitize_worker_output(result.stdout)
-        stderr_to_write = sanitize_worker_output(result.stderr)
+        output_payload = {
+            "meeting_run_id": task.meeting_run_id,
+            "worker_task_id": task.worker_task_id,
+            "role": task.role,
+            "status": result.status,
+            "runner": "hermes_provider",
+            "provider": result.provider,
+            "model": result.model or model,
+            "content": sanitize_worker_output(result.content),
+            "error": sanitized_error,
+            "duration_seconds": result.duration_seconds,
+            "api_calls": result.api_calls,
+            "completed": result.completed,
+            "timed_out": result.timed_out,
+        }
         output_path.write_text(
-            json.dumps(
-                {
-                    "meeting_run_id": task.meeting_run_id,
-                    "worker_task_id": task.worker_task_id,
-                    "status": status,
-                    "command": _sanitize_command_for_persistence(command),
-                    "exit_code": result.exit_code,
-                    "stdout": stdout_to_write,
-                    "stderr": stderr_to_write,
-                    "timeout_occurred": result.timeout_occurred,
-                    "duration_seconds": result.duration_seconds,
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-                indent=2,
-            )
+            json.dumps(output_payload, ensure_ascii=False, sort_keys=True, indent=2)
             + "\n",
             encoding="utf-8",
         )
         return replace(task, state=state, error=error, output_path=str(output_path))
 
 
-class OpenCodeGoSmokeRunner:
-    """Gated live-smoke boundary for opencode-go execution.
+# Compatibility name during the cleanup phase.  The implementation is Hermes-first;
+# it no longer executes opencode-go via subprocess.
+OpenCodeGoWorkerRunner = HermesProviderWorkerRunner
 
-    Output files may contain live stdout/stderr and should stay under ignored
-    runtime paths, never committed source paths.
-    """
 
-    def __init__(
-        self,
-        *,
-        wrapper: OpenCodeGoPacketWrapper | None = None,
-        command_runner: OpenCodeGoCommandRunner | None = None,
-        timeout_seconds: int = 120,
-        output_format: str = "json",
-        workdir: str | None = None,
-        expected_stdout_contains: str = "",
-        sanitize_output: bool = True,
-        command_env: Mapping[str, str] | None = None,
-    ) -> None:
-        self.wrapper = wrapper or OpenCodeGoPacketWrapper()
-        self.command_env = dict(command_env or {})
-        if command_runner is None:
-            self.command_runner = (
-                lambda command, timeout_seconds, workdir: _default_opencode_go_runner(
-                    command,
-                    timeout_seconds,
-                    workdir,
-                    env=self.command_env,
-                )
-            )
-        else:
-            self.command_runner = command_runner
-        self.timeout_seconds = timeout_seconds
-        self.output_format = output_format
-        self.workdir = workdir
-        self.expected_stdout_contains = expected_stdout_contains
-        self.sanitize_output = sanitize_output
+def _legacy_command_runner_adapter(
+    command_runner: OpenCodeGoCommandRunner | None,
+) -> HermesProviderCompletionRunner | None:
+    """Adapt old injected tests while keeping the default path Hermes-first."""
 
-    def run(
-        self,
-        task: WorkerTask,
-        *,
-        prompt: str,
-        context: dict[str, object],
-    ) -> WorkerTask:
-        packet_path = self.wrapper.write_packet(task, prompt=prompt, context=context)
-        command = self.wrapper.build_command(
-            task,
-            packet_path=packet_path,
-            timeout_seconds=self.timeout_seconds,
-            output_format=self.output_format,
-        )
+    if command_runner is None:
+        return None
+
+    def run(provider: str, model: str, prompt: str, timeout_seconds: int) -> HermesProviderRunResult:
+        del prompt
+        started = time.monotonic()
         try:
-            result = self.command_runner(command, self.timeout_seconds, self.workdir)
-        except Exception:
-            output_path = Path(task.output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(
-                json.dumps(
-                    {
-                        "meeting_run_id": task.meeting_run_id,
-                        "worker_task_id": task.worker_task_id,
-                        "status": "failed",
-                        "command": _sanitize_command_for_persistence(command),
-                        "error": "opencode_go_runner_exception",
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    indent=2,
-                )
-                + "\n",
-                encoding="utf-8",
+            legacy = command_runner(
+                ["hermes-provider", "--provider", provider, "--model", model],
+                timeout_seconds=timeout_seconds,
+                workdir=None,
             )
-            return replace(
-                task,
-                state=WorkerTaskState.FAILED,
-                error="opencode_go_runner_exception",
-                output_path=str(output_path),
+            stdout = str(getattr(legacy, "stdout", "") or "")
+            stderr = str(getattr(legacy, "stderr", "") or "")
+            exit_code = int(getattr(legacy, "exit_code", 0))
+            timed_out = bool(getattr(legacy, "timeout_occurred", False))
+            completed = exit_code == 0 and not timed_out and bool(stdout.strip())
+            return HermesProviderRunResult(
+                status="succeeded" if completed else ("timed_out" if timed_out else "failed"),
+                content=stdout.strip(),
+                provider=provider,
+                model=model,
+                error=stderr.strip(),
+                duration_seconds=round(time.monotonic() - started, 4),
+                completed=completed,
+                timed_out=timed_out,
             )
-        status, state, error = self._classify_result(result)
-        if (
-            state == WorkerTaskState.SUCCEEDED
-            and self.expected_stdout_contains
-            and self.expected_stdout_contains not in result.stdout
-        ):
-            status = "failed"
-            state = WorkerTaskState.FAILED
-            error = "opencode_go_missing_expected_output"
-        stdout_to_write = result.stdout
-        stderr_to_write = result.stderr
-        if self.sanitize_output:
-            from .worker_boundary_smoke import sanitize_worker_output
-            stdout_to_write = sanitize_worker_output(result.stdout)
-            stderr_to_write = sanitize_worker_output(result.stderr)
-        output_path = Path(task.output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(
-            json.dumps(
-                {
-                    "meeting_run_id": task.meeting_run_id,
-                    "worker_task_id": task.worker_task_id,
-                    "status": status,
-                    "command": _sanitize_command_for_persistence(command),
-                    "exit_code": result.exit_code,
-                    "stdout": stdout_to_write,
-                    "stderr": stderr_to_write,
-                    "timeout_occurred": result.timeout_occurred,
-                    "duration_seconds": result.duration_seconds,
-                    "expected_stdout_contains": self.expected_stdout_contains,
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-                indent=2,
+        except Exception as exc:
+            del exc
+            return HermesProviderRunResult(
+                status="failed",
+                provider=provider,
+                model=model,
+                error="legacy_runner_adapter_error",
+                duration_seconds=round(time.monotonic() - started, 4),
             )
-            + "\n",
-            encoding="utf-8",
-        )
-        return replace(task, state=state, error=error, output_path=str(output_path))
 
-    @staticmethod
-    def _classify_result(
-        result: OpenCodeGoRunResult,
-    ) -> tuple[str, WorkerTaskState, str]:
-        if result.timeout_occurred:
-            return ("timed_out", WorkerTaskState.TIMED_OUT, "opencode_go_timeout")
-        if result.exit_code == 0:
-            return ("succeeded", WorkerTaskState.SUCCEEDED, "")
-        return (
-            "failed",
-            WorkerTaskState.FAILED,
-            f"opencode_go_exit_{result.exit_code}",
+    return run
+
+
+def _require_running(task: WorkerTask) -> None:
+    if task.state != WorkerTaskState.RUNNING:
+        raise WorkerRunError(
+            code="task_not_running",
+            message="worker task must be running before collect",
+            worker_task_id=task.worker_task_id,
         )
+
+
+def _state_for_provider_result(result: HermesProviderRunResult) -> WorkerTaskState:
+    if result.timed_out or result.status == "timed_out":
+        return WorkerTaskState.TIMED_OUT
+    if result.status == "succeeded" and result.completed and result.content.strip():
+        return WorkerTaskState.SUCCEEDED
+    return WorkerTaskState.FAILED
+
+
+__all__ = [
+    "FakeWorkerRunner",
+    "HermesProviderCompletionRunner",
+    "HermesProviderRunResult",
+    "HermesProviderWorkerRunner",
+    "OpenCodeGoCommandRunner",
+    "OpenCodeGoRunResult",
+    "OpenCodeGoWorkerRunner",
+    "WorkerRunError",
+    "WorkerRunner",
+]

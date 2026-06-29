@@ -1,10 +1,10 @@
 """Phase 26 live worker/validator/auditor boundary smoke policy.
 
 Machine-checkable boundary smoke for Gate 5/6/7. This module does not execute
-live CLI calls. It verifies that the worker/validator/auditor execution
-boundary preserves the required safety posture: packet-based input, model/
-provider recording, timeout/non-zero-exit fail-closed, output sanitization,
-quota gate, no shell=True, no direct env passthrough.
+live provider calls. It verifies that the worker/validator/auditor execution
+boundary preserves the required safety posture: AI_Agent-owned task packets,
+Hermes-owned provider/auth resolution, timeout/error fail-closed behavior,
+output sanitization, quota gate, and no direct secret/env passthrough.
 """
 
 from __future__ import annotations
@@ -71,9 +71,9 @@ class LiveWorkerBoundarySmokePolicy:
         return cls(
             checks=(
                 BoundarySmokeCheck(
-                    name="packet_based_input",
+                    name="ai_agent_task_packet",
                     description=(
-                        "opencode-go calls use file-based JSON packet input"
+                        "AI_Agent persists WorkerTask packets before provider calls"
                     ),
                     passed=True,
                 ),
@@ -93,9 +93,9 @@ class LiveWorkerBoundarySmokePolicy:
                     passed=True,
                 ),
                 BoundarySmokeCheck(
-                    name="nonzero_exit_fail_closed",
+                    name="provider_error_fail_closed",
                     description=(
-                        "non-zero exit produces structured FAILED result"
+                        "provider/auth/error responses produce structured FAILED result"
                     ),
                     passed=True,
                 ),
@@ -115,17 +115,16 @@ class LiveWorkerBoundarySmokePolicy:
                     passed=True,
                 ),
                 BoundarySmokeCheck(
-                    name="no_shell_true",
+                    name="no_subprocess_cli",
                     description=(
-                        "subprocess calls use shell=False / argv list"
+                        "default worker path does not execute opencode-go CLI"
                     ),
                     passed=True,
                 ),
                 BoundarySmokeCheck(
-                    name="no_direct_env_passthrough",
+                    name="hermes_auth_boundary",
                     description=(
-                        "unit tests inject fake runners; no direct env "
-                        "passthrough to real CLI in test mode"
+                        "provider/auth resolution is delegated to Hermes runtime"
                     ),
                     passed=True,
                 ),
@@ -135,26 +134,26 @@ class LiveWorkerBoundarySmokePolicy:
     def evaluate(
         self,
         *,
-        uses_packet_input: bool,
+        ai_agent_task_packet: bool,
         model_provider_recorded: bool,
         timeout_fail_closed: bool,
-        nonzero_exit_fail_closed: bool,
+        provider_error_fail_closed: bool,
         output_sanitized: bool,
         quota_gate_checked: bool,
-        no_shell_true: bool,
-        no_direct_env_passthrough: bool,
+        no_subprocess_cli: bool,
+        hermes_auth_boundary: bool,
     ) -> BoundarySmokeResult:
         """Fail closed unless every boundary condition holds."""
 
         condition_map = {
-            "packet_based_input": uses_packet_input,
+            "ai_agent_task_packet": ai_agent_task_packet,
             "model_provider_recorded": model_provider_recorded,
             "timeout_fail_closed": timeout_fail_closed,
-            "nonzero_exit_fail_closed": nonzero_exit_fail_closed,
+            "provider_error_fail_closed": provider_error_fail_closed,
             "output_sanitized": output_sanitized,
             "quota_gate_checked": quota_gate_checked,
-            "no_shell_true": no_shell_true,
-            "no_direct_env_passthrough": no_direct_env_passthrough,
+            "no_subprocess_cli": no_subprocess_cli,
+            "hermes_auth_boundary": hermes_auth_boundary,
         }
         evaluated = tuple(
             BoundarySmokeCheck(
@@ -185,8 +184,8 @@ class LiveWorkerBoundarySmokePolicy:
                 "VERIFIED_BOUNDARY_SMOKE_POLICY_EXISTS"
             ),
             "gate_7_quota_cost_monitoring": "AVAILABLE",
-            "default_runner": "opencode_go_packet_injected",
-            "live_cli_execution_in_tests": "not_allowed",
+            "default_runner": "hermes_provider_worker",
+            "live_cli_execution_in_tests": "not_used",
             "output_sanitization": "required",
             "quota_gate": "checked_before_worker_batches",
             "shell_usage": "not_allowed",

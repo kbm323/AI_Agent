@@ -250,8 +250,8 @@ class ClosedLoopPilotPolicy:
             )
 
         worker = self.worker_boundary_policy.evaluate(
-            uses_packet_input=_check_passed(
-                self.worker_boundary_policy, "packet_based_input"
+            ai_agent_task_packet=_check_passed(
+                self.worker_boundary_policy, "ai_agent_task_packet"
             ),
             model_provider_recorded=_check_passed(
                 self.worker_boundary_policy, "model_provider_recorded"
@@ -259,8 +259,8 @@ class ClosedLoopPilotPolicy:
             timeout_fail_closed=_check_passed(
                 self.worker_boundary_policy, "timeout_fail_closed"
             ),
-            nonzero_exit_fail_closed=_check_passed(
-                self.worker_boundary_policy, "nonzero_exit_fail_closed"
+            provider_error_fail_closed=_check_passed(
+                self.worker_boundary_policy, "provider_error_fail_closed"
             ),
             output_sanitized=_check_passed(
                 self.worker_boundary_policy, "output_sanitized"
@@ -268,12 +268,12 @@ class ClosedLoopPilotPolicy:
             quota_gate_checked=_check_passed(
                 self.worker_boundary_policy, "quota_gate_checked"
             ),
-            no_shell_true=_check_passed(
-                self.worker_boundary_policy, "no_shell_true"
+            no_subprocess_cli=_check_passed(
+                self.worker_boundary_policy, "no_subprocess_cli"
             ),
-            no_direct_env_passthrough=_check_passed(
+            hermes_auth_boundary=_check_passed(
                 self.worker_boundary_policy,
-                "no_direct_env_passthrough",
+                "hermes_auth_boundary",
             ),
         )
         if worker.status is not BoundarySmokeStatus.PASS:
