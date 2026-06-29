@@ -74,7 +74,7 @@ def test_phase13_worker_tasks_include_one_opencode_go_task_by_default(tmp_path: 
     assert live_tasks[0].role == "content_lead"
     assert live_tasks[0].model_policy["role_id"] == "content-director"
     assert live_tasks[0].model_policy["provider"] == "opencode-go"
-    assert live_tasks[0].model_policy["preferred"] == "qwen3.7-max"
+    assert live_tasks[0].model_policy["preferred"] == "qwen3.7-plus"
     assert live_tasks[0].model_policy["projection_profile"] == "aicompanycontent"
     assert len(fake_tasks) == 2
     fake_by_role = {task.role: task.model_policy for task in fake_tasks}
@@ -161,7 +161,7 @@ def test_phase13_live_worker_mode_uses_injected_runner(tmp_path: Path):
         "--provider",
         "opencode-go",
         "--model",
-        "qwen3.7-max",
+        "qwen3.7-plus",
     ]
     assert result.worker_tasks[0].state == WorkerTaskState.SUCCEEDED
 

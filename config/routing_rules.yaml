@@ -115,7 +115,7 @@ roles:
     discord_name: "🎬 ContentPD"
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - creative_direction
@@ -136,7 +136,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - scriptwriting
@@ -155,7 +155,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - storyboarding
@@ -173,8 +173,8 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
-      fallback: minimax-music
+      name: qwen3.7-plus
+      fallback: MiMo-V2.5
     expertise_tags:
       - music_composition
       - soundtrack
@@ -192,7 +192,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - sound_design
@@ -211,7 +211,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - video_editing
@@ -232,7 +232,7 @@ roles:
     discord_name: "🎨 ArtDirector"
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - visual_direction
@@ -252,7 +252,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - character_design
@@ -272,7 +272,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - background_art
@@ -291,7 +291,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - vfx
@@ -310,7 +310,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - ui_design
@@ -330,7 +330,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - motion_graphics
@@ -352,7 +352,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v4-pro
-      fallback: qwen3.7-max
+      fallback: qwen3.7-plus
     expertise_tags:
       - technical_architecture
       - system_design
@@ -373,7 +373,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v4-pro
-      fallback: qwen3.7-max
+      fallback: qwen3.7-plus
     expertise_tags:
       - backend
       - api_design
@@ -394,7 +394,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v4-pro
-      fallback: qwen3.7-max
+      fallback: qwen3.7-plus
     expertise_tags:
       - frontend
       - react
@@ -414,7 +414,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v4-pro
-      fallback: qwen3.7-max
+      fallback: qwen3.7-plus
     expertise_tags:
       - devops
       - ci_cd
@@ -475,7 +475,7 @@ roles:
     discord_name: "📈 MarketingLead"
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - marketing_strategy
@@ -495,7 +495,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - social_media
@@ -515,7 +515,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - public_relations
@@ -535,7 +535,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v4-pro
-      fallback: qwen3.7-max
+      fallback: qwen3.7-plus
     expertise_tags:
       - data_analysis
       - metrics
@@ -555,7 +555,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - community_management
@@ -574,7 +574,7 @@ roles:
     persistent_bot: false
     model:
       provider: opencode-go
-      name: qwen3.7-max
+      name: qwen3.7-plus
       fallback: deepseek-v4-pro
     expertise_tags:
       - brand_strategy
@@ -596,7 +596,7 @@ roles:
     model:
       provider: opencode-go
       name: glm-5.1
-      fallback: glm-4  # fallback to older GLM before Codex escalation
+      fallback: glm-5.2  # fallback to older GLM before Codex escalation
     expertise_tags:
       - validation
       - quality_assurance
@@ -637,7 +637,7 @@ roles:
     model:
       provider: opencode-go
       name: glm-5.1
-      fallback: qwen3.7-max
+      fallback: qwen3.7-plus
     expertise_tags:
       - quality_assurance
       - testing
@@ -658,7 +658,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v4-pro
-      fallback: qwen3.7-max
+      fallback: qwen3.7-plus
     expertise_tags:
       - tool_execution
       - code_generation
@@ -678,7 +678,7 @@ roles:
     model:
       provider: opencode-go
       name: deepseek-v4-pro
-      fallback: qwen3.7-max
+      fallback: qwen3.7-plus
     expertise_tags:
       - cli_tools
       - git_operations
@@ -1594,7 +1594,7 @@ guardrails:
   # ── Model Constraints ──
   - id: validator_is_glm
     description: "Validator MUST use GLM-5.1 (or GLM-4 fallback). Never Qwen or DeepSeek."
-    rule: "validator.model.provider in ['glm-5.1', 'glm-4']"
+    rule: "validator.model.provider in ['glm-5.1', 'glm-5.2']"
     enforcement: force_glm_for_validator
 
   - id: no_same_model_revalidation

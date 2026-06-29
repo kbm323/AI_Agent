@@ -682,7 +682,7 @@ def test_phase14_live_worker_mode_with_injected_runner(tmp_path: Path):
     assert result.fake_worker_count == 1
     assert len(calls) >= 1
     assert {call[2] for call in calls if len(call) >= 3 and call[1] == "--model"} == {
-        "qwen3.7-max"
+        "qwen3.7-plus"
     }
     policies = {task.role: task.model_policy for task in result.worker_tasks}
     assert policies["content_lead"]["role_id"] == "content-director"

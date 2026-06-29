@@ -165,7 +165,7 @@ roles:
     model:
       provider: opencode-go
       name: glm-5.1
-      fallback: glm-4
+      fallback: glm-5.2
     expertise_tags:
       - validation
     description: "Primary validator"
