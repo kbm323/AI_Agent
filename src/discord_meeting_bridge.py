@@ -57,6 +57,8 @@ def handle_discord_meeting_request(payload: dict[str, Any]) -> dict[str, Any]:
     )
 
     if not result.success:
+        if result.error == "no_meeting_intent":
+            return _deferred_response("일반 질문은 직접 답변드립니다. multi-bot 회의가 필요하면 '회의', '검토', '분석', '결정' 등의 키워드를 포함해 주세요.")
         return {
             "type": CHANNEL_MESSAGE_WITH_SOURCE,
             "data": {"content": f"❌ 회의 실행 실패: {result.error}"},

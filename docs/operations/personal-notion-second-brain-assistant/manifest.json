@@ -1,0 +1,27 @@
+{
+  "created_at": "2026-06-28 01:29:59 KST",
+  "updated_at": "2026-06-28 01:50:00 KST",
+  "source_skill": "/home/kbm/.hermes/profiles/aicompanyassistant/skills/productivity/personal-notion-second-brain",
+  "files": [
+    {
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/personal-notion-second-brain-assistant/README.md",
+      "size": 7868,
+      "sha256": "327a523301e64f5ac52318e2d19aaef47e53d66e0026bd750e3478f443c170cb"
+    },
+    {
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/personal-notion-second-brain-assistant/SKILL.md.backup",
+      "size": 8402,
+      "sha256": "a7e62d0d603ae230c0a6971d165a0476adc375b536452ea61ff44b5567650676"
+    },
+    {
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/personal-notion-second-brain-assistant/scripts/notion_second_brain.py",
+      "size": 18799,
+      "sha256": "5a38ff20413605d4bb1f1a2736476ee688cf8df1946767a7aada7efc98a4d870"
+    },
+    {
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/personal-notion-second-brain-assistant/notion-inventory-summary.json",
+      "size": 18978,
+      "sha256": "0d09f8b1de3c0f56e086f2ee9ccec3a873717efaf40892e6fa17e11d27e1d28d"
+    }
+  ]
+}

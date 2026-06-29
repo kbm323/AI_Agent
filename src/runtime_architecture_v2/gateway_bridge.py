@@ -138,6 +138,13 @@ def run_meeting_from_gateway(
     boundary_policy = DiscordLiveBoundaryPolicy.current_verified()
     guild_id = boundary_policy.guild_id
 
+    # Intent gate: skip multi-bot pipeline for trivial messages
+    if not classify_meeting_intent(trigger.text):
+        return GatewayMeetingResult(
+            success=False,
+            error="no_meeting_intent",
+        )
+
     # Build per-profile token envs (one env per bot role)
     profile_envs: dict[str, dict[str, str]] = {}
     for role in bot_roles:
@@ -257,3 +264,49 @@ def gateway_cli_main() -> None:
 
 if __name__ == "__main__":
     gateway_cli_main()
+# ── Intent classification ─────────────────────────────────────────────────
+
+_MEETING_KEYWORDS: tuple[str, ...] = (
+    "회의", "meeting", "미팅", "논의", "토론", "상의", "협의",
+)
+_DECISION_KEYWORDS: tuple[str, ...] = (
+    "결정", "판단", "검토", "리뷰", "review", "승인", "확정",
+)
+_ANALYSIS_KEYWORDS: tuple[str, ...] = (
+    "분석", "전략", "기획", "평가", "진단",
+)
+_FORCE_PREFIX: str = "!"
+
+
+def classify_meeting_intent(text: str) -> bool:
+    """Return True if the message warrants a multi-bot meeting.
+
+    Covers 5 trigger categories (see meeting-trigger skill).  Short
+    one-line questions without any meeting keyword are left for the
+    Gateway to answer directly.
+    """
+    t = text.lower()
+
+    # "!" prefix forces execution unconditionally
+    if t.startswith(_FORCE_PREFIX):
+        return True
+
+    # Category 1: explicit meeting request
+    if any(kw in t for kw in _MEETING_KEYWORDS):
+        return True
+
+    # Category 2: decision request
+    if any(kw in t for kw in _DECISION_KEYWORDS):
+        return True
+
+    # Category 3: analysis / planning
+    if any(kw in t for kw in _ANALYSIS_KEYWORDS):
+        return True
+
+    # Category 4: "해줘" + substantive target (not just chitchat)
+    if "해줘" in t and len(t.split()) >= 3:
+        return True
+
+    return False
+
+

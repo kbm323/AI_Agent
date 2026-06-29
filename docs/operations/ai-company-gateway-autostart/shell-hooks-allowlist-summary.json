@@ -1,0 +1,8 @@
+{
+  "approvals": [
+    {
+      "event": "on_session_start",
+      "command": "/home/kbm/.hermes/agent-hooks/start-ai-company-gateways.sh"
+    }
+  ]
+}

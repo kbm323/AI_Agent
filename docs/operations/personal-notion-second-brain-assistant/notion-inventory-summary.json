@@ -1,0 +1,929 @@
+{
+  "영역 · 자원": {
+    "count": 20,
+    "properties": [
+      {
+        "name": "프로젝트 현황 표시",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "목표 현황 표시",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "참고 비디오",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "노트 현황 표시",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "노트",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "노트 개수",
+        "type": "rollup",
+        "options": []
+      },
+      {
+        "name": "프로젝트 개수",
+        "type": "rollup",
+        "options": []
+      },
+      {
+        "name": "최종 편집 일시",
+        "type": "last_edited_time",
+        "options": []
+      },
+      {
+        "name": "프로젝트 상태",
+        "type": "rollup",
+        "options": []
+      },
+      {
+        "name": "아래부터 시스템",
+        "type": "rich_text",
+        "options": []
+      },
+      {
+        "name": "상태",
+        "type": "status",
+        "options": [
+          "자원",
+          "영역",
+          "아카이브"
+        ]
+      },
+      {
+        "name": "생성 일시",
+        "type": "created_time",
+        "options": []
+      },
+      {
+        "name": "목표 상태",
+        "type": "rollup",
+        "options": []
+      },
+      {
+        "name": "프로젝트",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "목표",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "고정하기",
+        "type": "checkbox",
+        "options": []
+      },
+      {
+        "name": "이름",
+        "type": "title",
+        "options": []
+      }
+    ],
+    "select_status_multi_counts": {
+      "상태": [
+        [
+          "자원",
+          13
+        ],
+        [
+          "영역",
+          7
+        ]
+      ]
+    },
+    "sample_titles": [
+      "자기 개발 · 계발",
+      "3D",
+      "컴퓨터",
+      "노션",
+      "자동화",
+      "세컨드 프로젝트",
+      "여행",
+      "재무관리",
+      "운동",
+      "건강",
+      "명언",
+      "음식",
+      "영화",
+      "타로 · 점술 · 운세",
+      "과학",
+      "AI",
+      "유튜브",
+      "영상",
+      "가족",
+      "나 매뉴얼"
+    ],
+    "rows": [
+      {
+        "title": "자기 개발 · 계발",
+        "status": "자원"
+      },
+      {
+        "title": "3D",
+        "status": "영역"
+      },
+      {
+        "title": "컴퓨터",
+        "status": "자원"
+      },
+      {
+        "title": "노션",
+        "status": "자원"
+      },
+      {
+        "title": "자동화",
+        "status": "자원"
+      },
+      {
+        "title": "세컨드 프로젝트",
+        "status": "영역"
+      },
+      {
+        "title": "여행",
+        "status": "자원"
+      },
+      {
+        "title": "재무관리",
+        "status": "영역"
+      },
+      {
+        "title": "운동",
+        "status": "영역"
+      },
+      {
+        "title": "건강",
+        "status": "자원"
+      },
+      {
+        "title": "명언",
+        "status": "자원"
+      },
+      {
+        "title": "음식",
+        "status": "자원"
+      },
+      {
+        "title": "영화",
+        "status": "자원"
+      },
+      {
+        "title": "타로 · 점술 · 운세",
+        "status": "자원"
+      },
+      {
+        "title": "과학",
+        "status": "자원"
+      },
+      {
+        "title": "AI",
+        "status": "자원"
+      },
+      {
+        "title": "유튜브",
+        "status": "영역"
+      },
+      {
+        "title": "영상",
+        "status": "자원"
+      },
+      {
+        "title": "가족",
+        "status": "영역"
+      },
+      {
+        "title": "나 매뉴얼",
+        "status": "영역"
+      }
+    ]
+  },
+  "노트": {
+    "count": 144,
+    "properties": [
+      {
+        "name": "아래부터 시스템",
+        "type": "rich_text",
+        "options": []
+      },
+      {
+        "name": "연결된 노트",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "분류",
+        "type": "select",
+        "options": [
+          "중간 작업물",
+          "나중에 보기",
+          "레퍼런스"
+        ]
+      },
+      {
+        "name": "생성 일시",
+        "type": "created_time",
+        "options": []
+      },
+      {
+        "name": "고정하기",
+        "type": "checkbox",
+        "options": []
+      },
+      {
+        "name": "URL",
+        "type": "url",
+        "options": []
+      },
+      {
+        "name": "영역 · 자원",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "참고 비디오",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "최종 편집 일시",
+        "type": "last_edited_time",
+        "options": []
+      },
+      {
+        "name": "할 일",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "프로젝트",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "이름",
+        "type": "title",
+        "options": []
+      }
+    ],
+    "select_status_multi_counts": {
+      "분류": [
+        [
+          "중간 작업물",
+          15
+        ],
+        [
+          "나중에 보기",
+          10
+        ],
+        [
+          "레퍼런스",
+          6
+        ]
+      ]
+    },
+    "sample_titles": [
+      "스트리머 영상 편집 자동화 브레인스토밍",
+      "VFX 레퍼런스 수집 & 언리얼 구현 워크플로우 브레인스토밍",
+      "곧 진지하게 연애/결혼할 사람 (신점뺨치는 타로점)",
+      "[타로] 곧 나에게 생길 연애 사건",
+      "언리얼 마스터 머터리얼",
+      "blender rendering",
+      "블렌더 메시 리네이밍 스크립트",
+      "가장 추천하는 기본 노하우 정리 프롬프트 (범용)",
+      "여러 개의 노하우를 한 번에 모아서 정리할 때 (지식 베이스화)",
+      "UDP Messaging 비활성화 엔진 기본 설정",
+      "Substance Painter — 알파(Alpha)로 구멍 뚫기 완전 정리",
+      "마블러스 의상 아웃라인",
+      "섭페 기본 셰이더 매개변수 원리",
+      "[타로] 4~6월 솔로 연애운💥",
+      "카와이 피직스 가이드",
+      "얼굴 모델링의 '그림자 생성' 자체를 끄기 (근본적인 꼼수)",
+      "[타로] 곧 가장 크게 터질 운",
+      "UDP Messaging 비활성화 엔진 기본 설정",
+      "[타로] 곧 있을 결정적인 일",
+      "[타로] 곧 나에게 생길 연애 사건",
+      "[타로] 지금 신이 보내는 메시지",
+      "무아툰(MooaToon) 가이드",
+      "3월 솔로 연애운🔮신점같은 쪽집게 타로점🔮",
+      "복도/합주실 도면 스케치 & 프랍 리스트",
+      "라이팅/색감 자료 수집",
+      "시네마틱 하이틴(쿄애니 스타일) 무드보드 구성",
+      "버추얼 2차 프로젝트 자체 피드백",
+      "📏 언리얼 엔진 권장 에셋 명명 규칙 (Naming Convention)",
+      "[타로] 올해 내가 꼭 잡아야 할 기회",
+      "[타로/커피점술] 2월에 일어날 일"
+    ],
+    "area_resource_relation_title_counts": {
+      "영역 · 자원": [
+        [
+          "3D",
+          26
+        ],
+        [
+          "AI",
+          26
+        ],
+        [
+          "타로 · 점술 · 운세",
+          19
+        ],
+        [
+          "세컨드 프로젝트",
+          14
+        ],
+        [
+          "나 매뉴얼",
+          12
+        ],
+        [
+          "영상",
+          9
+        ],
+        [
+          "유튜브",
+          9
+        ],
+        [
+          "노션",
+          8
+        ],
+        [
+          "자동화",
+          7
+        ],
+        [
+          "컴퓨터",
+          6
+        ],
+        [
+          "여행",
+          5
+        ],
+        [
+          "자기 개발 · 계발",
+          4
+        ],
+        [
+          "가족",
+          2
+        ],
+        [
+          "재무관리",
+          2
+        ],
+        [
+          "명언",
+          1
+        ],
+        [
+          "운동",
+          1
+        ],
+        [
+          "음식",
+          1
+        ],
+        [
+          "건강",
+          1
+        ]
+      ]
+    }
+  },
+  "할 일": {
+    "count": 156,
+    "properties": [
+      {
+        "name": "참고 비디오",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "마지막 동기화",
+        "type": "date",
+        "options": []
+      },
+      {
+        "name": "프로젝트",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "최종 편집 일시",
+        "type": "last_edited_time",
+        "options": []
+      },
+      {
+        "name": "프로젝트 상태",
+        "type": "rollup",
+        "options": []
+      },
+      {
+        "name": "노트",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "오늘의 하이라이트",
+        "type": "checkbox",
+        "options": []
+      },
+      {
+        "name": "명료화",
+        "type": "select",
+        "options": [
+          "다시 알림",
+          "언젠가",
+          "위임",
+          "다음행동",
+          "일정"
+        ]
+      },
+      {
+        "name": "계획된 시간 표시",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "동기화 해시",
+        "type": "rich_text",
+        "options": []
+      },
+      {
+        "name": "생성 일시",
+        "type": "created_time",
+        "options": []
+      },
+      {
+        "name": "아래부터 시스템",
+        "type": "rich_text",
+        "options": []
+      },
+      {
+        "name": "완료",
+        "type": "checkbox",
+        "options": []
+      },
+      {
+        "name": "날짜",
+        "type": "date",
+        "options": []
+      },
+      {
+        "name": "계획된 시간 (분)",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "다음 행동 상황",
+        "type": "multi_select",
+        "options": [
+          "창의성",
+          "단순노동",
+          "Low battery",
+          "스마트폰",
+          "컴퓨터",
+          "집에서",
+          "밖에서",
+          "어디서나",
+          "사무실",
+          "나중에 보기",
+          "대기중"
+        ]
+      },
+      {
+        "name": "구글 이벤트 ID",
+        "type": "rich_text",
+        "options": []
+      },
+      {
+        "name": "이름",
+        "type": "title",
+        "options": []
+      }
+    ],
+    "select_status_multi_counts": {
+      "명료화": [
+        [
+          "다음행동",
+          73
+        ],
+        [
+          "일정",
+          40
+        ],
+        [
+          "언젠가",
+          8
+        ],
+        [
+          "위임",
+          5
+        ]
+      ],
+      "다음 행동 상황": [
+        [
+          "컴퓨터",
+          37
+        ],
+        [
+          "집에서",
+          10
+        ],
+        [
+          "사무실",
+          9
+        ],
+        [
+          "창의성",
+          7
+        ],
+        [
+          "밖에서",
+          5
+        ],
+        [
+          "어디서나",
+          2
+        ],
+        [
+          "대기중",
+          1
+        ],
+        [
+          "스마트폰",
+          1
+        ]
+      ]
+    },
+    "sample_titles": [
+      "민건 결혼식",
+      "미용실",
+      "디테일 프랍(창문/사물함 등) 모델링 2차",
+      "캐릭터 피드백 수정 가이드 및 엔진 적용",
+      "캐릭터 1차 확인 및 룩뎁 회의",
+      "캐릭터 툰 셰이더 셋업 (그림자/아웃라인)",
+      "유튜브 러프 아이디어",
+      "3차 프로젝트 최종 MV 마감",
+      "피드백 반영 및 분할 렌더링",
+      "1차 가편집본 렌더링 및 팀 피드백",
+      "전체 애니메이션 임포트 및 카메라 동기화",
+      "나이아가라 응원봉 2.0",
+      "DMX 조명 / 포그(Fog) / 스파큘러(불꽃)",
+      "자연광(Directional) 셋업",
+      "모델링 엔진 임포트 & 맵 배치",
+      "서브스턴스 3D 페인터 텍스처링",
+      "디테일 프랍(창문/사물함 등) 모델링",
+      "복도/합주실 기본 뼈대(블로킹) 모델링",
+      "복도/합주실 도면 스케치 & 프랍 리스트",
+      "라이팅/색감 자료 수집",
+      "시네마틱 하이틴(쿄애니 스타일) 무드보드 구성",
+      "동원예비군 연기",
+      "홍대 저녁약속",
+      "예비군",
+      "통합/리허설",
+      "셰이더 R&D",
+      "VFX R&D",
+      "조명 셋업",
+      "LED 제작",
+      "무대 완공"
+    ]
+  },
+  "프로젝트": {
+    "count": 11,
+    "properties": [
+      {
+        "name": "영역 · 자원",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "최종 편집 일시",
+        "type": "last_edited_time",
+        "options": []
+      },
+      {
+        "name": "할 일 현황 표시",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "종료일",
+        "type": "date",
+        "options": []
+      },
+      {
+        "name": "아래부터 시스템",
+        "type": "rich_text",
+        "options": []
+      },
+      {
+        "name": "시작일",
+        "type": "date",
+        "options": []
+      },
+      {
+        "name": "달성률 표시",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "완료된 할 일",
+        "type": "rollup",
+        "options": []
+      },
+      {
+        "name": "할 일 완료 숫자",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "생성 일시",
+        "type": "created_time",
+        "options": []
+      },
+      {
+        "name": "할 일 완료 롤업",
+        "type": "rollup",
+        "options": []
+      },
+      {
+        "name": "완료하기",
+        "type": "button",
+        "options": []
+      },
+      {
+        "name": "할 일",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "남은 할 일",
+        "type": "rollup",
+        "options": []
+      },
+      {
+        "name": "목표",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "노트",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "상태",
+        "type": "status",
+        "options": [
+          "시작 안 함",
+          "진행 중",
+          "완료",
+          "중단"
+        ]
+      },
+      {
+        "name": "디데이 표시",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "이름",
+        "type": "title",
+        "options": []
+      }
+    ],
+    "select_status_multi_counts": {
+      "상태": [
+        [
+          "시작 안 함",
+          6
+        ],
+        [
+          "완료",
+          4
+        ],
+        [
+          "진행 중",
+          1
+        ]
+      ]
+    },
+    "sample_titles": [
+      "[ECLIPSE: The Leap of Faith] 버추얼 아이돌",
+      "Velvet noise band(팀프로젝트)",
+      "일본어 JLPT 3급",
+      "실업급여",
+      "쌍꺼풀 수술",
+      "일상 속 자동화",
+      "후쿠오카 여행가기",
+      "04_자동화",
+      "03_영상제작",
+      "02_디자인",
+      "01_콘텐츠 기획"
+    ],
+    "area_resource_relation_title_counts": {
+      "영역 · 자원": [
+        [
+          "유튜브",
+          4
+        ],
+        [
+          "세컨드 프로젝트",
+          2
+        ],
+        [
+          "여행",
+          2
+        ],
+        [
+          "재무관리",
+          1
+        ],
+        [
+          "건강",
+          1
+        ],
+        [
+          "AI",
+          1
+        ]
+      ]
+    }
+  },
+  "목표": {
+    "count": 3,
+    "properties": [
+      {
+        "name": "영역 · 자원",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "달성률 표시",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "종료일",
+        "type": "date",
+        "options": []
+      },
+      {
+        "name": "시작일",
+        "type": "date",
+        "options": []
+      },
+      {
+        "name": "생성 일시",
+        "type": "created_time",
+        "options": []
+      },
+      {
+        "name": "디데이 표시",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "연간 목표",
+        "type": "select",
+        "options": [
+          "2025년",
+          "2026년"
+        ]
+      },
+      {
+        "name": "프로젝트",
+        "type": "relation",
+        "options": []
+      },
+      {
+        "name": "아래부터 시스템",
+        "type": "rich_text",
+        "options": []
+      },
+      {
+        "name": "최종 편집 일시",
+        "type": "last_edited_time",
+        "options": []
+      },
+      {
+        "name": "분기 목표",
+        "type": "select",
+        "options": [
+          "1분기",
+          "2분기",
+          "3분기",
+          "4분기"
+        ]
+      },
+      {
+        "name": "상태",
+        "type": "status",
+        "options": [
+          "시작 안 함",
+          "진행 중",
+          "완료",
+          "중단"
+        ]
+      },
+      {
+        "name": "프로젝트 현황 표시",
+        "type": "formula",
+        "options": []
+      },
+      {
+        "name": "연결된 프로젝트 상태",
+        "type": "rollup",
+        "options": []
+      },
+      {
+        "name": "프로젝트 진행률 평균 숫자",
+        "type": "rollup",
+        "options": []
+      },
+      {
+        "name": "이름",
+        "type": "title",
+        "options": []
+      }
+    ],
+    "select_status_multi_counts": {
+      "연간 목표": [
+        [
+          "2025년",
+          2
+        ],
+        [
+          "2026년",
+          1
+        ]
+      ],
+      "분기 목표": [
+        [
+          "2분기",
+          1
+        ],
+        [
+          "4분기",
+          1
+        ],
+        [
+          "3분기",
+          1
+        ]
+      ],
+      "상태": [
+        [
+          "진행 중",
+          2
+        ],
+        [
+          "시작 안 함",
+          1
+        ]
+      ]
+    },
+    "sample_titles": [
+      "3D 버추얼 아이돌 포트폴리오",
+      "일본어 회화",
+      "유튜브 쇼츠 채널 1만 달성"
+    ],
+    "area_resource_relation_title_counts": {
+      "영역 · 자원": [
+        [
+          "세컨드 프로젝트",
+          1
+        ],
+        [
+          "영상",
+          1
+        ],
+        [
+          "3D",
+          1
+        ],
+        [
+          "여행",
+          1
+        ],
+        [
+          "유튜브",
+          1
+        ]
+      ]
+    }
+  }
+}

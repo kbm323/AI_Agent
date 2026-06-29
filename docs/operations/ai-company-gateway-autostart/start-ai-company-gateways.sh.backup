@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Ensure the 7 AI Company Discord gateways are running when Hermes starts a session.
+# Intended for Hermes shell hook: on_session_start.
+set -euo pipefail
+
+# Consume hook payload; this hook is observer-only.
+cat - >/dev/null || true
+
+HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+LOG_DIR="$HERMES_HOME/logs"
+LOG_FILE="$LOG_DIR/ai-company-gateway-autostart.log"
+LOCK_FILE="$HERMES_HOME/ai-company-gateway-autostart.lock"
+STAMP_FILE="$HERMES_HOME/ai-company-gateway-autostart.last"
+mkdir -p "$LOG_DIR"
+
+# Use flock when available to avoid duplicate starts if multiple Hermes sessions boot together.
+exec 9>"$LOCK_FILE"
+if command -v flock >/dev/null 2>&1; then
+  flock -n 9 || { printf '{}\n'; exit 0; }
+fi
+
+now="$(date +%s)"
+last="0"
+if [[ -f "$STAMP_FILE" ]]; then
+  last="$(cat "$STAMP_FILE" 2>/dev/null || echo 0)"
+fi
+# Cooldown: session_start can fire in several profiles; avoid repeated checks within 60s.
+if [[ "$last" =~ ^[0-9]+$ ]] && (( now - last < 60 )); then
+  printf '{}\n'
+  exit 0
+fi
+printf '%s' "$now" > "$STAMP_FILE"
+
+profiles=(
+  aicompanyassistant
+  aicompanyceo
+  aicompanycontent
+  aicompanyart
+  aicompanytech
+  aicompanymarketing
+  aicompanyquality
+)
+
+started=()
+already=()
+failed=()
+
+for profile in "${profiles[@]}"; do
+  session="gw_${profile}"
+  if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$session" 2>/dev/null; then
+    already+=("$profile")
+    continue
+  fi
+
+  env_file="$HERMES_HOME/profiles/$profile/.env"
+  if [[ ! -f "$env_file" ]]; then
+    failed+=("$profile:missing_env")
+    continue
+  fi
+
+  if ! command -v tmux >/dev/null 2>&1; then
+    failed+=("$profile:missing_tmux")
+    continue
+  fi
+
+  if tmux new-session -d -s "$session" -x 120 -y 40 "bash -lc 'set -a; source \"$env_file\"; set +a; exec hermes --profile $profile gateway run'"; then
+    started+=("$profile")
+  else
+    failed+=("$profile:start_failed")
+  fi
+done
+
+{
+  printf '[%s] started=%s already=%s failed=%s\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S %Z')" \
+    "${started[*]:-none}" \
+    "${already[*]:-none}" \
+    "${failed[*]:-none}"
+} >> "$LOG_FILE"
+
+# Shell hooks should stay silent/no-op for the agent.
+printf '{}\n'

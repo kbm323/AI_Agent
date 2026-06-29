@@ -1,0 +1,5 @@
+hooks:
+  on_session_start:
+  - command: /home/kbm/.hermes/agent-hooks/start-ai-company-gateways.sh
+    timeout: 20
+hooks_auto_accept: false

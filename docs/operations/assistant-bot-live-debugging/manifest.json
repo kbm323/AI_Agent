@@ -1,0 +1,36 @@
+{
+  "created_at": "2026-06-28 KST",
+  "skill": "assistant-bot-live-debugging",
+  "files": [
+    {
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/assistant-bot-live-debugging/README.md",
+      "size": 3620,
+      "sha256": "05c140d7564b14e3b9df3a1d3735f1fa63c6ed234c4cfefa106af10739bfa241"
+    },
+    {
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/assistant-bot-live-debugging/SKILL.md.backup",
+      "size": 10693,
+      "sha256": "a2d591ecf58207bec637e6f1a7e3e9bcbafaf7280c98f38607d24989cde423ad"
+    }
+  ],
+  "installed_profile_copies": [
+    {
+      "profile": "aicompanytech",
+      "path": "/home/kbm/.hermes/profiles/aicompanytech/skills/devops/assistant-bot-live-debugging/SKILL.md",
+      "size": 10693,
+      "sha256": "a2d591ecf58207bec637e6f1a7e3e9bcbafaf7280c98f38607d24989cde423ad"
+    },
+    {
+      "profile": "aicompanyquality",
+      "path": "/home/kbm/.hermes/profiles/aicompanyquality/skills/devops/assistant-bot-live-debugging/SKILL.md",
+      "size": 10693,
+      "sha256": "a2d591ecf58207bec637e6f1a7e3e9bcbafaf7280c98f38607d24989cde423ad"
+    },
+    {
+      "profile": "aicompanyassistant",
+      "path": "/home/kbm/.hermes/profiles/aicompanyassistant/skills/devops/assistant-bot-live-debugging/SKILL.md",
+      "size": 10693,
+      "sha256": "a2d591ecf58207bec637e6f1a7e3e9bcbafaf7280c98f38607d24989cde423ad"
+    }
+  ]
+}

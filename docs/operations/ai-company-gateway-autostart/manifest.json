@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-06-28 KST",
+  "topic": "ai-company-gateway-autostart",
+  "files": [
+    {
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/ai-company-gateway-autostart/README.md",
+      "size": 3369,
+      "sha256": "3c6d588ab2d9bf522267eb4dac937cbdfdb4f7d05c504c39580279cb61228566"
+    },
+    {
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/ai-company-gateway-autostart/start-ai-company-gateways.sh.backup",
+      "size": 2157,
+      "sha256": "956c8b551c0c481305c85f6a9b96c5431d3e094901328c39ce4f15b8e28bc562"
+    },
+    {
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/ai-company-gateway-autostart/hermes-config-hook-summary.yaml",
+      "size": 140,
+      "sha256": "6432c14bf7288ecee6f0f156a3c4432549f9cc548e6b3de4b40de456b5ef80aa"
+    },
+    {
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/ai-company-gateway-autostart/shell-hooks-allowlist-summary.json",
+      "size": 149,
+      "sha256": "4a921f747c1874ba0dac320be0b652ce4e2a92f9cc2cc9b5bc2299ff6e8fb34f"
+    }
+  ]
+}

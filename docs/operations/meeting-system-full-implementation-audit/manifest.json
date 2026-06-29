@@ -1,0 +1,16 @@
+{
+  "archive": "backups/meeting-system-full-implementation-audit_2026-06-28.tar.gz",
+  "archive_checksum": "backups/meeting-system-full-implementation-audit_2026-06-28.tar.gz.sha256",
+  "canonical_baseline": "docs/runtime-architecture-v2.md",
+  "created_at_kst": "2026-06-28 14:29:41 KST",
+  "files": [
+    {
+      "bytes": 13204,
+      "path": "/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/meeting-system-full-implementation-audit/README.md",
+      "relative_path": "README.md",
+      "sha256": "657701520bec19562aa406079fdad3f68fa2367a971c26ae5a6ed33564a7edac"
+    }
+  ],
+  "note": "manifest.json and archive are verified separately; manifest only hashes stable source files.",
+  "purpose": "Record full implementation audit verdict for AI_Agent meeting system against Runtime Architecture v2 final design."
+}

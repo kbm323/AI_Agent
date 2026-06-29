@@ -1,0 +1,245 @@
+---
+name: personal-notion-second-brain
+description: "Use when the personal assistant bot handles Notion Second Brain capture: notes, tasks, schedules, ideas, duplicate checks, web-search proposals, and safe create/delete confirmations."
+version: 1.0.0
+author: Hermes Agent
+license: MIT
+platforms: [linux, macos, windows]
+metadata:
+  hermes:
+    tags: [Notion, Second Brain, Personal Assistant, GTD, PARA]
+    related_skills: [notion, notion-agent-operations]
+---
+
+# Personal Notion Second Brain
+
+## Overview
+
+This skill is for the `aicompanyassistant` / 비서 bot when the user asks to save, organize, schedule, complete, search, or delete items in Notion Second Brain.
+
+Operate against the user's existing Notion structure. Do not invent a new taxonomy. Reuse existing broad `영역 · 자원` boundaries and allow multiple relations when an item spans topics.
+
+Current verified core data sources:
+
+- Root: `SECOND BRAIN OS`
+- Notes: `노트`
+- Tasks/schedules: `할 일`
+- Areas/resources: `영역 · 자원`
+- Projects: `프로젝트`
+- Goals: `목표`
+
+## When to Use
+
+Use this skill when the user says things like:
+
+- "노션에 저장해줘"
+- "아이디어로 넣어줘"
+- "노트로 정리해줘"
+- "할 일 추가해줘"
+- "일정기록해줘"
+- "일정 추가해줘"
+- "캘린더에 넣어줘"
+- "예약했어"
+- "스케줄 잡아줘"
+- "나중에 볼 자료로 넣어줘"
+- "완료 처리해줘"
+- "삭제해줘"
+- "이거 웹서치해서 가능성 확인해줘"
+- "비서야 이거 기억해둬"
+
+Do not use this for generic codebase work unless the output needs to be captured into Notion.
+
+If another assistant automation skill is also relevant, this skill has priority for Notion records: notes, ideas, tasks, schedules, completion, and deletion proposals. Hermes cron is only for delayed/repeated agent work or reminders/notifications, not the primary record.
+
+## Non-Negotiable Safety Rules
+
+1. Never print Notion tokens or raw auth headers.
+2. Explicit notes/memos/ideas may be created immediately.
+3. Explicit tasks/schedules may be created immediately.
+4. Tasks derived from a note/idea require user confirmation before creation.
+5. New `영역 · 자원`, `프로젝트`, `목표` require user confirmation before creation.
+6. Web search requires user confirmation before execution unless the user explicitly asked to search.
+7. Delete/archive/complete operations require confirmation after showing likely matching candidates.
+8. If ambiguous, keep the item in inbox state by leaving `분류` / `명료화` / project/date blank instead of forcing a wrong classification.
+
+## User-Specific Taxonomy
+
+Verified `영역`:
+
+- 3D
+- 세컨드 프로젝트
+- 재무관리
+- 운동
+- 유튜브
+- 가족
+- 나 매뉴얼
+
+Verified `자원`:
+
+- 자기 개발 · 계발
+- 컴퓨터
+- 노션
+- 자동화
+- 여행
+- 건강
+- 명언
+- 음식
+- 영화
+- 타로 · 점술 · 운세
+- 과학
+- AI
+- 영상
+
+Key interpretations:
+
+- `나 매뉴얼` = personal operating manual / self-understanding / assistant guidance.
+- `세컨드 프로젝트` = broad side-business / side-project boundary.
+- `AI_Agent` belongs under existing broad resources, not a new area by default: `AI`, `자동화`, `컴퓨터`; add `노션` for Notion/Hermes Second Brain work; add `유튜브`/`영상` for contentization.
+- `운동` is the responsibility area; `건강` is an information/resource topic. Use both when appropriate.
+
+## Flexible Bot Defaults
+
+Use these as starting priors, not hard locks. Override based on content.
+
+| Bot | Default relations |
+| --- | --- |
+| 비서 / aicompanyassistant | 나 매뉴얼, 가족, 재무관리, 운동, 건강, 자기 개발 · 계발, 노션 |
+| CEO | AI, 자동화, 세컨드 프로젝트 |
+| Content | 유튜브, 영상, AI, 세컨드 프로젝트 |
+| Art | 3D, 영상, AI |
+| Tech | AI, 자동화, 컴퓨터, 노션 |
+| Marketing | 유튜브, 영상, 세컨드 프로젝트, 자기 개발 · 계발 |
+| Quality | AI, 자동화, 컴퓨터, 나 매뉴얼 |
+
+## Capture Decision Tree
+
+1. Is the user explicitly giving a task/schedule?
+   - Yes: create in `할 일` directly.
+   - If date + time: `명료화=일정`.
+   - "예약했어 일정기록해줘" means create a Notion calendar/task item, not only a Hermes cron reminder.
+   - If date only or execution plan: `명료화=다음행동`.
+   - If "언젠가/나중에/해야 함": `명료화=언젠가`, but ask a short clarifying question if too vague to execute.
+
+2. Is the user giving an idea/memo/reference?
+   - Yes: create in `노트` directly.
+   - If user supplied a title, keep it exactly.
+   - If no title, generate a concise Korean title around 20 characters.
+   - Make the body clean and scannable, not a heavy template.
+   - Suggest next actions, but ask before creating derived tasks.
+   - Mark whether web search seems useful; ask before searching.
+
+3. Is it multi-step?
+   - Search existing `프로젝트` first.
+   - If a good project exists, connect it.
+   - If not, connect only broad `영역 · 자원` and ask whether to create a project.
+
+4. Is the user asking to complete/delete/archive?
+   - Search candidates first.
+   - Show likely matches and ask for confirmation.
+   - Only then update/delete/archive.
+
+## Note Body Style
+
+Keep notes visually light. Use only sections that help.
+
+Short memo:
+
+```text
+요약
+- ...
+
+연결
+- 영역/자원: ...
+```
+
+Idea:
+
+```text
+핵심
+- ...
+
+활용 가능성
+- ...
+
+다음 행동 후보
+- ...
+
+웹서치 필요
+- 예/아니오 — 이유
+```
+
+Reference/material:
+
+```text
+무엇인가
+- ...
+
+쓸 곳
+- ...
+
+관련 연결
+- 영역/자원: ...
+- 프로젝트: ...
+```
+
+For very short messages, store the original text and one-line summary only.
+
+## Task Title Style
+
+Tasks should be physical next actions. The assistant may rewrite vague user wording into a concrete action when safe.
+
+Good:
+
+- `AI_Agent 최근 로그 요약 정리하기`
+- `쇼츠 후보 주제 5개 적기`
+- `미용실 예약 시간 확인하기`
+
+Bad:
+
+- `기획하기`
+- `처리하기`
+- `준비하기`
+
+Ask a clarifying question if the task lacks target, scope, or timing.
+
+## Duplicate Handling
+
+Before creating a note/task, search for similar titles in the target data source.
+
+- If no obvious duplicate: create.
+- If likely duplicate exists: ask whether to add to the existing item or create a new one.
+- Do not silently merge.
+
+## Helper Script
+
+Use the helper script when available:
+
+```bash
+python ~/.hermes/profiles/aicompanyassistant/skills/productivity/personal-notion-second-brain/scripts/notion_second_brain.py inventory
+python ~/.hermes/profiles/aicompanyassistant/skills/productivity/personal-notion-second-brain/scripts/notion_second_brain.py propose-note --text "..."
+python ~/.hermes/profiles/aicompanyassistant/skills/productivity/personal-notion-second-brain/scripts/notion_second_brain.py create-note --title "..." --body "..." --areas AI 자동화 --confirm
+python ~/.hermes/profiles/aicompanyassistant/skills/productivity/personal-notion-second-brain/scripts/notion_second_brain.py propose-task --text "..."
+python ~/.hermes/profiles/aicompanyassistant/skills/productivity/personal-notion-second-brain/scripts/notion_second_brain.py create-task --title "..." --clarify 다음행동 --date 2026-06-28 --areas AI 자동화 --confirm
+```
+
+`create-*` commands are dry-run unless `--confirm` is passed.
+
+## Completion Criteria
+
+A Notion operation is complete only when:
+
+- The target data source was resolved live from env/API.
+- Duplicate candidates were checked.
+- Required confirmations were obtained for derived tasks, new taxonomy items, web search, completion, archive, or deletion.
+- The API returned success for the actual write, or a clear proposal was shown without writing.
+- The final response includes what was created/updated and what remains pending.
+
+## Common Pitfalls
+
+1. Treating `AI_Agent` as a new area. Use existing `AI`, `자동화`, `컴퓨터` first.
+2. Over-splitting taxonomy. The user wants broad boundaries.
+3. Creating derived tasks from an idea without asking. Notes can be immediate; derived tasks need confirmation.
+4. Forgetting that explicit task requests can be created directly.
+5. Forcing a category when uncertain. Leave inbox fields blank and let clarification handle it later.
+6. Doing web search just because it may be useful. Ask first unless explicitly requested.
+7. Deleting or completing without showing candidates first.

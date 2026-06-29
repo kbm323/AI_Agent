@@ -1,0 +1,260 @@
+---
+name: assistant-bot-live-debugging
+description: "Use when a Discord AI-company bot, especially the personal assistant, mis-handles a live request and the tech lead or quality lead must diagnose logs, verify external state, patch Hermes profile skills/config/helpers, restart gateways, and report evidence."
+version: 1.0.0
+author: Hermes Agent
+license: MIT
+platforms: [linux, wsl]
+metadata:
+  hermes:
+    tags: [discord, gateway, incident-response, debugging, notion, cron, skills]
+    related_skills: [hermes-agent, systematic-debugging, personal-notion-second-brain, personal-assistant-automation]
+---
+
+# Assistant Bot Live Debugging
+
+## Overview
+
+Use this skill for live incidents where a Discord bot claims it completed work but the real external state is wrong: Notion item missing, cron created instead of a calendar record, Discord output too verbose, helper script failed, gateway config did not apply, or a skill routed the request to the wrong tool.
+
+This is an operations skill, not a design discussion. The deliverable is verified runtime behavior backed by logs, API reads, config reads, and restart/status evidence.
+
+## When to Use
+
+Trigger on Korean or English requests like:
+
+- "비서가 잘못했어", "비서 봇 수정해", "비서 디버깅해"
+- "노션에 안 보여", "캘린더에 안 들어갔어", "할 일이 안 생겼어", "노트가 이상해"
+- "기술팀장/품질팀장 이거 고쳐", "품질팀장이 검증해", "기술팀장이 패치해"
+- "Discord에 tool/terminal 로그가 보여", "최종보고만 나오게 해"
+- Any discrepancy between a bot's final answer and actual Notion/cron/Discord/gateway state
+
+Do not use for ordinary Notion capture; use `personal-notion-second-brain` for normal notes/tasks/schedules.
+
+## Role Contract
+
+### Quality Lead
+
+Primary job: prove what happened.
+
+1. Capture the user-reported expected behavior and the bot's actual response.
+2. Inspect Hermes session/log/request-dump evidence for the involved profile.
+3. Query the external source of truth directly: Notion API, Hermes cron list, Discord log, config resolver, or helper output.
+4. Classify the failure: skill routing, helper bug, config/display setting, API schema mismatch, user ambiguity, missing restart, or external API error.
+5. Produce a minimal reproducible case and verification checklist.
+
+Completion criterion: every claim in the incident summary has a direct command/API/log source.
+
+### Tech Lead
+
+Primary job: patch safely.
+
+1. Read the specific skill/config/helper involved before editing.
+2. Patch the smallest durable rule or script fix that prevents recurrence.
+3. Avoid broad rewrites and avoid weakening safety confirmation rules.
+4. Update backup docs if the affected workflow already has an operations backup folder.
+5. Restart only the affected gateway profile, then verify the new runtime sees the updated config/skill/env.
+
+Completion criterion: the same class of request now routes to the correct tool path in a dry-run/proposal test and the gateway process is alive after restart.
+
+### Local Executor
+
+If the current bot/profile cannot write to the needed filesystem or cannot restart gateways, it must not pretend to fix the issue. It should produce a handoff to the local Hermes execution agent with:
+
+- Target profile
+- User request and bot answer
+- Suspected failing files
+- Exact verification commands
+- Proposed patch scope
+
+Completion criterion: handoff contains enough paths and commands for the executor to act without asking the user to repeat context.
+
+## Standard Incident Workflow
+
+### 1. Identify target profile
+
+Map the user-facing bot to a Hermes profile:
+
+| Bot role | Profile |
+| --- | --- |
+| 비서 | `aicompanyassistant` |
+| 기술팀장 / Tech | `aicompanytech` |
+| 품질팀장 / Quality | `aicompanyquality` |
+| CEO | `aicompanyceo` |
+| Content | `aicompanycontent` |
+| Art | `aicompanyart` |
+| Marketing | `aicompanymarketing` |
+
+If the incident is about the personal assistant, default target profile is `aicompanyassistant`.
+
+### 2. Gather evidence first
+
+Use direct sources, not memory:
+
+```bash
+# Gateway logs
+sed -n '<range>p' ~/.hermes/profiles/<profile>/logs/agent.log
+sed -n '<range>p' ~/.hermes/profiles/<profile>/logs/gateway.log
+
+# Recent sessions
+sqlite3 ~/.hermes/profiles/<profile>/state.db "SELECT id,title,source,datetime(started_at,'unixepoch','localtime'),message_count,tool_call_count FROM sessions ORDER BY started_at DESC LIMIT 10;"
+
+# Search text safely
+grep -R "<keyword>" -n ~/.hermes/profiles/<profile>/logs ~/.hermes/profiles/<profile>/sessions 2>/dev/null | tail -100
+```
+
+Redact tokens in any displayed output:
+
+```bash
+sed -E 's/(ntn_|secret_|Bearer )[A-Za-z0-9_.-]+/[REDACTED]/g'
+```
+
+Completion criterion: the exact user request, tools used, and final bot answer are identified.
+
+### 3. Check external truth
+
+Pick the truth source based on the failed promise:
+
+- Notion schedule/task/note: query Notion API or run the profile's Notion helper.
+- Reminder/automation: `hermes --profile <profile> cron list`.
+- Discord visibility/noise: resolve `display.platforms.discord.*` and restart gateway.
+- Skill routing: inspect loaded skills and their trigger wording.
+- Helper script: run dry-run/proposal and `python3 -m py_compile`.
+
+Completion criterion: you can say whether the bot did the requested external mutation, a different mutation, or no mutation.
+
+### 4. Fix the source of recurrence
+
+Common fixes:
+
+- Wrong Notion vs cron routing:
+  - Patch `personal-assistant-automation` and `personal-notion-second-brain` boundaries.
+  - Rule: Notion records first for notes/tasks/schedules; Hermes cron only for delayed/repeated agent work or explicit reminders.
+
+- Discord tool spam:
+  - Set per-platform Discord display overrides in the affected profile:
+    - `display.platforms.discord.tool_progress = off`
+    - `display.platforms.discord.interim_assistant_messages = false`
+    - `display.platforms.discord.long_running_notifications = false`
+    - `display.platforms.discord.busy_ack_detail = false`
+    - `display.platforms.discord.streaming = false`
+    - `display.platforms.discord.tool_preview_length = 0`
+
+- Bad title/body from helper:
+  - Patch helper prefix stripping or property mapping.
+  - Validate with proposal commands before live writes.
+
+- Missing gateway reload:
+  - Restart only the affected gateway tmux/session.
+
+Completion criterion: patch targets the rule/script/config that caused the incident, not only the one visible item.
+
+### 5. Verify live enough
+
+Minimum verification bundle:
+
+```bash
+# Skills parse
+python3 - <<'PY'
+import yaml
+from pathlib import Path
+for p in [Path('/home/kbm/.hermes/profiles/<profile>/skills/.../SKILL.md')]:
+    text=p.read_text(encoding='utf-8')
+    assert text.startswith('---')
+    end=text.find('\n---\n',3); assert end!=-1
+    fm=yaml.safe_load(text[3:end]); assert fm.get('name') and fm.get('description')
+print('skill_ok')
+PY
+
+# Helper compile if Python changed
+python3 -m py_compile <helper.py>
+
+# Secret scan local changed files
+python3 - <<'PY'
+from pathlib import Path
+import re
+files=[Path('<changed-file>')]
+text='\n'.join(p.read_text(encoding='utf-8',errors='ignore') for p in files)
+hits=[]
+for pat in [r'ntn_[A-Za-z0-9_-]{20,}', r'secret_[A-Za-z0-9_-]{20,}', r'Bearer\s+[A-Za-z0-9_-]{20,}']:
+    hits.extend(re.findall(pat,text))
+print('secret_pattern_hits', len(hits))
+assert not hits
+PY
+```
+
+For Notion incidents, verify actual Notion API state after any correction. For cron incidents, verify `cron list` after create/remove. For display incidents, verify resolver values and gateway process alive.
+
+Completion criterion: fresh tool output proves the corrected state.
+
+### 6. Record and backup
+
+If the incident changes an operational skill/helper/config:
+
+1. Update the project operations folder when one exists, e.g.:
+   - `/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent/docs/operations/<topic>/README.md`
+2. Copy changed skill/helper into the backup folder.
+3. Regenerate `manifest.json` with sha256 and a `.tar.gz` archive.
+4. Mirror to `/mnt/f/ai-projects/...` when available.
+
+Completion criterion: WSL source and Windows mirror both contain the updated record, and archive checksum passes.
+
+## Specific Runbooks
+
+### Personal assistant Notion incident
+
+1. Load `personal-notion-second-brain` and `personal-assistant-automation`.
+2. Reconstruct the Discord request and bot answer from logs/session DB.
+3. Query Notion and cron directly.
+4. If cron was created instead of Notion record, remove the wrong cron if the user asks, create or update the Notion item, then patch skill boundary.
+5. Validate with helper `propose-note` or `propose-task`.
+6. Restart `gw_aicompanyassistant`.
+7. Report only final result in Discord.
+
+### Discord tool-progress noise incident
+
+1. Read `/home/kbm/.hermes/profiles/<profile>/config.yaml`.
+2. Resolve gateway display settings for Discord.
+3. Set Discord platform overrides to quiet mode.
+4. Restart the profile gateway.
+5. Verify resolver values are quiet and gateway is alive.
+
+### Cross-profile modification rule
+
+Editing another profile's skills/config is allowed only when the user explicitly asks to fix that bot/profile. Keep a backup and state exactly which profile was changed.
+
+## Final Report Format
+
+Keep the Discord/user report short:
+
+```text
+완료했습니다.
+- 원인: <one line>
+- 수정: <files/config changed>
+- 검증: <fresh evidence>
+- 기록: <backup path if applicable>
+```
+
+Do not include raw terminal commands or tool trace in Discord final output unless the user explicitly asks for debugging details.
+
+## Common Pitfalls
+
+1. Treating the bot's final answer as proof. Always verify the real external state.
+2. Fixing the one bad item but not the routing rule that caused it.
+3. Creating Hermes cron for Notion records. Cron is for delayed/repeated work and explicit reminders; Notion is the source of truth for notes/tasks/schedules.
+4. Restarting the wrong gateway profile.
+5. Forgetting that gateway config changes require restart.
+6. Printing secrets from `.env`, Notion headers, or Discord tokens.
+7. Letting tech/quality claim a fix when they only produced analysis. If no write/restart access, produce a handoff.
+
+## Verification Checklist
+
+- [ ] Target profile identified.
+- [ ] User request and bot response recovered from logs/session evidence.
+- [ ] External truth source queried directly.
+- [ ] Root cause classified.
+- [ ] Minimal durable patch applied or executable handoff produced.
+- [ ] Fresh verification run after patch.
+- [ ] Affected gateway restarted when config/skill/helper changed.
+- [ ] Backup/record updated for operational changes.
+- [ ] Final report contains result, evidence, and remaining risk only.
