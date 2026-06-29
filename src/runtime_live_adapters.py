@@ -318,6 +318,7 @@ def load_runtime_live_config(
 
     Supported names:
     - DISCORD_TOKEN or DISCORD_BOT_TOKEN
+    - NOTION_API_KEY or NOTION_API_TOKEN
     - DISCORD_API_BASE
     - OPENCLAW_COMMAND, OPENCLAW_PACKET_DIR, OPENCLAW_TIMEOUT_SECONDS
     - AI_AGENT_WORKDIR
@@ -374,10 +375,19 @@ def _runtime_subprocess_env(source: Mapping[str, str]) -> dict[str, str]:
         "QWEN_API_KEY",
         "GLM_API_KEY",
         "ZAI_API_KEY",
+        "NOTION_API_KEY",
+        "NOTION_API_TOKEN",
+        "NOTION_SECOND_BRAIN_ROOT_PAGE_ID",
+        "NOTION_SCHEDULE_DATA_SOURCE_ID",
+        "NOTION_IDEA_DATA_SOURCE_ID",
     ]
     values = {key: source[key] for key in keys if source.get(key)}
     if "OPENCODE_API_KEY" not in values and source.get("OPENCODE_GO_API_KEY"):
         values["OPENCODE_API_KEY"] = source["OPENCODE_GO_API_KEY"]
+    if "NOTION_API_TOKEN" not in values and source.get("NOTION_API_KEY"):
+        values["NOTION_API_TOKEN"] = source["NOTION_API_KEY"]
+    if "NOTION_API_KEY" not in values and source.get("NOTION_API_TOKEN"):
+        values["NOTION_API_KEY"] = source["NOTION_API_TOKEN"]
     return values
 
 

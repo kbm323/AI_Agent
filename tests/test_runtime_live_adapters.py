@@ -173,11 +173,19 @@ def test_load_runtime_live_env_reads_hermes_env_when_no_env_is_injected(
     hermes_env.write_text(
         "DISCORD_BOT_TOKEN=discord-from-hermes\n"
         "OPENCODE_GO_API_KEY=opencode-from-hermes\n"
+        "NOTION_API_KEY=notion-from-hermes\n"
+        "NOTION_SECOND_BRAIN_ROOT_PAGE_ID=second-brain-root\n"
         "GLM_MODEL=glm-5.1\n",
         encoding="utf-8",
     )
     monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
     monkeypatch.delenv("OPENCODE_GO_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("NOTION_API_KEY", raising=False)
+    monkeypatch.delenv("NOTION_API_TOKEN", raising=False)
+    monkeypatch.delenv("NOTION_SECOND_BRAIN_ROOT_PAGE_ID", raising=False)
+    monkeypatch.delenv("NOTION_SCHEDULE_DATA_SOURCE_ID", raising=False)
+    monkeypatch.delenv("NOTION_IDEA_DATA_SOURCE_ID", raising=False)
     monkeypatch.setenv("QWEN_MODEL", "qwen-from-process")
 
     env = load_runtime_live_env(None, hermes_env_path=hermes_env)
@@ -190,7 +198,26 @@ def test_load_runtime_live_env_reads_hermes_env_when_no_env_is_injected(
     assert config.subprocess_env == {
         "OPENCODE_GO_API_KEY": "opencode-from-hermes",
         "OPENCODE_API_KEY": "opencode-from-hermes",
+        "NOTION_API_KEY": "notion-from-hermes",
+        "NOTION_API_TOKEN": "notion-from-hermes",
+        "NOTION_SECOND_BRAIN_ROOT_PAGE_ID": "second-brain-root",
     }
+
+
+def test_load_runtime_live_config_aliases_notion_api_token():
+    config = load_runtime_live_config(
+        {
+            "DISCORD_BOT_TOKEN": "discord-secret",
+            "NOTION_API_TOKEN": "notion-token-alias",
+            "NOTION_SCHEDULE_DATA_SOURCE_ID": "schedule-ds",
+            "NOTION_IDEA_DATA_SOURCE_ID": "idea-ds",
+        }
+    )
+
+    assert config.subprocess_env["NOTION_API_KEY"] == "notion-token-alias"
+    assert config.subprocess_env["NOTION_API_TOKEN"] == "notion-token-alias"
+    assert config.subprocess_env["NOTION_SCHEDULE_DATA_SOURCE_ID"] == "schedule-ds"
+    assert config.subprocess_env["NOTION_IDEA_DATA_SOURCE_ID"] == "idea-ds"
 
 
 def test_create_runtime_smoke_live_dependencies_wires_real_boundaries(tmp_path: Path):

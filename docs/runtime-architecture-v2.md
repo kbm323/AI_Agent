@@ -6,7 +6,7 @@
 > 기준 Seed: `seed_176a489b1d25`
 > Interview: `interview_20260619_051314`
 > Document status: CURRENT FINAL BASELINE
-> Last updated: 2026-06-26 KST
+> Last updated: 2026-06-27 KST
 > Last live Discord verification: 2026-06-25 02:43 KST
 > Decision precedence: latest user decisions and live Discord verification > this file > `docs/system-design-decisions.md` historical decision log > phase result documents > README.
 
@@ -111,6 +111,14 @@ relevant detailed architecture section.
    - Company Second Brain stores company strategy/research/meeting decisions.
    - Personal Second Brain stores personal notes/goals/schedules/reminders/user-support context.
    - Hermes memory stays compact and durable only.
+
+8.1 Notion-backed schedule and idea management
+   - The shared Notion internal connection is available to all 7 live bot profiles through profile `.env` files.
+   - `NOTION_SECOND_BRAIN_ROOT_PAGE_ID` points to `SECOND BRAIN OS`.
+   - `NOTION_SCHEDULE_DATA_SOURCE_ID` points to the `할 일` data source.
+   - `NOTION_IDEA_DATA_SOURCE_ID` points to the `노트` data source.
+   - Worker subprocess env propagation must include both `NOTION_API_KEY` and `NOTION_API_TOKEN` aliases so opencode-go workers and Notion CLI/HTTP clients can use the same token without printing it.
+   - AI-created schedule/idea records should stay under `SECOND BRAIN OS`; use PAT/MCP only when explicitly choosing a broader user-scoped access model.
 
 9. Safety posture
    - Bots are mention-gated by default.
