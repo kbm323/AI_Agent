@@ -1053,8 +1053,11 @@ def _live_bot_content(
             timeout_seconds=300,
             workdir=workdir,
         )
-        if hasattr(result, "stdout") and result.stdout:
-            return str(result.stdout).strip()
+        stdout = getattr(result, "stdout", "")
+        if stdout:
+            content = _human_facing_text(stdout)
+            if content:
+                return content
     except Exception:
         pass
     return _fake_bot_content(role, round_num, msg_type)
@@ -1100,12 +1103,55 @@ def _task_output_payload(task: WorkerTask) -> dict[str, object]:
 def _task_output_summary(task: WorkerTask, *, max_length: int = 180) -> str:
     payload = _task_output_payload(task)
     for key in ("content", "summary", "stdout"):
-        value = str(payload.get(key) or "").strip()
+        value = _human_facing_text(payload.get(key))
         if value:
             return value[:max_length]
     if task.error:
         return f"error={task.error}"[:max_length]
     return "output recorded"
+
+
+def _human_facing_text(value: object) -> str:
+    """Extract readable user-facing text from provider/legacy JSON output.
+
+    Legacy injected command runners and provider shims may return a structured
+    JSON object on stdout. Discord should show the role's human answer, not the
+    raw JSON wrapper, escaped unicode, test model metadata, or status fields.
+    """
+
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        for key in ("content", "summary", "text", "message", "stdout"):
+            nested = _human_facing_text(value.get(key))
+            if nested:
+                return nested
+        return ""
+    if isinstance(value, list):
+        parts = [_human_facing_text(item) for item in value]
+        return "\n".join(part for part in parts if part).strip()
+
+    text = str(value).strip()
+    if not text:
+        return ""
+
+    candidate = text
+    for _ in range(2):
+        stripped = candidate.strip()
+        if not stripped or stripped[0] not in "[{\"":
+            break
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            break
+        extracted = _human_facing_text(parsed)
+        if extracted:
+            return extracted
+        if isinstance(parsed, str) and parsed != candidate:
+            candidate = parsed
+            continue
+        break
+    return text
 
 
 def _task_attempts(task: WorkerTask) -> tuple[str, ...]:
@@ -1165,13 +1211,23 @@ def _build_final_report(
             f"fallback_used={str(fallback_used).lower()}"
         )
 
-    consensus = session.consensus_summary or str(run.trigger.get("text") or "")
+    trigger_text = _human_facing_text(run.trigger.get("text"))
+    consensus = session.consensus_summary or trigger_text
+    if trigger_text and consensus == "모든 팀장의 의견을 수렴하여 합의에 도달했습니다.":
+        consensus = f"{consensus} 안건: {trigger_text[:180]}"
     report = "\n".join(
         [
             "# AI_Agent 회의 최종 보고",
             "",
             "## 합의안",
             consensus,
+            "",
+            "## 다음 실행 액션",
+            "- 합의안 기준으로 실행 작업을 분리하고, 필요 시 specialist 산출물을 Notion/문서화 후보로 전환합니다.",
+            "- Discord thread 마지막 최종 보고를 우선 확인하고, 전체 증거는 runtime artifact에서 검토합니다.",
+            "",
+            "## 리스크/이견",
+            "- 고위험 이견은 검증 결과와 fallback evidence를 기준으로 후속 조치합니다.",
             "",
             "## 내부 Specialist 투입",
             *specialist_lines,
@@ -1187,15 +1243,9 @@ def _build_final_report(
             "",
             "## 역할별 핵심 의견",
             *(role_lines or ["- 역할별 의견 없음"]),
-            "",
-            "## 리스크/이견",
-            "- 고위험 이견은 검증 결과와 fallback evidence를 기준으로 후속 조치합니다.",
-            "",
-            "## 다음 실행 액션",
-            "- 필요 시 specialist 산출물을 바탕으로 실행 작업/Notion/문서화를 분리합니다.",
         ]
     )
-    return _sanitize_discord_content(report)
+    return report
 
 
 def _resolve_bot_output_for_role(role: str, session: MultiBotSession) -> str:

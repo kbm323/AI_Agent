@@ -525,7 +525,14 @@ def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messag
     def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
         return OpenCodeGoRunResult(
             exit_code=0,
-            stdout='{"ok": true}',
+            stdout=json.dumps(
+                {
+                    "status": "succeeded",
+                    "content": "사용자 질문 스타일에 맞춘 정상 한국어 회의 발언입니다.",
+                    "attempted_models": ["test-model"],
+                },
+                ensure_ascii=True,
+            ),
             stderr="",
             timeout_occurred=False,
             duration_seconds=0.01,
@@ -563,7 +570,12 @@ def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messag
     message_bodies = [kwargs["json_body"]["content"] for _args, kwargs in calls[1:]]
     assert any("# AI_Agent 회의 최종 보고" in body for body in message_bodies)
     assert any("## 합의안" in body for body in message_bodies)
+    assert any("## 다음 실행 액션" in body for body in message_bodies)
     assert any("## 모델/실행 Evidence" in body for body in message_bodies)
+    assert any("사용자 질문 스타일에 맞춘 정상 한국어 회의 발언" in body for body in message_bodies)
+    assert all('"status": "succeeded"' not in body for body in message_bodies)
+    assert all("test-model" not in body for body in message_bodies)
+    assert all("\\u" not in body for body in message_bodies)
 
 
 def test_phase14_live_discord_thread_creation_failure_fails_closed(tmp_path: Path):
