@@ -271,8 +271,9 @@ company team-lead structure.
 
 The 7 live Hermes profiles are persistent Discord persona/gateway endpoints.
 Their default models should be selected for their daily conversation and routing
-responsibility, while `MeetingRun.worker_tasks[].model_policy` remains the more
-granular source for internal specialist execution.
+responsibility.  Meeting execution is separate: the authoritative source for
+team-lead and internal-specialist worker execution is
+`config/routing_rules.yaml` → `MeetingRun.worker_tasks[].model_policy`.
 
 GPT-5.5/Codex is intentionally **not** the primary model for every bot. It is a
 scarce high-confidence auditor used after role-specialized opencode-go models
@@ -282,12 +283,26 @@ technically irreversible.
 | Hermes profile | Live username | Primary model | Fallback chain | GPT/Codex role |
 |---|---|---|---|---|
 | `aicompanyassistant` | `비서` | `opencode-go/qwen3.7-plus` | `opencode-go/deepseek-v4-flash` | None by default; escalate only for private-data, account, or irreversible user-support risk |
-| `aicompanyceo` | `대표` | `opencode-go/qwen3.7-max` | `opencode-go/qwen3.7-plus` -> `opencode-go/glm-5.2` | Final-arbiter escalation for strategy, budget, brand, external commitments, and model-conflict resolution |
+| `aicompanyceo` | `대표` | `opencode-go/deepseek-v4-pro` | `opencode-go/qwen3.7-plus` -> `opencode-go/glm-5.2` | Final-arbiter escalation for strategy, budget, brand, external commitments, and model-conflict resolution |
 | `aicompanycontent` | `콘텐츠팀장` | `opencode-go/kimi-k2.6` | `opencode-go/qwen3.7-plus` | External-publication or brand-risk review only |
 | `aicompanyart` | `아트팀장` | `opencode-go/minimax-m3` | `opencode-go/minimax-m2.7` -> `opencode-go/deepseek-v4-pro` | Asset/license/brand-risk review only |
 | `aicompanytech` | `기술팀장` | `opencode-go/deepseek-v4-pro` | `opencode-go/deepseek-v4-flash` -> `opencode-go/kimi-k2.7-code` | Code/security/data-loss/deployment audit |
-| `aicompanymarketing` | `마케팅팀장` | `opencode-go/qwen3.7-max` | `opencode-go/qwen3.7-plus` -> `opencode-go/kimi-k2.6` | Public campaign, partnership, or reputation-risk review |
+| `aicompanymarketing` | `마케팅팀장` | `opencode-go/qwen3.7-plus` | `opencode-go/deepseek-v4-pro` -> `opencode-go/kimi-k2.6` | Public campaign, partnership, or reputation-risk review |
 | `aicompanyquality` | `품질관리팀장` | `opencode-go/glm-5.2` | `opencode-go/glm-5.1` | Primary escalation endpoint for `openai-codex/gpt-5.5` final audit |
+
+Current meeting-worker interpretation:
+
+```text
+CEO / execution / tech / data-analysis workers -> deepseek-v4-pro primary, qwen3.7-plus fallback
+content / art / marketing creative workers      -> qwen3.7-plus primary, deepseek-v4-pro fallback
+validation / legal / QA workers                 -> glm-5.1 primary, glm-5.2/deepseek/qwen fallback by role
+composer/audio fallback                         -> MiMo-V2.5
+```
+
+Gateway meetings project only the 6 company team-lead bots into Discord by
+default.  Agenda-matched internal specialists (for example `data-analyst`,
+`backend-engineer`, `video-editor`) execute as worker tasks and are summarized in
+the final report/evidence instead of appearing as separate Discord bot accounts.
 
 Runtime interpretation:
 

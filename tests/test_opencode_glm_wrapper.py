@@ -186,7 +186,7 @@ class TestBuildGlmCommand:
     def test_different_models_produce_different_commands(self) -> None:
         """Different model names produce different command lists."""
         cmd_a = build_glm_command("glm-5.1", "/tmp/a.json")
-        cmd_b = build_glm_command("glm-4", "/tmp/a.json")
+        cmd_b = build_glm_command("glm-5.2", "/tmp/a.json")
         assert cmd_a != cmd_b
 
     def test_different_files_produce_different_commands(self) -> None:

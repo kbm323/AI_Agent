@@ -76,11 +76,11 @@ Current Discord-facing topology
 | Profile | Primary | Fallback / escalation |
 |---|---|---|
 | `aicompanyassistant` | `opencode-go/qwen3.7-plus` | `opencode-go/deepseek-v4-flash` |
-| `aicompanyceo` | `opencode-go/qwen3.7-max` | `opencode-go/qwen3.7-plus`, then `opencode-go/glm-5.2`, then GPT/Codex for high-risk final arbitration |
+| `aicompanyceo` | `opencode-go/deepseek-v4-pro` | `opencode-go/qwen3.7-plus`, then `opencode-go/glm-5.2`, then GPT/Codex for high-risk final arbitration |
 | `aicompanycontent` | `opencode-go/kimi-k2.6` | `opencode-go/qwen3.7-plus`; GPT/Codex only for public/brand risk |
 | `aicompanyart` | `opencode-go/minimax-m3` | `opencode-go/minimax-m2.7`, then `opencode-go/deepseek-v4-pro`; GPT/Codex only for asset/license/brand risk |
 | `aicompanytech` | `opencode-go/deepseek-v4-pro` | `opencode-go/deepseek-v4-flash`, then `opencode-go/kimi-k2.7-code`; GPT/Codex for code/security/deployment audit |
-| `aicompanymarketing` | `opencode-go/qwen3.7-max` | `opencode-go/qwen3.7-plus`, then `opencode-go/kimi-k2.6`; GPT/Codex for public campaign/reputation risk |
+| `aicompanymarketing` | `opencode-go/qwen3.7-plus` | `opencode-go/deepseek-v4-pro`, then `opencode-go/kimi-k2.6`; GPT/Codex for public campaign/reputation risk |
 | `aicompanyquality` | `opencode-go/glm-5.2` | `opencode-go/glm-5.1`, then GPT/Codex final audit |
 
 **Rationale:**

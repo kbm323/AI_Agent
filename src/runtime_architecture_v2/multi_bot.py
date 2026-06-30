@@ -7,6 +7,12 @@ multi-bot operational coordination.
 Hermes Core is not modified. The multi-bot layer adds only domain-specific
 coordination schemas and execution flows on top of the existing MeetingRun,
 worker, and projection boundaries.
+
+Naming note: several public functions retain Phase 13/14 names for historical
+test/script compatibility. In the live Gateway path they are the Runtime v2
+meeting execution engine: six Discord-facing team leads are projected to the
+thread, while agenda-matched internal specialists execute as worker tasks and
+are summarized in the final report/evidence.
 """
 
 from __future__ import annotations
@@ -213,6 +219,9 @@ class MultiBotPilotResult:
     meeting_thread_status: str = ""
     meeting_thread_error: str = ""
     error: str = ""
+    internal_specialist_roles: tuple[str, ...] = ()
+    fallback_events: tuple[str, ...] = ()
+    final_report: str = ""
 
     def to_cli_dict(self) -> dict[str, object]:
         return {
@@ -232,6 +241,9 @@ class MultiBotPilotResult:
             "meeting_thread_id": self.meeting_thread_id,
             "meeting_thread_status": self.meeting_thread_status,
             "meeting_thread_error": self.meeting_thread_error,
+            "internal_specialist_roles": list(self.internal_specialist_roles),
+            "fallback_events": list(self.fallback_events),
+            "final_report": self.final_report,
             "error": self.error,
             "ok": self.ok,
         }
@@ -343,6 +355,39 @@ def route_bot_projection(
         sink = FakeDiscordProjectionSink()
 
     return sink.publish(event)
+
+
+_SPECIALIST_KEYWORD_ROUTES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("야구", "스포츠", "성과", "지표", "분석", "데이터"), ("data-analyst",)),
+    (("자동화", "파이프라인", "api", "백엔드", "연동", "수집"), ("backend-engineer",)),
+    (("쇼츠", "유튜브", "영상", "편집", "릴스", "shorts"), ("video-editor",)),
+    (("품질", "검증", "테스트", "qa"), ("quality-assurance",)),
+    (("음악", "bgm", "사운드", "오디오"), ("composer", "sound-designer")),
+    (("보안", "권한", "토큰", "secret"), ("security-engineer",)),
+    (("법", "저작권", "계약", "컴플라이언스"), ("legal-reviewer",)),
+    (("디자인", "ui", "ux", "화면", "레이아웃"), ("ui-ux-designer",)),
+)
+
+
+def _select_internal_specialist_roles(
+    trigger_text: str,
+    *,
+    visible_roles: tuple[str, ...],
+    limit: int = 4,
+) -> tuple[str, ...]:
+    """Select non-Discord internal specialist workers for the meeting agenda."""
+
+    text = trigger_text.lower()
+    selected: list[str] = []
+    for keywords, roles in _SPECIALIST_KEYWORD_ROUTES:
+        if not any(keyword.lower() in text for keyword in keywords):
+            continue
+        for role in roles:
+            if role not in visible_roles and role not in selected:
+                selected.append(role)
+                if len(selected) >= limit:
+                    return tuple(selected)
+    return tuple(selected)
 
 
 # ── Multi-bot Meeting Phase ────────────────────────────────────────────
@@ -470,6 +515,8 @@ def _build_phase14_worker_tasks(
     root: str | Path,
     *,
     live_worker_count: int = 2,
+    internal_specialist_roles: tuple[str, ...] = (),
+    live_specialists: bool = False,
 ) -> tuple[WorkerTask, ...]:
     """Build Phase 14 worker tasks allowing all configured live workers.
 
@@ -488,10 +535,13 @@ def _build_phase14_worker_tasks(
         )
     live_roles = set(roles[:live_worker_count])
     tasks: list[WorkerTask] = []
-    for index, role in enumerate(roles, start=1):
+    all_task_roles = roles + tuple(
+        role for role in internal_specialist_roles if role not in roles
+    )
+    for index, role in enumerate(all_task_roles, start=1):
         runner_enum = (
             WorkerTaskRunner.OPENCODE_GO
-            if role in live_roles
+            if role in live_roles or (live_specialists and role in internal_specialist_roles)
             else WorkerTaskRunner.HERMES_WRAPPER
         )
         task_id = f"wt_{run.meeting_run_id}_{index}_{role}"
@@ -623,9 +673,18 @@ def run_phase14_multi_bot_pilot(
     active_fake_bot_roles = tuple(
         role for role in participants if role not in active_live_bot_roles
     )
+    internal_specialist_roles = _select_internal_specialist_roles(
+        str(request.get("trigger_text") or ""),
+        visible_roles=participants,
+    )
 
     worker_tasks = _build_phase14_worker_tasks(
-        run, route, root, live_worker_count=live_count
+        run,
+        route,
+        root,
+        live_worker_count=live_count,
+        internal_specialist_roles=internal_specialist_roles,
+        live_specialists=(mode == "live-worker"),
     )
 
     run = replace(
@@ -757,6 +816,17 @@ def run_phase14_multi_bot_pilot(
         mode=mode,
         live_discord=live_discord,
     )
+    fallback_events = _fallback_events(completed_tasks)
+    final_report = _build_final_report(
+        run=run,
+        session=session,
+        worker_tasks=completed_tasks,
+        validation_verdicts=validation_verdicts,
+        internal_specialist_roles=internal_specialist_roles,
+        fallback_events=fallback_events,
+    )
+    enhanced_report_path = root / "runtime" / "meeting_runs" / run.meeting_run_id / "final_report_v2.md"
+    enhanced_report_path.write_text(final_report + "\n", encoding="utf-8")
 
     run = replace(
         run,
@@ -783,6 +853,9 @@ def run_phase14_multi_bot_pilot(
         meeting_thread_id=meeting_thread_id,
         meeting_thread_status=meeting_thread_status,
         meeting_thread_error=meeting_thread_error,
+        internal_specialist_roles=internal_specialist_roles,
+        fallback_events=fallback_events,
+        final_report=final_report,
         error=error,
     )
 
@@ -990,6 +1063,118 @@ def _execute_phase14_tasks(
         dispatched = runner.dispatch(task)
         completed.append(runner.collect(dispatched))
     return tuple(completed)
+
+
+def _task_output_payload(task: WorkerTask) -> dict[str, object]:
+    try:
+        path = Path(task.output_path)
+        if not path.exists():
+            return {}
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+
+
+def _task_output_summary(task: WorkerTask, *, max_length: int = 180) -> str:
+    payload = _task_output_payload(task)
+    for key in ("content", "summary", "stdout"):
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return value[:max_length]
+    if task.error:
+        return f"error={task.error}"[:max_length]
+    return "output recorded"
+
+
+def _task_attempts(task: WorkerTask) -> tuple[str, ...]:
+    payload = _task_output_payload(task)
+    attempts = payload.get("attempted_models") or []
+    if isinstance(attempts, list):
+        return tuple(str(item) for item in attempts if str(item).strip())
+    model = str(payload.get("model") or task.model_policy.get("preferred") or "").strip()
+    return (model,) if model else ()
+
+
+def _fallback_events(worker_tasks: tuple[WorkerTask, ...]) -> tuple[str, ...]:
+    events: list[str] = []
+    for task in worker_tasks:
+        attempts = _task_attempts(task)
+        if len(attempts) > 1:
+            events.append(f"{task.role}: {' -> '.join(attempts)}")
+    return tuple(events)
+
+
+def _build_final_report(
+    *,
+    run: MeetingRun,
+    session: MultiBotSession,
+    worker_tasks: tuple[WorkerTask, ...],
+    validation_verdicts: tuple[object, ...],
+    internal_specialist_roles: tuple[str, ...],
+    fallback_events: tuple[str, ...],
+) -> str:
+    role_latest: dict[str, str] = {}
+    for round_data in session.rounds:
+        for msg in round_data.messages:
+            if msg.msg_type not in {"opinion", "rebuttal", "consensus"}:
+                continue
+            persona = BOT_PERSONAS.get(msg.bot_role, msg.bot_role)
+            role_latest[msg.bot_role] = f"- {persona}({msg.bot_role}): {msg.content[:90]}"
+    role_lines = [role_latest[role] for role in session.participants if role in role_latest]
+
+    task_by_role = {task.role: task for task in worker_tasks}
+    specialist_lines = [
+        f"- {role}: {_task_output_summary(task_by_role[role], max_length=80)}"
+        for role in internal_specialist_roles
+        if role in task_by_role
+    ] or ["- 투입된 내부 specialist 없음"]
+
+    validation_lines = [
+        f"- {getattr(v, 'validator_role', 'validator')}: {getattr(v, 'verdict', '')} "
+        f"confidence={getattr(v, 'confidence', '')} findings={'; '.join(getattr(v, 'findings', ()))}"
+        for v in validation_verdicts
+    ]
+    evidence_lines = []
+    for task in worker_tasks:
+        attempts = _task_attempts(task)
+        fallback_used = len(attempts) > 1
+        evidence_lines.append(
+            f"- {task.role}: state={task.state} model_path={' -> '.join(attempts) or 'unknown'} "
+            f"fallback_used={str(fallback_used).lower()}"
+        )
+
+    consensus = session.consensus_summary or str(run.trigger.get("text") or "")
+    report = "\n".join(
+        [
+            "# AI_Agent 회의 최종 보고",
+            "",
+            "## 합의안",
+            consensus,
+            "",
+            "## 내부 Specialist 투입",
+            *specialist_lines,
+            "",
+            "## 검증 결과",
+            *(validation_lines or ["- 검증 결과 없음"]),
+            "",
+            "## Fallback 사용",
+            *(fallback_events or ["- fallback_used=false"]),
+            "",
+            "## 모델/실행 Evidence",
+            *evidence_lines,
+            "",
+            "## 역할별 핵심 의견",
+            *(role_lines or ["- 역할별 의견 없음"]),
+            "",
+            "## 리스크/이견",
+            "- 고위험 이견은 검증 결과와 fallback evidence를 기준으로 후속 조치합니다.",
+            "",
+            "## 다음 실행 액션",
+            "- 필요 시 specialist 산출물을 바탕으로 실행 작업/Notion/문서화를 분리합니다.",
+        ]
+    )
+    return _sanitize_discord_content(report)
 
 
 def _resolve_bot_output_for_role(role: str, session: MultiBotSession) -> str:

@@ -58,11 +58,11 @@ model policy aligned with `docs/runtime-architecture-v2.md`:
 
 ```text
 비서             -> opencode-go/qwen3.7-plus       -> opencode-go/deepseek-v4-flash fallback
-대표             -> opencode-go/qwen3.7-max        -> opencode-go/qwen3.7-plus / opencode-go/glm-5.2 fallback; GPT/Codex escalation
+대표             -> opencode-go/deepseek-v4-pro    -> opencode-go/qwen3.7-plus / opencode-go/glm-5.2 fallback; GPT/Codex escalation
 콘텐츠팀장       -> opencode-go/kimi-k2.6          -> opencode-go/qwen3.7-plus fallback
 아트팀장         -> opencode-go/minimax-m3         -> opencode-go/minimax-m2.7 / opencode-go/deepseek-v4-pro fallback
 기술팀장         -> opencode-go/deepseek-v4-pro    -> opencode-go/deepseek-v4-flash / opencode-go/kimi-k2.7-code fallback; GPT/Codex audit
-마케팅팀장       -> opencode-go/qwen3.7-max        -> opencode-go/qwen3.7-plus / opencode-go/kimi-k2.6 fallback
+마케팅팀장       -> opencode-go/qwen3.7-plus       -> opencode-go/deepseek-v4-pro / opencode-go/kimi-k2.6 fallback
 품질관리팀장     -> opencode-go/glm-5.2            -> opencode-go/glm-5.1 fallback; GPT/Codex final audit
 ```
 

@@ -182,8 +182,9 @@ def run_meeting_from_gateway(
             error=result.error or "meeting_failed",
         )
 
-    # Build summary of what happened
-    summary = (
+    # Build user-facing final report with agreement, role evidence, validation,
+    # internal specialists, and model/fallback observability.
+    summary = result.final_report or (
         f"회의 완료: {thread_name}\n"
         f"참여자: {', '.join(BOT_PERSONA_DISPLAY.get(r, r) for r in result.bot_participants)}\n"
         f"라운드: {result.rounds_completed}\n"

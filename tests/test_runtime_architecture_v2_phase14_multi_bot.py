@@ -602,7 +602,7 @@ def test_phase14_dry_run_produces_multi_bot_output(tmp_path: Path):
     assert result.ok is True
     assert result.mode == "dry-run"
     assert result.live_worker_count == 0
-    assert result.fake_worker_count == 3
+    assert result.fake_worker_count == 3 + len(result.internal_specialist_roles)
     assert result.meeting_run.state == MeetingRunState.COMPLETED
     assert len(result.bot_participants) == 3
     assert "content_lead" in result.bot_participants
@@ -679,7 +679,7 @@ def test_phase14_live_worker_mode_with_injected_runner(tmp_path: Path):
 
     assert result.ok is True
     assert result.live_worker_count == 2
-    assert result.fake_worker_count == 1
+    assert result.fake_worker_count == 1 + len(result.internal_specialist_roles)
     assert len(calls) >= 1
     assert {call[2] for call in calls if len(call) >= 3 and call[1] == "--model"} == {
         "qwen3.7-plus"
@@ -759,6 +759,81 @@ def test_phase14_gateway_trigger_text_overrides_static_pilot_request(tmp_path: P
     assert result.meeting_run.trigger["text"] == "정보 쇼츠 유튜브 콘텐츠 회의"
 
 
+def test_phase14_selects_internal_specialists_without_discord_participation(tmp_path: Path):
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="dry-run",
+        trigger_text="야구 정보 쇼츠 자동화 파이프라인과 유튜브 성과 분석 회의",
+        live_bot_roles_override=(
+            "ceo_coordinator",
+            "content_lead",
+            "art_lead",
+            "tech_lead",
+            "marketing_lead",
+            "validation_audit",
+        ),
+        fake_bot_roles_override=(),
+    )
+
+    assert result.bot_participants == (
+        "ceo_coordinator",
+        "content_lead",
+        "art_lead",
+        "tech_lead",
+        "marketing_lead",
+        "validation_audit",
+    )
+    assert set(result.internal_specialist_roles) >= {
+        "data-analyst",
+        "backend-engineer",
+        "video-editor",
+    }
+    assert set(result.internal_specialist_roles).isdisjoint(result.bot_participants)
+    assert set(result.internal_specialist_roles).issubset(
+        {task.role for task in result.worker_tasks}
+    )
+
+
+def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        model = command[command.index("--model") + 1]
+        if model == "qwen3.7-plus":
+            return OpenCodeGoRunResult(
+                exit_code=1,
+                stdout="",
+                stderr="model temporarily unavailable",
+                timeout_occurred=False,
+            )
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout=json.dumps({"content": f"{model} specialist/team output"}),
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=1,
+        command_runner=command_runner,
+        trigger_text="야구 정보 쇼츠 자동화 파이프라인 회의",
+        live_bot_roles_override=("content_lead",),
+        fake_bot_roles_override=("quality_lead",),
+    )
+
+    assert result.ok is True
+    assert result.fallback_events
+    assert "## 합의안" in result.final_report
+    assert "## 역할별 핵심 의견" in result.final_report
+    assert "## 내부 Specialist 투입" in result.final_report
+    assert "data-analyst" in result.final_report
+    assert "## 검증 결과" in result.final_report
+    assert "## 모델/실행 Evidence" in result.final_report
+    assert "fallback_used=true" in result.final_report
+    assert "qwen3.7-plus -> deepseek-v4-pro" in result.final_report
+
+
 # ── CLI Tests ───────────────────────────────────────────────────────────
 
 
@@ -783,7 +858,7 @@ def test_phase14_cli_dry_run_outputs_machine_readable_json(tmp_path: Path):
     assert payload["pilot_id"] == "phase14_multi_bot_operational_pilot"
     assert payload["mode"] == "dry-run"
     assert payload["live_worker_count"] == 0
-    assert payload["fake_worker_count"] == 3
+    assert payload["fake_worker_count"] == 3 + len(payload["internal_specialist_roles"])
     assert payload["ok"] is True
     assert payload["rounds_completed"] == 2
     assert len(payload["bot_participants"]) == 3
