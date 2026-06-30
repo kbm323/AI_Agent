@@ -735,6 +735,18 @@ def run_phase14_multi_bot_pilot(
         validation_ids=tuple(verdict.validation_id for verdict in validation_verdicts),
     )
 
+    fallback_events = _fallback_events(completed_tasks)
+    final_report = _build_final_report(
+        run=run,
+        session=session,
+        worker_tasks=completed_tasks,
+        validation_verdicts=validation_verdicts,
+        internal_specialist_roles=internal_specialist_roles,
+        fallback_events=fallback_events,
+    )
+    enhanced_report_path = root / "runtime" / "meeting_runs" / run.meeting_run_id / "final_report_v2.md"
+    enhanced_report_path.write_text(final_report + "\n", encoding="utf-8")
+
     # Produce projections for all visible bot messages. In live Discord mode,
     # Phase 29 requires one CEO-owned shared meeting thread so each team lead
     # appears in the same user-visible conversation instead of separate channel
@@ -799,6 +811,27 @@ def run_phase14_multi_bot_pilot(
                 if result.status == "published":
                     visible_count += 1
 
+        if live_discord and meeting_thread_id:
+            final_report_msg = BotMessage(
+                bot_role="ceo_coordinator",
+                meeting_run_id=run.meeting_run_id,
+                round=len(session.rounds) + 1,
+                msg_type="consensus",
+                content=final_report,
+            )
+            final_report_result = route_bot_projection(
+                final_report_msg,
+                live_discord=True,
+                target_channel_id=target_channel_id,
+                target_thread_id=meeting_thread_id,
+                env=None,
+                discord_http_post=discord_http_post,
+                shared_thread_policy=shared_thread_policy,
+            )
+            projection_results.append(final_report_result)
+            if final_report_result.status == "published":
+                visible_count += 1
+
     if live_discord and (
         not projection_results
         or any(result.status != "published" for result in projection_results)
@@ -816,18 +849,6 @@ def run_phase14_multi_bot_pilot(
         mode=mode,
         live_discord=live_discord,
     )
-    fallback_events = _fallback_events(completed_tasks)
-    final_report = _build_final_report(
-        run=run,
-        session=session,
-        worker_tasks=completed_tasks,
-        validation_verdicts=validation_verdicts,
-        internal_specialist_roles=internal_specialist_roles,
-        fallback_events=fallback_events,
-    )
-    enhanced_report_path = root / "runtime" / "meeting_runs" / run.meeting_run_id / "final_report_v2.md"
-    enhanced_report_path.write_text(final_report + "\n", encoding="utf-8")
-
     run = replace(
         run,
         projection_event_ids=tuple(

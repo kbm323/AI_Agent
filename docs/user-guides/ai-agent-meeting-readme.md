@@ -10,7 +10,7 @@
 → 6개 팀장 봇이 2라운드 회의
 → 안건별 내부 specialist worker 추가 분석
 → 검증/모델 evidence/fallback 포함 최종 보고 생성
-→ Discord thread + local runtime artifacts에 저장
+→ Discord thread에 발언+최종 보고 게시, local runtime artifacts에도 저장
 ```
 
 ## 2. 언제 회의가 열리나?
@@ -66,7 +66,8 @@
 7. 검증 verdict 생성
 8. fallback/model evidence 수집
 9. final_report_v2.md 생성
-10. Gateway summary 반환
+10. 같은 Discord thread에 최종 보고 메시지 게시
+11. Gateway summary 반환
 ```
 
 ### Round 1 — 독립 의견
@@ -266,7 +267,8 @@ Discord thread에는 기본적으로 다음이 남는다.
 ```text
 Round 1: 6개 팀장 의견
 Round 2: 6개 팀장 반박/보완
-총 12개 발언
+Final: 대표가 AI_Agent 회의 최종 보고 게시
+총 13개 메시지(6봇×2라운드 + 최종 보고 1개)
 ```
 
 내부 specialist는 Discord에 별도 발언하지 않는다.
@@ -285,15 +287,15 @@ quality-assurance
 
 | 위치 | 내용 | 한계 |
 |---|---|---|
-| Discord thread | 실제 6봇 발언 | specialist 원문은 직접 안 보임 |
-| Gateway summary | final_report 기반 요약 | Discord 2000자 제한으로 잘릴 수 있음 |
+| Discord thread | 실제 6봇 발언 + 대표의 최종 보고 메시지 | specialist 원문은 직접 안 보임. 최종 보고는 2000자 제한으로 요약될 수 있음 |
+| Gateway summary | final_report 기반 요약 | Discord/Gateway 표시 환경에 따라 잘릴 수 있음 |
 | `final_report_v2.md` | 전체 최종 정리본 | 로컬 파일 확인 필요 |
 | `worker_outputs/*.json` | 모든 발언/worker 원문과 모델 evidence | 사람이 읽기엔 JSON이라 다소 불편 |
 
 따라서 나중에 다시 볼 때 우선순위는:
 
 ```text
-1. Discord thread — 실제 회의 발언 보기
+1. Discord thread — 실제 회의 발언과 마지막 최종 보고 보기
 2. final_report_v2.md — 회의록/최종 정리본 보기
 3. worker_outputs/*.json — 원문/evidence/모델/fallback 확인
 4. meeting_run.json / decision_log.jsonl — 상태/이벤트 디버깅

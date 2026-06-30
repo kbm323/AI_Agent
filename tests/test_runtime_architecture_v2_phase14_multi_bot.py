@@ -555,11 +555,15 @@ def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messag
     assert result.ok is True
     assert result.meeting_thread_status == "created"
     assert result.meeting_thread_id == "thread-phase14"
-    assert result.projection_messages_posted == 6
-    assert len(result.projection_results) == 6
+    assert result.projection_messages_posted == 7
+    assert len(result.projection_results) == 7
     urls = [args[0] for args, _kwargs in calls]
     assert urls[0].endswith("/channels/1505600167221526621/threads")
     assert all(url.endswith("/channels/thread-phase14/messages") for url in urls[1:])
+    message_bodies = [kwargs["json_body"]["content"] for _args, kwargs in calls[1:]]
+    assert any("# AI_Agent 회의 최종 보고" in body for body in message_bodies)
+    assert any("## 합의안" in body for body in message_bodies)
+    assert any("## 모델/실행 Evidence" in body for body in message_bodies)
 
 
 def test_phase14_live_discord_thread_creation_failure_fails_closed(tmp_path: Path):
