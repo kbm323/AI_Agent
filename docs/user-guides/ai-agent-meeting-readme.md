@@ -324,6 +324,8 @@ quality-assurance
 
 이런 specialist 결과는 `worker_outputs/*.json` 등 local artifact에 저장되고, 사용자가 요약/보고서/export를 요청할 때만 재료로 사용된다.
 
+Live Discord 회귀 검증은 `docs/phase32-live-discord-audit-runbook.md`의 `audit_phase32_default_thread()` / `audit_phase32_on_demand_report()` 기준을 따른다.
+
 ## 13. Discord thread와 local artifact 차이
 
 | 위치 | 내용 | 한계 |
