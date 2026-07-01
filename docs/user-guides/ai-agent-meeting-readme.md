@@ -18,8 +18,9 @@
 → 새 Discord thread 생성
 → 6개 팀장 봇이 2라운드 회의
 → 안건별 내부 specialist worker 추가 분석
-→ 검증/모델 evidence/fallback 포함 최종 보고 생성
-→ Discord thread에 발언+최종 보고 게시, local runtime artifacts에도 저장
+→ 검증/모델 evidence/fallback은 local runtime artifacts에 저장
+→ Discord thread에는 팀장 발언 12개만 자동 게시
+→ 요약/최종보고서/Notion/Second Brain 저장은 사용자가 명시적으로 요청할 때만 생성
 ```
 
 ## 2. 언제 회의가 열리나?
@@ -251,58 +252,44 @@ runtime/meeting_runs/runtime/meeting_runs/<meeting_run_id>/
 
 | 파일/폴더 | 의미 | 우선순위 |
 |---|---|---|
-| `final_report_v2.md` | 최종 회의 정리본. 합의안/검증/evidence/fallback 포함 | 1순위 |
-| `final_report.md` | 기존 Phase13/14 호환용 보고서 | 참고용 |
-| `meeting_run.json` | 회의 상태, trigger, routing, projection id 등 메타데이터 | 디버깅용 |
-| `decision_log.jsonl` | 회의 중 decision/event 로그 | 감사/추적용 |
-| `packets/*.json` | 각 봇/worker에게 전달된 입력 packet | 입력 추적용 |
+| `meeting_run.json` | 회의 상태, trigger, routing, projection id 등 메타데이터 | 기본 추적 |
+| `decision_log.jsonl` | 회의 중 decision/event 로그 | 감사/추적 |
+| `packets/*.json` | 각 봇/worker에게 전달된 입력 packet | 입력 추적 |
 | `worker_outputs/*.json` | 각 봇/worker의 실제 출력, 모델, fallback, 에러 | 원문/evidence |
+| `final_report_v2.md` | legacy/local debug 보고서. Discord에 자동 게시되는 기본 산출물이 아님 | 참고용 |
+| `final_report.md` | 기존 Phase13/14 호환용 보고서 | 참고용 |
 
-## 11. 최종 보고서 구성
+## 11. 최종 보고서 생성 정책
 
-`final_report_v2.md`와 Discord 마지막 대표 보고는 판단에 필요한 순서대로 아래 섹션을 가진다.
+Phase 32 기준으로 회의 종료 직후에는 최종보고서나 체크포인트를 Discord에 자동 게시하지 않는다.
+
+자동 회의의 기본 산출물은 다음 두 가지다.
 
 ```text
-# 📋 [안건명]
-**상태:** ✅ 완료 · 검증 PASS · fallback 없음
-
-## 🎯 결론
-## ✅ 합의안
-## 🚀 다음 액션
-## ⚠️ 리스크 / 이견
-## 👥 팀장 핵심 의견
-## 🧑‍💻 Specialist 투입
-## 🔍 검증 상세 / 모델 Evidence
+1. Discord thread — 6개 팀장 × 2라운드 회의 발언
+2. local runtime artifacts — transcript/source/evidence/worker outputs
 ```
 
-결론/합의안/액션은 위쪽에 두고, 모델 evidence처럼 확인만 하면 되는 정보는 아래쪽 참고 섹션으로 압축한다. 6팀장과 specialist 결과는 문단 나열이 아니라 표 형태로 한 줄씩 스캔할 수 있게 정리한다.
+최종보고서, 합의서, 요약, Notion 저장본, Second Brain 노트는 사용자가 명시적으로 요청할 때만 생성한다.
 
-Discord 마지막 대표 보고와 local artifact는 같은 데이터를 쓰지만 렌더링이 다르다.
+```text
+요약해줘 → 짧은 회의 요약
+최종보고서로 정리해줘 → Final Report v3
+합의서로 정리해줘 → 합의안/액션 중심 문서
+Notion에 저장해줘 → Notion 저장본
+세컨드브레인에 넣어줘 → Second Brain note
+```
 
-| 위치 | 렌더링 |
-|---|---|
-| Discord thread 마지막 보고 | Discord가 표를 렌더링하지 않으므로 bullet list + 단일 evidence code block 사용 |
-| `final_report_v2.md` | GitHub/Markdown에서 보기 좋은 table 유지 |
+requested Final Report v3는 아래 정보를 사용한다.
 
-Specialist 결과는 각 `WorkerTask.role`의 `worker_outputs/*.json`에서 직접 읽어오며, 특정 specialist가 검증팀장/다른 role 발언을 재사용하지 않도록 role별 prompt와 회귀 테스트로 고정한다.
+```text
+team-lead round messages
+specialist outputs
+validation/model evidence summary
+source meeting_run/thread metadata
+```
 
-`합의안`과 `다음 액션`은 고정 템플릿 문구만 쓰지 않는다. 팀장 발언과 specialist 결과에서 `회귀 테스트`, `evidence`, `자동화`, `UI/UX`, `fallback` 같은 실행 신호를 추출해 실제 후속 작업으로 승격한다. Discord에서는 다음 액션도 다른 섹션과 동일하게 `•` bullet 형식으로 통일한다.
-
-합의안은 결론 문장을 다시 인용하지 않는다. 결론은 최종 판단 1문장이고, 합의안은 그 판단을 뒷받침하는 세부 결정이다. 예를 들어 `legal-reviewer placeholder` 문제가 감지되면 합의안은 `legal-reviewer placeholder는 worker_execution_failed로 표시하고 evidence 상태와 동기화한다`처럼 role/대상/처리 방식을 보존한다. 다음 액션도 generic 문구보다 `legal-reviewer placeholder output을 worker_execution_failed로 처리하는 회귀 테스트`처럼 구체 대상이 있는 문장을 우선한다.
-
-Specialist output이 `<role> specialist output` 같은 placeholder로 들어오면 성공 산출물로 보여주지 않는다. 최종 보고에는 `worker_execution_failed: placeholder output for <role>`로 표시하고, 모델 evidence도 `⚠️ ... worker_execution_failed=placeholder_output`로 맞춘다.
-
-### 특히 중요한 섹션
-
-| 섹션 | 보면 좋은 경우 |
-|---|---|
-| `🎯 결론` | 대표 판단을 한두 문장으로 먼저 볼 때 |
-| `✅ 합의안` | 회의 결론만 빠르게 보고 싶을 때 |
-| `🚀 다음 액션` | 후속 작업을 뽑을 때 |
-| `⚠️ 리스크 / 이견` | 막을 이슈가 있는지 확인할 때 |
-| `👥 팀장 핵심 의견` | 팀장별 입장을 표로 비교할 때 |
-| `🧑‍💻 Specialist 투입` | 어떤 전문가 worker가 추가 분석했는지 볼 때 |
-| `🔍 검증 상세 / 모델 Evidence` | 검증팀 판단, fallback, 모델 경로를 확인할 때 |
+단, Discord requested report에는 모델별 evidence 전체를 나열하지 않는다. 상세 evidence는 local artifact에 둔다.
 
 ## 12. Discord에는 무엇이 남나?
 
@@ -311,8 +298,18 @@ Discord thread에는 기본적으로 다음이 남는다.
 ```text
 Round 1: 6개 팀장 의견
 Round 2: 6개 팀장 반박/보완
-Final: 대표가 AI_Agent 회의 최종 보고 게시
-총 13개 메시지(6봇×2라운드 + 최종 보고 1개)
+총 12개 메시지(6봇×2라운드)
+```
+
+기본 thread에는 아래 메시지가 없어야 한다.
+
+```text
+대표 최종보고서
+회의 체크포인트
+# 📋
+## 🎯 결론
+## ✅ 합의안
+## 🚀 다음 액션
 ```
 
 내부 specialist는 Discord에 별도 발언하지 않는다.
@@ -325,24 +322,24 @@ quality-assurance
 ...
 ```
 
-이런 specialist 결과는 `final_report_v2.md`와 `worker_outputs/*.json`에 저장된다.
+이런 specialist 결과는 `worker_outputs/*.json` 등 local artifact에 저장되고, 사용자가 요약/보고서/export를 요청할 때만 재료로 사용된다.
 
-## 13. Discord summary와 local artifact 차이
+## 13. Discord thread와 local artifact 차이
 
 | 위치 | 내용 | 한계 |
 |---|---|---|
-| Discord thread | 실제 6봇 발언 + 대표의 최종 보고 메시지 | 표 대신 bullet/code block 요약. specialist 원문 전체는 직접 안 보임. 최종 보고는 2000자 제한으로 요약될 수 있음 |
-| Gateway summary | final_report 기반 요약 | Discord/Gateway 표시 환경에 따라 잘릴 수 있음 |
-| `final_report_v2.md` | 전체 최종 정리본 | 로컬 파일 확인 필요 |
+| Discord thread | 실제 6봇×2라운드 회의 발언만 | 자동 최종보고/체크포인트 없음. 요약은 요청해야 함 |
+| Gateway summary | thread id와 실행 상태 중심의 짧은 안내 | 회의 내용을 확정 보고서처럼 요약하지 않음 |
 | `worker_outputs/*.json` | 모든 발언/worker 원문과 모델 evidence | 사람이 읽기엔 JSON이라 다소 불편 |
+| `final_report_v2.md` | legacy/local debug 보고서 | 기본 사용자-facing 산출물이 아님 |
 
 따라서 나중에 다시 볼 때 우선순위는:
 
 ```text
-1. Discord thread — 실제 회의 발언과 마지막 최종 보고 보기
-2. final_report_v2.md — 회의록/최종 정리본 보기
-3. worker_outputs/*.json — 원문/evidence/모델/fallback 확인
-4. meeting_run.json / decision_log.jsonl — 상태/이벤트 디버깅
+1. Discord thread — 실제 회의 발언 원문 보기
+2. worker_outputs/*.json — 원문/evidence/모델/fallback 확인
+3. meeting_run.json / decision_log.jsonl — 상태/이벤트 디버깅
+4. 요청 시 생성된 final_report_v3.md / Notion / Second Brain export
 ```
 
 ## 14. Notion / Second Brain 저장 여부

@@ -784,14 +784,6 @@ def run_phase14_multi_bot_pilot(
         internal_specialist_roles=internal_specialist_roles,
         fallback_events=fallback_events,
     )
-    discord_final_report = _build_discord_final_report(
-        run=run,
-        session=session,
-        worker_tasks=completed_tasks,
-        validation_verdicts=validation_verdicts,
-        internal_specialist_roles=internal_specialist_roles,
-        fallback_events=fallback_events,
-    )
     enhanced_report_path = root / "runtime" / "meeting_runs" / run.meeting_run_id / "final_report_v2.md"
     enhanced_report_path.write_text(final_report + "\n", encoding="utf-8")
 
@@ -858,27 +850,6 @@ def run_phase14_multi_bot_pilot(
                 projection_results.append(result)
                 if result.status == "published":
                     visible_count += 1
-
-        if live_discord and meeting_thread_id:
-            final_report_msg = BotMessage(
-                bot_role="ceo_coordinator",
-                meeting_run_id=run.meeting_run_id,
-                round=len(session.rounds) + 1,
-                msg_type="consensus",
-                content=discord_final_report,
-            )
-            final_report_result = route_bot_projection(
-                final_report_msg,
-                live_discord=True,
-                target_channel_id=target_channel_id,
-                target_thread_id=meeting_thread_id,
-                env=None,
-                discord_http_post=discord_http_post,
-                shared_thread_policy=shared_thread_policy,
-            )
-            projection_results.append(final_report_result)
-            if final_report_result.status == "published":
-                visible_count += 1
 
     if live_discord and (
         not projection_results

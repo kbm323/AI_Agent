@@ -631,30 +631,33 @@ def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messag
         target_channel_id="1505600167221526621",
         thread_name="테스트 팀장 회의",
         discord_http_post=fake_http_post,
+        live_bot_roles_override=("content_lead",),
+        fake_bot_roles_override=(
+            "ceo_coordinator",
+            "art_lead",
+            "tech_lead",
+            "marketing_lead",
+            "validation_audit",
+        ),
     )
 
     assert result.ok is True
     assert result.meeting_thread_status == "created"
     assert result.meeting_thread_id == "thread-phase14"
-    assert result.projection_messages_posted == 7
-    assert len(result.projection_results) == 7
+    assert result.projection_messages_posted == 12
+    assert len(result.projection_results) == 12
     urls = [args[0] for args, _kwargs in calls]
     assert urls[0].endswith("/channels/1505600167221526621/threads")
     assert all(url.endswith("/channels/thread-phase14/messages") for url in urls[1:])
     message_bodies = [kwargs["json_body"]["content"] for _args, kwargs in calls[1:]]
-    final_body = message_bodies[-1]
-    assert any("# 📋" in body for body in message_bodies)
-    assert any("## ✅ 합의안" in body for body in message_bodies)
-    assert any("## 🚀 다음 액션" in body for body in message_bodies)
-    assert any("## 🔍 검증 상세 / 모델 Evidence" in body for body in message_bodies)
-    assert "| 팀장 |" not in final_body
-    assert "| specialist |" not in final_body
-    assert "• 콘텐츠 팀장:" in final_body
-    assert "validation:" in final_body
-    assert final_body.count("```text") == 1
-    action_section = final_body.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
-    assert "•" in action_section
-    assert "1." not in action_section
+    last_body = message_bodies[-1]
+    assert len(message_bodies) == 12
+    assert "[검증 팀장]" in last_body
+    assert all("# 📋" not in body for body in message_bodies)
+    assert all("## 🎯 결론" not in body for body in message_bodies)
+    assert all("## ✅ 합의안" not in body for body in message_bodies)
+    assert all("## 🚀 다음 액션" not in body for body in message_bodies)
+    assert all("회의 체크포인트" not in body for body in message_bodies)
     assert any("사용자 질문 스타일에 맞춘 정상 한국어 회의 발언" in body for body in message_bodies)
     assert all('"status": "succeeded"' not in body for body in message_bodies)
     assert all("test-model" not in body for body in message_bodies)
