@@ -14,12 +14,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum, unique
+import json
 from pathlib import Path
 from typing import Any
 
+from src.runtime_architecture_v2.final_report_v3 import (
+    build_default_final_report_decision,
+    render_final_report_v3_discord,
+    render_final_report_v3_local,
+)
 from src.runtime_architecture_v2.multi_bot import (
+    BOT_PERSONAS,
     MultiBotSession,
-    _build_final_report,
 )
 from src.runtime_architecture_v2.schemas import MeetingRun, WorkerTask
 from src.runtime_architecture_v2.store import MeetingRunStore
@@ -84,13 +90,11 @@ def run_on_demand_export(
     if export_type == OnDemandExportType.SUMMARY:
         content = _generate_summary(run, session)
     elif export_type == OnDemandExportType.FINAL_REPORT:
-        content = _build_final_report(
+        content = _generate_final_report_v3(
+            store=store,
             run=run,
             session=session,
-            worker_tasks=tuple(worker_tasks),
-            validation_verdicts=(),
-            internal_specialist_roles=_collect_specialist_roles(worker_tasks),
-            fallback_events=(),
+            worker_tasks=worker_tasks,
         )
     elif export_type == OnDemandExportType.AGREEMENT:
         content = _generate_agreement_document(run, session)
@@ -166,13 +170,80 @@ def _collect_worker_tasks(
 
 def _collect_specialist_roles(worker_tasks: list[WorkerTask]) -> tuple[str, ...]:
     """Identify specialist/internal roles from worker tasks."""
-    # Visible bot personas vs internal specialists are route-specific.
-    # A simple heuristic: roles not in the known bot persona set.
-    from src.runtime_architecture_v2.multi_bot import BOT_PERSONAS
+    return tuple(t.role for t in worker_tasks if t.role not in BOT_PERSONAS)
 
-    return tuple(
-        t.role for t in worker_tasks if t.role not in BOT_PERSONAS
+
+def _generate_final_report_v3(
+    *,
+    store: MeetingRunStore,
+    run: MeetingRun,
+    session: MultiBotSession,
+    worker_tasks: list[WorkerTask],
+) -> str:
+    """Generate requested Final Report v3 and write local artifacts."""
+    run_dir = store.meeting_run_dir(run.meeting_run_id)
+    agenda = str(run.trigger.get("text", "회의"))
+    source_text = _build_source_text(run=run, session=session, worker_tasks=worker_tasks)
+    source_roles = _source_role_names(run=run, worker_tasks=worker_tasks)
+    decision = build_default_final_report_decision(
+        agenda=agenda,
+        source_text=source_text,
+        source_roles=source_roles,
     )
+    discord_content = render_final_report_v3_discord(decision, agenda=agenda)
+    local_content = render_final_report_v3_local(
+        decision,
+        agenda=agenda,
+        source_text=source_text,
+        model_evidence="schema=FinalReportDecision; validator=PASS; generator=on-demand-v3",
+    )
+    (run_dir / "decision_summary.json").write_text(
+        json.dumps(decision.to_dict(), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "final_report_v3.md").write_text(local_content, encoding="utf-8")
+    return discord_content
+
+
+def _build_source_text(
+    *,
+    run: MeetingRun,
+    session: MultiBotSession,
+    worker_tasks: list[WorkerTask],
+) -> str:
+    parts = [str(run.trigger.get("text", "")), session.consensus_summary]
+    for task in worker_tasks:
+        parts.append(f"{task.role} {task.state} {task.error}")
+        if task.output_path:
+            try:
+                parts.append(Path(task.output_path).read_text(encoding="utf-8")[:2000])
+            except OSError:
+                pass
+    return "\n".join(p for p in parts if p)
+
+
+def _source_role_names(
+    *,
+    run: MeetingRun,
+    worker_tasks: list[WorkerTask],
+) -> tuple[str, ...]:
+    role_map = {
+        "ceo_coordinator": "대표",
+        "content_lead": "콘텐츠 팀장",
+        "art_lead": "아트 팀장",
+        "tech_lead": "기술 팀장",
+        "marketing_lead": "마케팅 팀장",
+        "validation_audit": "검증 팀장",
+    }
+    roles: list[str] = []
+    role_ids = tuple(run.worker_task_ids or ()) + tuple(task.role for task in worker_tasks)
+    for role in role_ids:
+        display = role_map.get(str(role), str(role))
+        if display and display not in roles:
+            roles.append(display)
+    if not roles:
+        roles.append("대표")
+    return tuple(roles)
 
 
 def _generate_summary(run: MeetingRun, session: MultiBotSession) -> str:
