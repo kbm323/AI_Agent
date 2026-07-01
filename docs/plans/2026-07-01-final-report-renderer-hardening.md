@@ -2,9 +2,9 @@
 
 > **For Hermes:** Implement directly with strict TDD: RED test first, smallest GREEN change, then targeted/full verification.
 
-**Goal:** Make AI_Agent meeting final reports trustworthy and readable by fixing specialist output accuracy, separating Discord/local rendering, unifying evidence formatting, and making the conclusion decision-specific.
+**Goal:** Make AI_Agent meeting final reports trustworthy and readable by fixing specialist output accuracy, separating Discord/local rendering, unifying evidence formatting, making the conclusion decision-specific, and deriving agreement/action items from actual meeting outputs instead of boilerplate.
 
-**Architecture:** Keep `final_report_v2.md` as the full local artifact with Markdown tables. Add a Discord-specific final-report renderer for the thread's last message using bullet lists and a single compact evidence code block because Discord does not render Markdown tables. Build both renderers from the same role/task/validation inputs so data stays consistent.
+**Architecture:** Keep `final_report_v2.md` as the full local artifact with Markdown tables. Use a Discord-specific final-report renderer for the thread's last message using bullet lists and a single compact evidence code block because Discord does not render Markdown tables. Build both renderers from the same role/task/validation inputs so data stays consistent.
 
 **Tech Stack:** Python, pytest, Runtime Architecture v2 `multi_bot.py`, worker adapter in `workers.py`, docs in `docs/user-guides/`.
 
@@ -78,3 +78,20 @@
 4. Run broad suite excluding live smoke/e2e tests.
 5. Run a real Discord REST smoke and read the last thread message content.
 6. Commit and push.
+
+## Task 6: Derive agreement/action content from meeting outputs
+
+**Objective:** Replace fixed boilerplate agreement/action strings with content-derived decisions and promoted action items.
+
+**Files:**
+- Modify: `src/runtime_architecture_v2/multi_bot.py`
+- Modify: `tests/test_runtime_architecture_v2_phase14_multi_bot.py`
+- Modify: `docs/user-guides/ai-agent-meeting-readme.md`
+
+**Steps:**
+1. Add RED assertions that `🚀 다음 액션` contains concrete team/specialist proposals such as 회귀 테스트, evidence code block, and specialist 고유 output.
+2. Add RED assertions that Discord `🚀 다음 액션` uses `•` bullets instead of `1.`/`2.` numbering.
+3. Add RED assertions that agreement/action sections do not rely only on the old fixed strings.
+4. Implement deterministic helpers that promote action-like sentences from validation, QA, tech, and specialist summaries.
+5. Keep local artifact and Discord renderers consistent while preserving their rendering differences.
+6. Keep evidence in a single truncation-safe code block by capping evidence lines before final Discord truncation.

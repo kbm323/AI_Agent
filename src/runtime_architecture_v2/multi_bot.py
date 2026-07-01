@@ -1254,6 +1254,55 @@ def _model_evidence_lines(worker_tasks: tuple[WorkerTask, ...]) -> list[str]:
     return lines
 
 
+def _derive_agreement_items(
+    *,
+    agenda: str,
+    conclusion: str,
+    fallback_used: bool,
+) -> list[str]:
+    items = [
+        f"{_one_line(agenda, max_length=80)} 안건은 `{_one_line(conclusion, max_length=120)}` 기준으로 확정한다.",
+        "Discord thread는 사용자 판단 화면으로 두고, local runtime artifact는 전체 evidence 보관소로 분리한다.",
+    ]
+    if fallback_used:
+        items.append("fallback 사용 role은 모델 경로와 결과 품질을 별도 확인 대상으로 둔다.")
+    return items
+
+
+def _derive_action_items(
+    *,
+    role_summaries: Mapping[str, str],
+    specialist_summaries: Mapping[str, str],
+    fallback_used: bool,
+) -> list[str]:
+    source_text = "\n".join([*role_summaries.values(), *specialist_summaries.values()])
+    actions: list[str] = []
+
+    def add(action: str) -> None:
+        if action not in actions:
+            actions.append(action)
+
+    if "회귀 테스트" in source_text:
+        if "evidence" in source_text:
+            add("evidence 분리와 specialist 고유 output을 회귀 테스트로 고정한다.")
+        else:
+            add("specialist 고유 output을 회귀 테스트로 고정한다.")
+    if "API" in source_text or "큐" in source_text or "자동화" in source_text:
+        add("기술 제안에 따라 API/큐/자동화 경계를 구현 작업으로 분리한다.")
+    if "UI" in source_text or "UX" in source_text or "bullet" in source_text or "표" in source_text:
+        add("Discord는 bullet 요약을 유지하고 local artifact는 표 렌더링을 유지한다.")
+    if fallback_used:
+        add("fallback이 발생한 role의 모델 경로와 산출물 품질을 추가 확인한다.")
+    if not actions:
+        add("회의에서 도출된 역할별 제안을 실행 작업으로 분리한다.")
+        add("세부 evidence와 원문은 `final_report_v2.md`와 worker output에서 확인한다.")
+    return actions[:4]
+
+
+def _prefix_lines(prefix: str, items: list[str]) -> list[str]:
+    return [f"{prefix} {item}" for item in items]
+
+
 def _task_attempts(task: WorkerTask) -> tuple[str, ...]:
     payload = _task_output_payload(task)
     attempts = payload.get("attempted_models") or []
@@ -1306,24 +1355,37 @@ def _build_final_report(
     ] or ["| - | 역할별 의견 없음 |"]
 
     task_by_role = {task.role: task for task in worker_tasks}
-    specialist_rows = [
-        f"| {role} | {_table_cell(_task_output_summary(task_by_role[role], max_length=76))} |"
+    specialist_summaries = {
+        role: _task_output_summary(task_by_role[role], max_length=110)
         for role in internal_specialist_roles
         if role in task_by_role
-    ] or ["| - | 투입된 내부 specialist 없음 |"]
+    }
+    specialist_rows = [
+        f"| {role} | {_table_cell(summary)} |"
+        for role, summary in specialist_summaries.items()
+    ] or ["| - | 투입된 내부 specialist 없음"]
 
     evidence_lines = _validation_evidence_lines(validation_verdicts) + [""] + _model_evidence_lines(worker_tasks)
 
     consensus = session.consensus_summary or "합의안은 회의 발언과 specialist 결과를 기준으로 정리합니다."
     conclusion = _concrete_conclusion(agenda=agenda, consensus=consensus)
-    agreement_items = [
-        f"- 안건 `{_one_line(agenda, max_length=80)}`은 같은 Discord thread에서 회의 발언과 최종 보고까지 닫는다.",
-        "- 핵심 판단 정보는 결론, 합의안, 다음 액션 순서로 먼저 배치한다.",
-    ]
-    action_items = [
-        "1. 최종 보고 마지막 메시지의 결론/합의안/다음 액션을 우선 확인한다.",
-        "2. 세부 evidence와 원문은 `final_report_v2.md`와 worker output에서 확인한다.",
-    ]
+    agreement_items = _prefix_lines(
+        "-",
+        _derive_agreement_items(
+            agenda=agenda,
+            conclusion=conclusion,
+            fallback_used=fallback_used,
+        ),
+    )
+    action_items = _prefix_lines(
+        "-",
+        _derive_action_items(
+            role_summaries=role_latest,
+            specialist_summaries=specialist_summaries,
+            fallback_used=fallback_used,
+        ),
+    )
+
     risk_items = (
         ["- fallback이 사용되어 해당 모델 경로와 결과 품질을 추가 확인해야 합니다."]
         if fallback_used
@@ -1400,15 +1462,35 @@ def _build_discord_final_report(
     ] or ["• 역할별 의견 없음"]
 
     task_by_role = {task.role: task for task in worker_tasks}
-    specialist_lines = [
-        f"• {role}: {_task_output_summary(task_by_role[role], max_length=88)}"
+    specialist_summaries = {
+        role: _task_output_summary(task_by_role[role], max_length=110)
         for role in internal_specialist_roles
         if role in task_by_role
+    }
+    specialist_lines = [
+        f"• {role}: {summary}"
+        for role, summary in specialist_summaries.items()
     ] or ["• 투입된 내부 specialist 없음"]
     evidence_lines = _validation_evidence_lines(validation_verdicts) + [""] + _model_evidence_lines(worker_tasks)
 
     consensus = session.consensus_summary or "합의안은 회의 발언과 specialist 결과를 기준으로 정리합니다."
     conclusion = _concrete_conclusion(agenda=agenda, consensus=consensus)
+    agreement_items = _prefix_lines(
+        "•",
+        _derive_agreement_items(
+            agenda=agenda,
+            conclusion=conclusion,
+            fallback_used=fallback_used,
+        ),
+    )
+    action_items = _prefix_lines(
+        "•",
+        _derive_action_items(
+            role_summaries=role_latest,
+            specialist_summaries=specialist_summaries,
+            fallback_used=fallback_used,
+        ),
+    )
     risk_line = (
         "• fallback이 사용되어 해당 모델 경로와 결과 품질을 추가 확인해야 합니다."
         if fallback_used
@@ -1424,12 +1506,10 @@ def _build_discord_final_report(
             conclusion,
             "",
             "## ✅ 합의안",
-            f"• 안건 `{_one_line(agenda, max_length=80)}`은 같은 Discord thread에서 회의 발언과 최종 보고까지 닫는다.",
-            "• 핵심 판단 정보는 결론, 합의안, 다음 액션 순서로 먼저 배치한다.",
+            *agreement_items,
             "",
             "## 🚀 다음 액션",
-            "1. 최종 보고 마지막 메시지의 결론/합의안/다음 액션을 우선 확인한다.",
-            "2. 세부 evidence와 원문은 `final_report_v2.md`와 worker output에서 확인한다.",
+            *action_items,
             "",
             "## ⚠️ 리스크 / 이견",
             risk_line,

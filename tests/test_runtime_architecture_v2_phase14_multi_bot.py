@@ -578,6 +578,9 @@ def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messag
     assert "• 콘텐츠 팀장:" in final_body
     assert "validation:" in final_body
     assert final_body.count("```text") == 1
+    action_section = final_body.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
+    assert "•" in action_section
+    assert "1." not in action_section
     assert any("사용자 질문 스타일에 맞춘 정상 한국어 회의 발언" in body for body in message_bodies)
     assert all('"status": "succeeded"' not in body for body in message_bodies)
     assert all("test-model" not in body for body in message_bodies)
@@ -877,6 +880,11 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
     assert "qwen3.7-plus -> deepseek-v4-pro" in result.final_report
     assert "검증 팀장 관점에서" not in result.final_report
     assert result.final_report.index("| 팀장 | 핵심 포인트 |") < result.final_report.index("| specialist | 결과 한줄 요약 |")
+    action_section = result.final_report.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
+    assert "회귀 테스트" in action_section
+    assert "specialist 고유 output" in action_section
+    assert "evidence 분리" in action_section
+    assert "최종 보고 마지막 메시지의 결론/합의안/다음 액션을 우선 확인" not in action_section
 
 
 # ── CLI Tests ───────────────────────────────────────────────────────────
