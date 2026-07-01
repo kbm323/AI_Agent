@@ -568,10 +568,10 @@ def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messag
     assert urls[0].endswith("/channels/1505600167221526621/threads")
     assert all(url.endswith("/channels/thread-phase14/messages") for url in urls[1:])
     message_bodies = [kwargs["json_body"]["content"] for _args, kwargs in calls[1:]]
-    assert any("# AI_Agent 회의 최종 보고" in body for body in message_bodies)
-    assert any("## 합의안" in body for body in message_bodies)
-    assert any("## 다음 실행 액션" in body for body in message_bodies)
-    assert any("## 모델/실행 Evidence" in body for body in message_bodies)
+    assert any("# 📋" in body for body in message_bodies)
+    assert any("## ✅ 합의안" in body for body in message_bodies)
+    assert any("## 🚀 다음 액션" in body for body in message_bodies)
+    assert any("## 🔍 검증 상세 / 모델 Evidence" in body for body in message_bodies)
     assert any("사용자 질문 스타일에 맞춘 정상 한국어 회의 발언" in body for body in message_bodies)
     assert all('"status": "succeeded"' not in body for body in message_bodies)
     assert all("test-model" not in body for body in message_bodies)
@@ -813,6 +813,7 @@ def test_phase14_selects_internal_specialists_without_discord_participation(tmp_
 def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
     def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
         model = command[command.index("--model") + 1]
+        prompt = command[command.index("--prompt") + 1] if "--prompt" in command else ""
         if model == "qwen3.7-plus":
             return OpenCodeGoRunResult(
                 exit_code=1,
@@ -820,9 +821,17 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
                 stderr="model temporarily unavailable",
                 timeout_occurred=False,
             )
+        if "data-analyst" in prompt:
+            content = "데이터 분석가는 시청 지속률과 전환 지표를 기준으로 성과 판단을 제안합니다."
+        elif "backend-engineer" in prompt:
+            content = "백엔드 엔지니어는 수집 API와 큐 기반 자동화 경계를 우선 확정해야 한다고 봅니다."
+        elif "video-editor" in prompt:
+            content = "영상 편집자는 쇼츠 도입부 3초 후킹과 반복 가능한 편집 템플릿을 제안합니다."
+        else:
+            content = f"{model} team output"
         return OpenCodeGoRunResult(
             exit_code=0,
-            stdout=json.dumps({"content": f"{model} specialist/team output"}),
+            stdout=json.dumps({"content": content}),
             stderr="",
             timeout_occurred=False,
             duration_seconds=0.01,
@@ -840,14 +849,22 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
 
     assert result.ok is True
     assert result.fallback_events
-    assert "## 합의안" in result.final_report
-    assert "## 역할별 핵심 의견" in result.final_report
-    assert "## 내부 Specialist 투입" in result.final_report
+    assert result.final_report.index("## 🎯 결론") < result.final_report.index("## ✅ 합의안")
+    assert result.final_report.index("## ✅ 합의안") < result.final_report.index("## 🚀 다음 액션")
+    assert result.final_report.index("## 🚀 다음 액션") < result.final_report.index("## 👥 팀장 핵심 의견")
+    assert result.final_report.index("## 👥 팀장 핵심 의견") < result.final_report.index("## 🧑‍💻 Specialist 투입")
+    assert result.final_report.index("## 🧑‍💻 Specialist 투입") < result.final_report.index("## 🔍 검증 상세 / 모델 Evidence")
+    assert "**상태:** ✅ 완료" in result.final_report
+    assert "| 팀장 | 핵심 포인트 |" in result.final_report
+    assert "| specialist | 결과 한줄 요약 |" in result.final_report
     assert "data-analyst" in result.final_report
-    assert "## 검증 결과" in result.final_report
-    assert "## 모델/실행 Evidence" in result.final_report
+    assert "데이터 분석가는" in result.final_report
+    assert "백엔드 엔지니어는" in result.final_report
+    assert "영상 편집자는" in result.final_report
+    assert "## 🔍 검증 상세 / 모델 Evidence" in result.final_report
     assert "fallback_used=true" in result.final_report
     assert "qwen3.7-plus -> deepseek-v4-pro" in result.final_report
+    assert "검증 팀장 관점에서" not in result.final_report
 
 
 # ── CLI Tests ───────────────────────────────────────────────────────────

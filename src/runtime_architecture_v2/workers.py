@@ -516,11 +516,18 @@ def _legacy_command_runner_adapter(
         return None
 
     def run(provider: str, model: str, prompt: str, timeout_seconds: int) -> HermesProviderRunResult:
-        del prompt
         started = time.monotonic()
         try:
             legacy = command_runner(
-                ["hermes-provider", "--provider", provider, "--model", model],
+                [
+                    "hermes-provider",
+                    "--provider",
+                    provider,
+                    "--model",
+                    model,
+                    "--prompt",
+                    prompt,
+                ],
                 timeout_seconds=timeout_seconds,
                 workdir=None,
             )
