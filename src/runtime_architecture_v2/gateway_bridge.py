@@ -182,14 +182,17 @@ def run_meeting_from_gateway(
             error=result.error or "meeting_failed",
         )
 
-    # Build user-facing final report with agreement, role evidence, validation,
-    # internal specialists, and model/fallback observability.
+    # Phase 32: gateway response does not claim a final report was generated.
+    # The default meeting thread contains only team-lead discussion messages.
+    # Reports, summaries, and exports are on-demand actions.
     summary = result.final_report or (
         f"회의 완료: {thread_name}\n"
         f"참여자: {', '.join(BOT_PERSONA_DISPLAY.get(r, r) for r in result.bot_participants)}\n"
         f"라운드: {result.rounds_completed}\n"
         f"발언: {result.projection_messages_posted}건\n"
-        f"스레드: {'생성됨' if result.meeting_thread_id else '미생성'}"
+        f"스레드: {'생성됨' if result.meeting_thread_id else '미생성'}\n"
+        f"\n"
+        f"필요하면 '요약해줘', '최종보고서로 정리해줘', 'Notion에 저장해줘', '세컨드브레인에 넣어줘'라고 요청하세요."
     )
 
     return GatewayMeetingResult(
