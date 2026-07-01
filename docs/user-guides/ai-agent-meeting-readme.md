@@ -2,6 +2,15 @@
 
 > 내가 Discord에서 `@대표`에게 명령을 던졌을 때, 어떤 상황에서 회의가 열리고, 누가 말하고, 회의록/정리본이 어디에 저장되는지 한눈에 보는 문서.
 
+## 0. 빠르게 볼 파일
+
+| 용도 | 파일 |
+|---|---|
+| 자세한 README / 기준 문서 | `docs/user-guides/ai-agent-meeting-readme.md` |
+| 짧은 요약본 / 휴대용 정리 | `docs/user-guides/ai-company-meeting-system-summary.md` |
+
+요약본은 사용자가 첨부한 `AI_Company_회의시스템_정리.md`를 프로젝트 안에 보관한 파일이다. 빠르게 구조만 볼 때는 요약본을 먼저 보고, 세부 운영 규칙이나 예시는 이 README를 본다.
+
 ## 1. 한 줄 요약
 
 ```text
