@@ -435,6 +435,7 @@ def run_meeting_phase(
             is_live=is_live,
             command_runner=command_runner,
             workdir=workdir,
+            previous_messages=(),
         )
         round1_msgs.append(
             BotMessage(
@@ -465,6 +466,7 @@ def run_meeting_phase(
                 is_live=is_live,
                 command_runner=command_runner,
                 workdir=workdir,
+                previous_messages=tuple(round1_msgs),
             )
             round2_msgs.append(
                 BotMessage(
@@ -939,11 +941,20 @@ def _generate_bot_content(
     is_live: bool,
     command_runner: OpenCodeGoCommandRunner | None,
     workdir: str,
+    previous_messages: tuple[BotMessage, ...] = (),
 ) -> str:
     """Generate content for a bot message — live via opencode-go or fake."""
     if not is_live:
         return _fake_bot_content(role, round_num, msg_type)
-    return _live_bot_content(role, round_num, msg_type, run, command_runner, workdir)
+    return _live_bot_content(
+        role,
+        round_num,
+        msg_type,
+        run,
+        command_runner,
+        workdir,
+        previous_messages=previous_messages,
+    )
 
 
 def _fake_bot_content(role: str, round_num: int, msg_type: str) -> str:
@@ -1036,6 +1047,65 @@ def _fake_bot_content(role: str, round_num: int, msg_type: str) -> str:
     )
 
 
+def _prompt_for_live_bot_message(
+    *,
+    role: str,
+    persona: str,
+    round_num: int,
+    msg_type: str,
+    agenda: str,
+    previous_messages: tuple[BotMessage, ...] = (),
+) -> str:
+    display_persona = "품질관리 팀장(QA 리드)" if role in {"quality_lead", "validation_audit"} else persona
+    base = [
+        f"당신은 AI 가상 엔터테인먼트 회사의 '{display_persona}'입니다.",
+        f"회의 안건: {agenda}",
+        f"현재 {round_num}라운드 {msg_type} 단계입니다.",
+    ]
+    if round_num <= 1:
+        base.extend(
+            [
+                f"'{display_persona}'로서 이 안건에 대한 초기 의견을 한 문단으로 작성해주세요.",
+                "핵심 판단 1개와 근거 1개를 포함하세요.",
+            ]
+        )
+    else:
+        base.extend(
+            [
+                "아래는 1라운드 회의록입니다:",
+                _format_previous_round_transcript(previous_messages),
+                "2라운드에서는 1라운드 의견을 반복하지 마세요.",
+                "반드시 동의하는 다른 팀장 의견 1개, 보완/반박할 다른 팀장 의견 1개, 최종 합의에 넣을 조건 1개를 포함하세요.",
+            ]
+        )
+    if role in {"quality_lead", "validation_audit"}:
+        base.extend(
+            [
+                "품질관리 팀장 규칙: 사용자가 이해할 수 있는 품질 기준으로 설명하세요.",
+                "내부 구현어를 그대로 노출하지 말고 필요한 경우 다음처럼 번역하세요:",
+                "worker_execution_failed → 실패 상태로 표시",
+                "placeholder output → 임시/빈 응답",
+                "회귀 테스트 → 재발 방지 검증",
+                "regression test → 재발 방지 검증",
+                "evidence artifact → 검증 기록",
+            ]
+        )
+    base.append("한국어로 답변하고, 다른 팀장을 존중하는 전문적인 어조를 유지하세요.")
+    return "\n".join(base)
+
+
+def _format_previous_round_transcript(messages: tuple[BotMessage, ...]) -> str:
+    if not messages:
+        return "- 이전 라운드 발언 없음"
+    lines = []
+    for msg in messages:
+        persona = BOT_PERSONAS.get(msg.bot_role, msg.bot_role)
+        if msg.bot_role in {"quality_lead", "validation_audit"}:
+            persona = "품질관리 팀장"
+        lines.append(f"- {persona}: {_one_line(msg.content, max_length=160)}")
+    return "\n".join(lines)
+
+
 def _live_bot_content(
     role: str,
     round_num: int,
@@ -1043,18 +1113,20 @@ def _live_bot_content(
     run: MeetingRun,
     command_runner: OpenCodeGoCommandRunner | None,
     workdir: str,
+    previous_messages: tuple[BotMessage, ...] = (),
 ) -> str:
     """Generate live bot content through opencode-go worker, respecting the
     role's canonical model policy when available.
     """
 
     persona = BOT_PERSONAS.get(role, role)
-    prompt = (
-        f"당신은 AI 가상 엔터테인먼트 회사의 '{persona}'입니다.\n"
-        f"회의 안건: {run.trigger.get('text', '')}\n"
-        f"현재 {round_num}라운드 {msg_type} 단계입니다.\n"
-        f"'{persona}'로서 이 안건에 대한 {msg_type}을 한 문단으로 작성해주세요.\n"
-        f"한국어로 답변하고, 다른 팀장을 존중하는 전문적인 어조를 유지하세요."
+    prompt = _prompt_for_live_bot_message(
+        role=role,
+        persona=persona,
+        round_num=round_num,
+        msg_type=msg_type,
+        agenda=str(run.trigger.get("text", "")),
+        previous_messages=previous_messages,
     )
 
     try:

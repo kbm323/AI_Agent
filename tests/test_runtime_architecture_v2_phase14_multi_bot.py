@@ -158,6 +158,70 @@ def test_meeting_phase_with_one_live_bot(tmp_path: Path):
     assert len(calls) >= 2  # opinion + rebuttal for live bot
 
 
+def test_meeting_phase_round2_prompt_uses_round1_transcript_and_quality_language(tmp_path: Path):
+    from src.runtime_architecture_v2.pilot import (
+        build_phase13_pilot_request,
+        create_phase13_meeting_run,
+    )
+
+    prompts: list[str] = []
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        prompt = command[command.index("--prompt") + 1]
+        prompts.append(prompt)
+        if "2라운드" in prompt and "품질관리 팀장" in prompt:
+            content = "콘텐츠 팀장 의견에 동의하되, 법무 답변이 비어 보이면 실패 상태로 표시해야 합니다."
+        elif "2라운드" in prompt:
+            content = "1라운드 의견을 바탕으로 보완 조건을 제안합니다."
+        else:
+            content = "1라운드 초기 의견입니다."
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout=json.dumps({"content": content}, ensure_ascii=False),
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    run = create_phase13_meeting_run(tmp_path, build_phase13_pilot_request())
+    session = run_meeting_phase(
+        run,
+        participants=("content_lead", "quality_lead"),
+        rounds=2,
+        live_bot_roles=("content_lead", "quality_lead"),
+        fake_bot_roles=(),
+        command_runner=command_runner,
+        workdir=str(tmp_path),
+    )
+
+    round2_prompts = [prompt for prompt in prompts if "2라운드" in prompt]
+    assert round2_prompts
+    assert all("1라운드 회의록" in prompt for prompt in round2_prompts)
+    assert all("반복하지 마세요" in prompt for prompt in round2_prompts)
+    assert all("동의하는 다른 팀장 의견" in prompt for prompt in round2_prompts)
+    assert all("보완/반박할 다른 팀장 의견" in prompt for prompt in round2_prompts)
+    assert all("최종 합의에 넣을 조건" in prompt for prompt in round2_prompts)
+    assert any("콘텐츠 팀장:" in prompt for prompt in round2_prompts)
+    assert any("품질관리 팀장:" in prompt for prompt in round2_prompts)
+
+    quality_round2_prompt = next(
+        prompt for prompt in round2_prompts if "당신은 AI 가상 엔터테인먼트 회사의 '품질관리 팀장" in prompt
+    )
+    assert "사용자가 이해할 수 있는 품질 기준" in quality_round2_prompt
+    assert "worker_execution_failed → 실패 상태로 표시" in quality_round2_prompt
+    assert "placeholder output → 임시/빈 응답" in quality_round2_prompt
+    assert "회귀 테스트 → 재발 방지 검증" in quality_round2_prompt
+    assert "evidence artifact → 검증 기록" in quality_round2_prompt
+
+    quality_round1 = next(
+        msg.content for msg in session.rounds[0].messages if msg.bot_role == "quality_lead"
+    )
+    quality_round2 = next(
+        msg.content for msg in session.rounds[1].messages if msg.bot_role == "quality_lead"
+    )
+    assert quality_round1 != quality_round2
+
+
 def test_meeting_phase_live_bot_uses_trigger_text_in_hermes_prompt(
     tmp_path: Path,
     monkeypatch,
