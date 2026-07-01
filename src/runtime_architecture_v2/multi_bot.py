@@ -773,6 +773,14 @@ def run_phase14_multi_bot_pilot(
         internal_specialist_roles=internal_specialist_roles,
         fallback_events=fallback_events,
     )
+    discord_final_report = _build_discord_final_report(
+        run=run,
+        session=session,
+        worker_tasks=completed_tasks,
+        validation_verdicts=validation_verdicts,
+        internal_specialist_roles=internal_specialist_roles,
+        fallback_events=fallback_events,
+    )
     enhanced_report_path = root / "runtime" / "meeting_runs" / run.meeting_run_id / "final_report_v2.md"
     enhanced_report_path.write_text(final_report + "\n", encoding="utf-8")
 
@@ -846,7 +854,7 @@ def run_phase14_multi_bot_pilot(
                 meeting_run_id=run.meeting_run_id,
                 round=len(session.rounds) + 1,
                 msg_type="consensus",
-                content=final_report,
+                content=discord_final_report,
             )
             final_report_result = route_bot_projection(
                 final_report_msg,
@@ -1205,6 +1213,47 @@ def _table_cell(value: object) -> str:
     return _one_line(value, max_length=96).replace("|", "/") or "-"
 
 
+def _generic_consensus_text(value: str) -> bool:
+    return value.strip() in {
+        "모든 팀장의 의견을 수렴하여 합의에 도달했습니다.",
+        "합의안은 회의 발언과 specialist 결과를 기준으로 정리합니다.",
+    }
+
+
+def _concrete_conclusion(*, agenda: str, consensus: str) -> str:
+    if consensus and not _generic_consensus_text(consensus):
+        return _one_line(consensus, max_length=150)
+    return _one_line(
+        f"{agenda} 안건은 Discord에서 결론·합의안·다음 액션을 먼저 확인하고, 세부 evidence는 runtime artifact로 분리 보관하기로 확정합니다.",
+        max_length=150,
+    )
+
+
+def _validation_evidence_lines(validation_verdicts: tuple[object, ...]) -> list[str]:
+    lines: list[str] = []
+    for verdict in validation_verdicts:
+        role = str(getattr(verdict, "validator_role", "validator"))
+        result = str(getattr(verdict, "verdict", "")) or "unknown"
+        confidence = str(getattr(verdict, "confidence", ""))
+        findings = _one_line("; ".join(getattr(verdict, "findings", ())), max_length=160)
+        lines.append(f"validation:{role:<16} {result.upper()} confidence={confidence}")
+        if findings:
+            lines.append(f"findings: {findings}")
+    return lines or ["validation: none"]
+
+
+def _model_evidence_lines(worker_tasks: tuple[WorkerTask, ...]) -> list[str]:
+    lines: list[str] = []
+    for task in worker_tasks:
+        attempts = _task_attempts(task)
+        model_path = " -> ".join(attempts) or "모델 기록 없음"
+        icon = "✅" if task.state == WorkerTaskState.SUCCEEDED else "⚠️"
+        lines.append(
+            f"{task.role:<22} {icon} {model_path} fallback_used={str(len(attempts) > 1).lower()}"
+        )
+    return lines
+
+
 def _task_attempts(task: WorkerTask) -> tuple[str, ...]:
     payload = _task_output_payload(task)
     attempts = payload.get("attempted_models") or []
@@ -1263,27 +1312,10 @@ def _build_final_report(
         if role in task_by_role
     ] or ["| - | 투입된 내부 specialist 없음 |"]
 
-    validation_lines = [
-        f"- **{getattr(v, 'validator_role', 'validator')}**: {getattr(v, 'verdict', '')} "
-        f"(confidence={getattr(v, 'confidence', '')}) — "
-        f"{_one_line('; '.join(getattr(v, 'findings', ())), max_length=160)}"
-        for v in validation_verdicts
-    ] or ["- 검증 결과 없음"]
-
-    evidence_lines = []
-    for task in worker_tasks:
-        attempts = _task_attempts(task)
-        model_path = " -> ".join(attempts) or "모델 기록 없음"
-        icon = "✅" if task.state == WorkerTaskState.SUCCEEDED else "⚠️"
-        evidence_lines.append(
-            f"{task.role:<22} {icon} {model_path} fallback_used={str(len(attempts) > 1).lower()}"
-        )
+    evidence_lines = _validation_evidence_lines(validation_verdicts) + [""] + _model_evidence_lines(worker_tasks)
 
     consensus = session.consensus_summary or "합의안은 회의 발언과 specialist 결과를 기준으로 정리합니다."
-    conclusion = _one_line(
-        f"{consensus} Discord thread는 사용자 확인 화면으로 유지하고, 전체 증거는 runtime artifact에서 보관합니다.",
-        max_length=150,
-    )
+    conclusion = _concrete_conclusion(agenda=agenda, consensus=consensus)
     agreement_items = [
         f"- 안건 `{_one_line(agenda, max_length=80)}`은 같은 Discord thread에서 회의 발언과 최종 보고까지 닫는다.",
         "- 핵심 판단 정보는 결론, 합의안, 다음 액션 순서로 먼저 배치한다.",
@@ -1326,8 +1358,89 @@ def _build_final_report(
             *specialist_rows,
             "",
             "## 🔍 검증 상세 / 모델 Evidence",
-            *validation_lines,
+            "```text",
+            *evidence_lines,
+            f"fallback_used: {str(fallback_used).lower()}",
+            "```",
+        ]
+    )
+
+
+def _build_discord_final_report(
+    *,
+    run: MeetingRun,
+    session: MultiBotSession,
+    worker_tasks: tuple[WorkerTask, ...],
+    validation_verdicts: tuple[object, ...],
+    internal_specialist_roles: tuple[str, ...],
+    fallback_events: tuple[str, ...],
+) -> str:
+    trigger_text = _human_facing_text(run.trigger.get("text"))
+    agenda = _first_line(trigger_text, fallback="AI_Agent 회의")
+    fallback_used = bool(fallback_events)
+    validation_passed = all(
+        str(getattr(v, "verdict", "")).lower() in {"pass", "passed", "ok"}
+        for v in validation_verdicts
+    ) if validation_verdicts else True
+    status = (
+        f"**상태:** ✅ 완료 · 검증 {'PASS' if validation_passed else 'REVIEW'} · "
+        f"fallback {'있음' if fallback_used else '없음'}"
+    )
+
+    role_latest: dict[str, str] = {}
+    for round_data in session.rounds:
+        for msg in round_data.messages:
+            if msg.msg_type not in {"opinion", "rebuttal", "consensus"}:
+                continue
+            role_latest[msg.bot_role] = _one_line(msg.content, max_length=88)
+    role_lines = [
+        f"• {BOT_PERSONAS.get(role, role)}: {role_latest[role]}"
+        for role in session.participants
+        if role in role_latest
+    ] or ["• 역할별 의견 없음"]
+
+    task_by_role = {task.role: task for task in worker_tasks}
+    specialist_lines = [
+        f"• {role}: {_task_output_summary(task_by_role[role], max_length=88)}"
+        for role in internal_specialist_roles
+        if role in task_by_role
+    ] or ["• 투입된 내부 specialist 없음"]
+    evidence_lines = _validation_evidence_lines(validation_verdicts) + [""] + _model_evidence_lines(worker_tasks)
+
+    consensus = session.consensus_summary or "합의안은 회의 발언과 specialist 결과를 기준으로 정리합니다."
+    conclusion = _concrete_conclusion(agenda=agenda, consensus=consensus)
+    risk_line = (
+        "• fallback이 사용되어 해당 모델 경로와 결과 품질을 추가 확인해야 합니다."
+        if fallback_used
+        else "• 리스크 없음 — fallback 없이 완료되었고, 세부 evidence는 참고 정보로 분리합니다."
+    )
+
+    return "\n".join(
+        [
+            f"# 📋 {_one_line(agenda, max_length=70)}",
+            status,
             "",
+            "## 🎯 결론",
+            conclusion,
+            "",
+            "## ✅ 합의안",
+            f"• 안건 `{_one_line(agenda, max_length=80)}`은 같은 Discord thread에서 회의 발언과 최종 보고까지 닫는다.",
+            "• 핵심 판단 정보는 결론, 합의안, 다음 액션 순서로 먼저 배치한다.",
+            "",
+            "## 🚀 다음 액션",
+            "1. 최종 보고 마지막 메시지의 결론/합의안/다음 액션을 우선 확인한다.",
+            "2. 세부 evidence와 원문은 `final_report_v2.md`와 worker output에서 확인한다.",
+            "",
+            "## ⚠️ 리스크 / 이견",
+            risk_line,
+            "",
+            "## 👥 팀장 핵심 의견",
+            *role_lines,
+            "",
+            "## 🧑‍💻 Specialist 투입",
+            *specialist_lines,
+            "",
+            "## 🔍 검증 상세 / 모델 Evidence",
             "```text",
             *evidence_lines,
             f"fallback_used: {str(fallback_used).lower()}",

@@ -259,6 +259,15 @@ runtime/meeting_runs/runtime/meeting_runs/<meeting_run_id>/
 
 결론/합의안/액션은 위쪽에 두고, 모델 evidence처럼 확인만 하면 되는 정보는 아래쪽 참고 섹션으로 압축한다. 6팀장과 specialist 결과는 문단 나열이 아니라 표 형태로 한 줄씩 스캔할 수 있게 정리한다.
 
+Discord 마지막 대표 보고와 local artifact는 같은 데이터를 쓰지만 렌더링이 다르다.
+
+| 위치 | 렌더링 |
+|---|---|
+| Discord thread 마지막 보고 | Discord가 표를 렌더링하지 않으므로 bullet list + 단일 evidence code block 사용 |
+| `final_report_v2.md` | GitHub/Markdown에서 보기 좋은 table 유지 |
+
+Specialist 결과는 각 `WorkerTask.role`의 `worker_outputs/*.json`에서 직접 읽어오며, 특정 specialist가 검증팀장/다른 role 발언을 재사용하지 않도록 role별 prompt와 회귀 테스트로 고정한다.
+
 ### 특히 중요한 섹션
 
 | 섹션 | 보면 좋은 경우 |
@@ -298,7 +307,7 @@ quality-assurance
 
 | 위치 | 내용 | 한계 |
 |---|---|---|
-| Discord thread | 실제 6봇 발언 + 대표의 최종 보고 메시지 | specialist 원문은 직접 안 보임. 최종 보고는 2000자 제한으로 요약될 수 있음 |
+| Discord thread | 실제 6봇 발언 + 대표의 최종 보고 메시지 | 표 대신 bullet/code block 요약. specialist 원문 전체는 직접 안 보임. 최종 보고는 2000자 제한으로 요약될 수 있음 |
 | Gateway summary | final_report 기반 요약 | Discord/Gateway 표시 환경에 따라 잘릴 수 있음 |
 | `final_report_v2.md` | 전체 최종 정리본 | 로컬 파일 확인 필요 |
 | `worker_outputs/*.json` | 모든 발언/worker 원문과 모델 evidence | 사람이 읽기엔 JSON이라 다소 불편 |

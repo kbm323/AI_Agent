@@ -568,10 +568,16 @@ def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messag
     assert urls[0].endswith("/channels/1505600167221526621/threads")
     assert all(url.endswith("/channels/thread-phase14/messages") for url in urls[1:])
     message_bodies = [kwargs["json_body"]["content"] for _args, kwargs in calls[1:]]
+    final_body = message_bodies[-1]
     assert any("# 📋" in body for body in message_bodies)
     assert any("## ✅ 합의안" in body for body in message_bodies)
     assert any("## 🚀 다음 액션" in body for body in message_bodies)
     assert any("## 🔍 검증 상세 / 모델 Evidence" in body for body in message_bodies)
+    assert "| 팀장 |" not in final_body
+    assert "| specialist |" not in final_body
+    assert "• 콘텐츠 팀장:" in final_body
+    assert "validation:" in final_body
+    assert final_body.count("```text") == 1
     assert any("사용자 질문 스타일에 맞춘 정상 한국어 회의 발언" in body for body in message_bodies)
     assert all('"status": "succeeded"' not in body for body in message_bodies)
     assert all("test-model" not in body for body in message_bodies)
@@ -825,8 +831,10 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
             content = "데이터 분석가는 시청 지속률과 전환 지표를 기준으로 성과 판단을 제안합니다."
         elif "backend-engineer" in prompt:
             content = "백엔드 엔지니어는 수집 API와 큐 기반 자동화 경계를 우선 확정해야 한다고 봅니다."
-        elif "video-editor" in prompt:
-            content = "영상 편집자는 쇼츠 도입부 3초 후킹과 반복 가능한 편집 템플릿을 제안합니다."
+        elif "quality-assurance" in prompt:
+            content = "품질 담당자는 최종 보고의 섹션 순서와 evidence 분리를 회귀 테스트로 고정해야 한다고 봅니다."
+        elif "ui-ux-designer" in prompt:
+            content = "UI/UX 디자이너는 Discord에서는 bullet, 로컬 artifact에서는 표를 유지해야 한다고 제안합니다."
         else:
             content = f"{model} team output"
         return OpenCodeGoRunResult(
@@ -842,7 +850,7 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
         mode="live-worker",
         max_live_workers=1,
         command_runner=command_runner,
-        trigger_text="야구 정보 쇼츠 자동화 파이프라인 회의",
+        trigger_text="야구 데이터 자동화 품질 UI UX 회의",
         live_bot_roles_override=("content_lead",),
         fake_bot_roles_override=("quality_lead",),
     )
@@ -860,11 +868,15 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
     assert "data-analyst" in result.final_report
     assert "데이터 분석가는" in result.final_report
     assert "백엔드 엔지니어는" in result.final_report
-    assert "영상 편집자는" in result.final_report
+    assert "quality-assurance" in result.final_report
+    assert "품질 담당자는" in result.final_report
+    assert "ui-ux-designer" in result.final_report
+    assert "UI/UX 디자이너는" in result.final_report
     assert "## 🔍 검증 상세 / 모델 Evidence" in result.final_report
     assert "fallback_used=true" in result.final_report
     assert "qwen3.7-plus -> deepseek-v4-pro" in result.final_report
     assert "검증 팀장 관점에서" not in result.final_report
+    assert result.final_report.index("| 팀장 | 핵심 포인트 |") < result.final_report.index("| specialist | 결과 한줄 요약 |")
 
 
 # ── CLI Tests ───────────────────────────────────────────────────────────
