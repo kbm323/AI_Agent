@@ -2,9 +2,9 @@
 
 > **For Hermes:** Use test-driven-development for every code task. Do not patch the old heuristic report generator in place without RED tests. Implement task-by-task and verify with pytest plus live Discord body audit.
 
-**Goal:** Replace the current heuristic final-report assembly with an AI-assisted, schema-validated decision report that turns meeting discussion into a user-facing conclusion, agreements, actions, and risks.
+**Goal:** Provide an on-demand AI-assisted, schema-validated final-report export that turns meeting discussion into a user-facing conclusion, agreements, actions, and risks only when the user explicitly asks for a report/summary/export.
 
-**Architecture:** Team-lead messages and specialist outputs are summarized by an AI final-report summarizer into a strict JSON decision schema. Code validators reject system/log wording, malformed actions, missing source concepts, and false “no risk” outputs. Discord renders a short user-facing report; local artifacts retain full evidence and model details.
+**Architecture:** Default meetings do not auto-post a final report or checkpoint. Team-lead messages and specialist outputs are stored as source artifacts. When the user explicitly asks for a report/export, an AI final-report summarizer produces a strict JSON decision schema. Code validators reject system/log wording, malformed actions, missing source concepts, and false “no risk” outputs. Discord renders a short user-facing requested report; local artifacts retain full evidence and model details.
 
 **Tech Stack:** Python dataclasses, JSON parsing/validation, existing Hermes/OpenCode worker interfaces, pytest, Discord live smoke via existing Phase 14 projection path.
 
@@ -12,7 +12,7 @@
 
 ## Current Problem
 
-The current final report is structurally formatted but semantically wrong:
+The legacy automatic final report is structurally formatted but semantically wrong:
 
 - `🎯 결론` often describes the reporting mechanism (`Discord에서 결론·합의안·다음 액션...`) instead of the meeting decision.
 - `✅ 합의안` can contain system architecture statements (`Discord thread`, `runtime artifact`) instead of agenda-specific agreements.
@@ -21,7 +21,7 @@ The current final report is structurally formatted but semantically wrong:
 - Discord final reports expose too much model evidence and can end as an internal log rather than a decision document.
 - Generic specialist outputs such as `composer는 정상 specialist 결과입니다` are not filtered out of user-facing reports.
 
-The root cause is that final-report content is mostly assembled by deterministic helper heuristics rather than an AI summarizer with schema validation.
+The root cause is that final-report content is mostly assembled by deterministic helper heuristics rather than an AI summarizer with schema validation. Phase 32 changes the UX contract: this report must not be generated automatically after every meeting. It is an on-demand export.
 
 ---
 
@@ -392,9 +392,9 @@ Run v3 tests.
 
 ---
 
-## Task 6: Connect v3 into Phase 14 pipeline behind a feature flag
+## Task 6: Connect v3 as an on-demand export behind a feature flag
 
-**Objective:** Generate v3 artifacts without breaking v2 compatibility.
+**Objective:** Generate v3 artifacts only when an explicit report/export request is made, without bringing back automatic meeting-completion reports.
 
 **Files:**
 - Modify: `src/runtime_architecture_v2/multi_bot.py`
@@ -404,9 +404,10 @@ Run v3 tests.
 
 Run `run_phase14_multi_bot_pilot` with injected summarizer output and assert:
 
-- `final_report_v3.md` exists.
-- `decision_summary.json` exists.
-- Discord final projection uses v3 renderer.
+- default meeting completion does not create/post `final_report_v3.md`.
+- explicit on-demand report request creates `final_report_v3.md`.
+- explicit on-demand report request creates `decision_summary.json`.
+- Discord uses v3 renderer only for the requested report/export.
 - Existing `final_report_v2.md` may still exist for compatibility.
 
 **Step 2: Implement feature flag**
@@ -425,9 +426,9 @@ Run Phase 14 tests.
 
 ---
 
-## Task 7: Make v3 the Discord final report
+## Task 7: Make v3 the requested Discord report/export
 
-**Objective:** Stop posting v2 model-evidence-heavy final report to Discord.
+**Objective:** Stop automatic v2 model-evidence-heavy final reports and use v3 only when the user explicitly requests a report/export.
 
 **Files:**
 - Modify: `src/runtime_architecture_v2/multi_bot.py`
@@ -435,7 +436,12 @@ Run Phase 14 tests.
 
 **Step 1: RED tests**
 
-With a meeting source containing audio consent, coupon, legal, and UX risks, assert Discord final message:
+With a meeting source containing audio consent, coupon, legal, and UX risks, assert the default Discord meeting thread:
+
+- has no automatic final message
+- has no `# 📋`, `## 🎯 결론`, `## ✅ 합의안`
+
+Then assert an explicit on-demand report request produces a Discord report that:
 
 - conclusion is agenda-specific
 - agreements mention consent/coupon/UX
@@ -446,7 +452,7 @@ With a meeting source containing audio consent, coupon, legal, and UX risks, ass
 
 **Step 2: Implement switch**
 
-Use `render_final_report_v3_discord()` for the final representative bot message.
+Use `render_final_report_v3_discord()` only for explicit report/export requests, not for the default meeting completion path.
 
 **Step 3: Verify**
 
@@ -480,11 +486,12 @@ PYTHONPATH=src python3 -m pytest tests/test_runtime_architecture_v2_final_report
 PYTHONPATH=src python3 -m pytest tests/ -q --ignore=tests/test_runtime_architecture_v2_opencode_live_smoke.py --ignore=tests/test_runtime_architecture_v2_phase26_worker_boundary_smoke.py --ignore=tests/test_runtime_architecture_v2_phase30_meeting_e2e.py --ignore=tests/test_runtime_architecture_v2_phase29_live_pilot_runbook.py --ignore=tests/test_runtime_smoke_packet.py
 ```
 
-Then run a live Discord smoke and read the actual final message body.
+Then run a live Discord smoke and read the actual thread body.
 
 Live audit must confirm:
 
-- final report feels like a decision report, not a system log
+- default meeting has no automatic final report/checkpoint
+- explicit on-demand report feels like a decision report, not a system log
 - conclusion is agenda-specific
 - agreements/actions/risks are derived from meeting content
 - no `Discord thread`, `runtime artifact`, `bullet 요약`, `표 렌더링` in decision sections
