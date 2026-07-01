@@ -776,16 +776,10 @@ def run_phase14_multi_bot_pilot(
     )
 
     fallback_events = _fallback_events(completed_tasks)
-    final_report = _build_final_report(
-        run=run,
-        session=session,
-        worker_tasks=completed_tasks,
-        validation_verdicts=validation_verdicts,
-        internal_specialist_roles=internal_specialist_roles,
-        fallback_events=fallback_events,
-    )
-    enhanced_report_path = root / "runtime" / "meeting_runs" / run.meeting_run_id / "final_report_v2.md"
-    enhanced_report_path.write_text(final_report + "\n", encoding="utf-8")
+    # Phase 32: final_report_v2.md is no longer auto-generated.
+    # Source data (meeting_run.json, worker_outputs, session messages)
+    # remain available for future on-demand report generation.
+    # _build_final_report() can still be called explicitly when needed.
 
     # Produce projections for all visible bot messages. In live Discord mode,
     # Phase 29 requires one CEO-owned shared meeting thread so each team lead
@@ -895,7 +889,7 @@ def run_phase14_multi_bot_pilot(
         meeting_thread_error=meeting_thread_error,
         internal_specialist_roles=internal_specialist_roles,
         fallback_events=fallback_events,
-        final_report=final_report,
+        final_report="",  # Phase 32: no longer auto-generated; on-demand only
         error=error,
     )
 

@@ -11,6 +11,7 @@ from src.runtime_architecture_v2.multi_bot import (
     BotMessage,
     MeetingRound,
     MultiBotSession,
+    _build_final_report,
     _discord_env_for_profile,
     build_phase14_pilot_request,
     route_bot_projection,
@@ -937,30 +938,40 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
 
     assert result.ok is True
     assert result.fallback_events
-    assert result.final_report.index("## 🎯 결론") < result.final_report.index("## ✅ 합의안")
-    assert result.final_report.index("## ✅ 합의안") < result.final_report.index("## 🚀 다음 액션")
-    assert result.final_report.index("## 🚀 다음 액션") < result.final_report.index("## 👥 팀장 핵심 의견")
-    assert result.final_report.index("## 👥 팀장 핵심 의견") < result.final_report.index("## 🧑‍💻 Specialist 투입")
-    assert result.final_report.index("## 🧑‍💻 Specialist 투입") < result.final_report.index("## 🔍 검증 상세 / 모델 Evidence")
-    assert "**상태:** ✅ 완료" in result.final_report
-    assert "| 팀장 | 핵심 포인트 |" in result.final_report
-    assert "| specialist | 결과 한줄 요약 |" in result.final_report
-    assert "data-analyst" in result.final_report
-    assert "데이터 분석가는" in result.final_report
-    assert "백엔드 엔지니어는" in result.final_report
-    assert "quality-assurance" in result.final_report
-    assert "품질 담당자는" in result.final_report
-    assert "ui-ux-designer" in result.final_report
-    assert "UI/UX 디자이너는" in result.final_report
-    assert "## 🔍 검증 상세 / 모델 Evidence" in result.final_report
-    assert "fallback_used=true" in result.final_report
-    assert "qwen3.7-plus -> deepseek-v4-pro" in result.final_report
-    assert "검증 팀장 관점에서" not in result.final_report
-    assert result.final_report.index("| 팀장 | 핵심 포인트 |") < result.final_report.index("| specialist | 결과 한줄 요약 |")
-    agreement_section = result.final_report.split("## ✅ 합의안", 1)[1].split("## 🚀 다음 액션", 1)[0]
+    assert result.final_report == ""  # no longer auto-generated
+
+    report = _build_final_report(
+        run=result.meeting_run,
+        session=result.session,
+        worker_tasks=result.worker_tasks,
+        validation_verdicts=(),
+        internal_specialist_roles=result.internal_specialist_roles,
+        fallback_events=result.fallback_events,
+    )
+    assert report.index("## 🎯 결론") < report.index("## ✅ 합의안")
+    assert report.index("## ✅ 합의안") < report.index("## 🚀 다음 액션")
+    assert report.index("## 🚀 다음 액션") < report.index("## 👥 팀장 핵심 의견")
+    assert report.index("## 👥 팀장 핵심 의견") < report.index("## 🧑‍💻 Specialist 투입")
+    assert report.index("## 🧑‍💻 Specialist 투입") < report.index("## 🔍 검증 상세 / 모델 Evidence")
+    assert "**상태:** ✅ 완료" in report
+    assert "| 팀장 | 핵심 포인트 |" in report
+    assert "| specialist | 결과 한줄 요약 |" in report
+    assert "data-analyst" in report
+    assert "데이터 분석가는" in report
+    assert "백엔드 엔지니어는" in report
+    assert "quality-assurance" in report
+    assert "품질 담당자는" in report
+    assert "ui-ux-designer" in report
+    assert "UI/UX 디자이너는" in report
+    assert "## 🔍 검증 상세 / 모델 Evidence" in report
+    assert "fallback_used=true" in report
+    assert "qwen3.7-plus -> deepseek-v4-pro" in report
+    assert "검증 팀장 관점에서" not in report
+    assert report.index("| 팀장 | 핵심 포인트 |") < report.index("| specialist | 결과 한줄 요약 |")
+    agreement_section = report.split("## ✅ 합의안", 1)[1].split("## 🚀 다음 액션", 1)[0]
     assert "기준으로 확정한다" not in agreement_section
     assert agreement_section.count("안건은") <= 1
-    action_section = result.final_report.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
+    action_section = report.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
     assert "회귀 테스트" in action_section
     assert "specialist 고유 output" in action_section
     assert "evidence 분리" in action_section
@@ -993,21 +1004,31 @@ def test_phase14_final_report_marks_placeholder_specialist_output_failed(tmp_pat
     )
 
     assert result.ok is True
-    assert "legal-reviewer" in result.final_report
-    assert "legal-reviewer specialist output" not in result.final_report
-    assert "worker_execution_failed" in result.final_report
-    agreement_section = result.final_report.split("## ✅ 합의안", 1)[1].split("## 🚀 다음 액션", 1)[0]
-    conclusion_section = result.final_report.split("## 🎯 결론", 1)[1].split("## ✅ 합의안", 1)[0].strip()
+    assert result.final_report == ""  # no longer auto-generated
+
+    report = _build_final_report(
+        run=result.meeting_run,
+        session=result.session,
+        worker_tasks=result.worker_tasks,
+        validation_verdicts=(),
+        internal_specialist_roles=result.internal_specialist_roles,
+        fallback_events=result.fallback_events,
+    )
+    assert "legal-reviewer" in report
+    assert "legal-reviewer specialist output" not in report
+    assert "worker_execution_failed" in report
+    agreement_section = report.split("## ✅ 합의안", 1)[1].split("## 🚀 다음 액션", 1)[0]
+    conclusion_section = report.split("## 🎯 결론", 1)[1].split("## ✅ 합의안", 1)[0].strip()
     assert "최종 합의는 `" not in agreement_section
     assert conclusion_section not in agreement_section
     assert "legal-reviewer placeholder" in agreement_section
     assert "worker_execution_failed" in agreement_section
-    action_section = result.final_report.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
+    action_section = report.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
     assert "legal-reviewer placeholder" in action_section
     assert "worker_execution_failed" in action_section
     assert "evidence 분리와 specialist 고유 output을 회귀 테스트로 고정한다" not in action_section
     legal_line = next(
-        line for line in result.final_report.splitlines() if line.startswith("legal-reviewer")
+        line for line in report.splitlines() if line.startswith("legal-reviewer")
     )
     assert "⚠️" in legal_line
 
@@ -1064,3 +1085,29 @@ def test_phase14_cli_rejects_invalid_mode(tmp_path: Path):
     payload = json.loads(completed.stderr)
     assert payload["ok"] is False
     assert payload["error"] == "invalid_live_worker_count"
+
+
+# ── Phase 32 Stage 2 Tests ──────────────────────────────────────────────
+
+
+def test_phase32_default_meeting_does_not_auto_generate_final_report_v2(
+    tmp_path: Path,
+):
+    result = run_phase14_multi_bot_pilot(root=tmp_path, mode="dry-run")
+    assert result.ok is True
+    assert result.final_report == ""
+
+    run_dir = (
+        Path(tmp_path)
+        / "runtime"
+        / "meeting_runs"
+        / result.meeting_run.meeting_run_id
+    )
+    report_path = run_dir / "final_report_v2.md"
+    assert not report_path.exists(), "final_report_v2.md must not be auto-generated"
+
+    meeting_run_path = run_dir / "meeting_run.json"
+    assert meeting_run_path.exists()
+
+    final_report_md = run_dir / "final_report.md"
+    assert final_report_md.exists()
