@@ -1142,10 +1142,24 @@ def _task_output_summary(task: WorkerTask, *, max_length: int = 180) -> str:
     for key in ("content", "summary", "stdout"):
         value = _human_facing_text(payload.get(key))
         if value:
+            if _is_placeholder_specialist_output(task, value):
+                return f"worker_execution_failed: placeholder output for {task.role}"[
+                    :max_length
+                ]
             return value[:max_length]
     if task.error:
         return f"error={task.error}"[:max_length]
     return "output recorded"
+
+
+def _is_placeholder_specialist_output(task: WorkerTask, value: object) -> bool:
+    text = _one_line(value, max_length=200).lower()
+    role = str(task.role).lower()
+    return text in {
+        f"{role} specialist output",
+        f"{role} output",
+        f"{role} worker output",
+    }
 
 
 def _human_facing_text(value: object) -> str:
@@ -1247,9 +1261,16 @@ def _model_evidence_lines(worker_tasks: tuple[WorkerTask, ...]) -> list[str]:
     for task in worker_tasks:
         attempts = _task_attempts(task)
         model_path = " -> ".join(attempts) or "모델 기록 없음"
-        icon = "✅" if task.state == WorkerTaskState.SUCCEEDED else "⚠️"
+        payload = _task_output_payload(task)
+        placeholder_failed = any(
+            _is_placeholder_specialist_output(task, payload.get(key))
+            for key in ("content", "summary", "stdout")
+            if payload.get(key) is not None
+        )
+        icon = "✅" if task.state == WorkerTaskState.SUCCEEDED and not placeholder_failed else "⚠️"
+        state_note = " worker_execution_failed=placeholder_output" if placeholder_failed else ""
         lines.append(
-            f"{task.role:<22} {icon} {model_path} fallback_used={str(len(attempts) > 1).lower()}"
+            f"{task.role:<22} {icon} {model_path} fallback_used={str(len(attempts) > 1).lower()}{state_note}"
         )
     return lines
 
@@ -1261,7 +1282,7 @@ def _derive_agreement_items(
     fallback_used: bool,
 ) -> list[str]:
     items = [
-        f"{_one_line(agenda, max_length=80)} 안건은 `{_one_line(conclusion, max_length=120)}` 기준으로 확정한다.",
+        f"최종 합의는 `{_one_line(conclusion, max_length=140)}`로 정리한다.",
         "Discord thread는 사용자 판단 화면으로 두고, local runtime artifact는 전체 evidence 보관소로 분리한다.",
     ]
     if fallback_used:

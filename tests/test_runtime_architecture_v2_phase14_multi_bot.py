@@ -880,11 +880,49 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
     assert "qwen3.7-plus -> deepseek-v4-pro" in result.final_report
     assert "검증 팀장 관점에서" not in result.final_report
     assert result.final_report.index("| 팀장 | 핵심 포인트 |") < result.final_report.index("| specialist | 결과 한줄 요약 |")
+    agreement_section = result.final_report.split("## ✅ 합의안", 1)[1].split("## 🚀 다음 액션", 1)[0]
+    assert "기준으로 확정한다" not in agreement_section
+    assert agreement_section.count("안건은") <= 1
     action_section = result.final_report.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
     assert "회귀 테스트" in action_section
     assert "specialist 고유 output" in action_section
     assert "evidence 분리" in action_section
     assert "최종 보고 마지막 메시지의 결론/합의안/다음 액션을 우선 확인" not in action_section
+
+
+def test_phase14_final_report_marks_placeholder_specialist_output_failed(tmp_path: Path):
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        prompt = command[command.index("--prompt") + 1] if "--prompt" in command else ""
+        if "legal-reviewer" in prompt:
+            content = "legal-reviewer specialist output"
+        else:
+            content = "회의 발언입니다."
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout=json.dumps({"content": content, "attempted_models": ["glm-5.1"]}),
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=1,
+        command_runner=command_runner,
+        trigger_text="법무 계약 검토 회의",
+        live_bot_roles_override=("content_lead",),
+        fake_bot_roles_override=("quality_lead",),
+    )
+
+    assert result.ok is True
+    assert "legal-reviewer" in result.final_report
+    assert "legal-reviewer specialist output" not in result.final_report
+    assert "worker_execution_failed" in result.final_report
+    legal_line = next(
+        line for line in result.final_report.splitlines() if line.startswith("legal-reviewer")
+    )
+    assert "⚠️" in legal_line
 
 
 # ── CLI Tests ───────────────────────────────────────────────────────────

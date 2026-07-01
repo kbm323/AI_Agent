@@ -2,7 +2,7 @@
 
 > **For Hermes:** Implement directly with strict TDD: RED test first, smallest GREEN change, then targeted/full verification.
 
-**Goal:** Make AI_Agent meeting final reports trustworthy and readable by fixing specialist output accuracy, separating Discord/local rendering, unifying evidence formatting, making the conclusion decision-specific, and deriving agreement/action items from actual meeting outputs instead of boilerplate.
+**Goal:** Make AI_Agent meeting final reports trustworthy and readable by fixing specialist output accuracy, separating Discord/local rendering, unifying evidence formatting, making the conclusion decision-specific, deriving agreement/action items from actual meeting outputs instead of boilerplate, and fail-closing placeholder specialist output.
 
 **Architecture:** Keep `final_report_v2.md` as the full local artifact with Markdown tables. Use a Discord-specific final-report renderer for the thread's last message using bullet lists and a single compact evidence code block because Discord does not render Markdown tables. Build both renderers from the same role/task/validation inputs so data stays consistent.
 
@@ -95,3 +95,17 @@
 4. Implement deterministic helpers that promote action-like sentences from validation, QA, tech, and specialist summaries.
 5. Keep local artifact and Discord renderers consistent while preserving their rendering differences.
 6. Keep evidence in a single truncation-safe code block by capping evidence lines before final Discord truncation.
+
+## Task 7: Fix agreement sentence assembly and placeholder leakage
+
+**Objective:** Prevent content-derived rendering from producing broken agreement grammar or treating placeholder specialist output as successful work.
+
+**Files:**
+- Modify: `src/runtime_architecture_v2/multi_bot.py`
+- Modify: `tests/test_runtime_architecture_v2_phase14_multi_bot.py`
+
+**Steps:**
+1. Add RED assertions that agreement bullets do not duplicate `안건은` or append awkward tails like `기준으로 확정한다` after a full conclusion sentence.
+2. Add RED assertions that placeholder strings such as `<role> specialist output` are not displayed as successful specialist summaries.
+3. Render placeholder outputs as `worker_execution_failed: placeholder output for <role>`.
+4. Mark placeholder evidence lines with `⚠️` and `worker_execution_failed=placeholder_output` so the report status and evidence agree.
