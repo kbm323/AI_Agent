@@ -328,8 +328,7 @@ def route_bot_projection(
 
     prefix = f"**[{persona}]** "
     full = prefix + safe_content
-    if len(full) > 1900:
-        full = full[:1897] + "…"
+    full = _truncate_discord_projection_content(full)
 
     event = DiscordProjectionEvent(
         event_id=f"proj_{message.meeting_run_id}_{message.bot_role}_r{message.round}",
@@ -355,6 +354,16 @@ def route_bot_projection(
         sink = FakeDiscordProjectionSink()
 
     return sink.publish(event)
+
+
+def _truncate_discord_projection_content(content: str, *, max_length: int = 1900) -> str:
+    if len(content) <= max_length:
+        return content
+    truncated = content[: max_length - 1].rstrip() + "…"
+    if truncated.count("```") % 2 == 1:
+        suffix = "\n```"
+        truncated = content[: max_length - len(suffix) - 1].rstrip() + "…" + suffix
+    return truncated
 
 
 _SPECIALIST_KEYWORD_ROUTES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
@@ -1257,7 +1266,8 @@ def _validation_evidence_lines(validation_verdicts: tuple[object, ...]) -> list[
 
 
 def _model_evidence_lines(worker_tasks: tuple[WorkerTask, ...]) -> list[str]:
-    lines: list[str] = []
+    warning_lines: list[str] = []
+    normal_lines: list[str] = []
     for task in worker_tasks:
         attempts = _task_attempts(task)
         model_path = " -> ".join(attempts) or "모델 기록 없음"
@@ -1269,24 +1279,47 @@ def _model_evidence_lines(worker_tasks: tuple[WorkerTask, ...]) -> list[str]:
         )
         icon = "✅" if task.state == WorkerTaskState.SUCCEEDED and not placeholder_failed else "⚠️"
         state_note = " worker_execution_failed=placeholder_output" if placeholder_failed else ""
-        lines.append(
-            f"{task.role:<22} {icon} {model_path} fallback_used={str(len(attempts) > 1).lower()}{state_note}"
-        )
-    return lines
+        line = f"{task.role:<22} {icon} {model_path} fallback_used={str(len(attempts) > 1).lower()}{state_note}"
+        if placeholder_failed or task.state != WorkerTaskState.SUCCEEDED:
+            warning_lines.append(line)
+        else:
+            normal_lines.append(line)
+    return [*warning_lines, *normal_lines]
 
 
 def _derive_agreement_items(
     *,
     agenda: str,
     conclusion: str,
+    role_summaries: Mapping[str, str],
+    specialist_summaries: Mapping[str, str],
     fallback_used: bool,
 ) -> list[str]:
-    items = [
-        f"최종 합의는 `{_one_line(conclusion, max_length=140)}`로 정리한다.",
-        "Discord thread는 사용자 판단 화면으로 두고, local runtime artifact는 전체 evidence 보관소로 분리한다.",
-    ]
+    source_text = _summaries_source_text(role_summaries, specialist_summaries)
+    items: list[str] = []
+
+    def add(item: str) -> None:
+        if item not in items:
+            items.append(item)
+
+    if "legal-reviewer" in source_text and (
+        "placeholder" in source_text or "worker_execution_failed" in source_text
+    ):
+        add(
+            "legal-reviewer placeholder는 성공 산출물이 아니라 worker_execution_failed로 표시하고 evidence 상태와 동기화한다."
+        )
+    elif "placeholder" in source_text or "worker_execution_failed" in source_text:
+        add(
+            "placeholder specialist output은 성공 산출물이 아니라 worker_execution_failed로 표시하고 evidence 상태와 동기화한다."
+        )
+
+    if any(term in source_text for term in ("discord", "bullet", "표", "artifact", "evidence")):
+        add("Discord thread는 사용자 판단 화면, local runtime artifact는 전체 evidence 보관소로 역할을 분리한다.")
+    else:
+        add("회의에서 합의된 결정은 역할별 발언과 specialist 결과를 기준으로 세부 항목으로 관리한다.")
+
     if fallback_used:
-        items.append("fallback 사용 role은 모델 경로와 결과 품질을 별도 확인 대상으로 둔다.")
+        add("fallback 사용 role은 모델 경로와 결과 품질을 별도 확인 대상으로 둔다.")
     return items
 
 
@@ -1296,14 +1329,18 @@ def _derive_action_items(
     specialist_summaries: Mapping[str, str],
     fallback_used: bool,
 ) -> list[str]:
-    source_text = "\n".join([*role_summaries.values(), *specialist_summaries.values()])
+    source_text = _summaries_source_text(role_summaries, specialist_summaries)
     actions: list[str] = []
 
     def add(action: str) -> None:
         if action not in actions:
             actions.append(action)
 
-    if "회귀 테스트" in source_text:
+    if "legal-reviewer" in source_text and "placeholder" in source_text:
+        add("legal-reviewer placeholder output을 worker_execution_failed로 처리하는 회귀 테스트를 고정한다.")
+    elif "placeholder" in source_text and "worker_execution_failed" in source_text:
+        add("placeholder specialist output을 worker_execution_failed로 처리하는 회귀 테스트를 고정한다.")
+    elif "회귀 테스트" in source_text:
         if "evidence" in source_text:
             add("evidence 분리와 specialist 고유 output을 회귀 테스트로 고정한다.")
         else:
@@ -1318,6 +1355,14 @@ def _derive_action_items(
         add("회의에서 도출된 역할별 제안을 실행 작업으로 분리한다.")
         add("세부 evidence와 원문은 `final_report_v2.md`와 worker output에서 확인한다.")
     return actions[:4]
+
+
+def _summaries_source_text(
+    role_summaries: Mapping[str, str], specialist_summaries: Mapping[str, str]
+) -> str:
+    parts = [f"{role}: {summary}" for role, summary in role_summaries.items()]
+    parts.extend(f"{role}: {summary}" for role, summary in specialist_summaries.items())
+    return "\n".join(parts)
 
 
 def _prefix_lines(prefix: str, items: list[str]) -> list[str]:
@@ -1395,6 +1440,8 @@ def _build_final_report(
         _derive_agreement_items(
             agenda=agenda,
             conclusion=conclusion,
+            role_summaries=role_latest,
+            specialist_summaries=specialist_summaries,
             fallback_used=fallback_used,
         ),
     )
@@ -1501,6 +1548,8 @@ def _build_discord_final_report(
         _derive_agreement_items(
             agenda=agenda,
             conclusion=conclusion,
+            role_summaries=role_latest,
+            specialist_summaries=specialist_summaries,
             fallback_used=fallback_used,
         ),
     )

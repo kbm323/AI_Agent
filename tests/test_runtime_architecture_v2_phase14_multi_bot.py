@@ -276,6 +276,16 @@ def test_route_bot_projection_sanitizes_secrets():
     assert "LEAK123456" not in result.discord_message_id
 
 
+def test_route_bot_projection_truncates_without_breaking_code_block():
+    content = "# 보고\n```text\n" + "x" * 2100
+
+    truncated = multi_bot_module._truncate_discord_projection_content(content)
+
+    assert len(truncated) <= 1900
+    assert truncated.endswith("\n```")
+    assert truncated.count("```") == 2
+
+
 def test_route_bot_projection_respects_visible_flag():
     msg = BotMessage(
         bot_role="content_lead",
@@ -919,6 +929,16 @@ def test_phase14_final_report_marks_placeholder_specialist_output_failed(tmp_pat
     assert "legal-reviewer" in result.final_report
     assert "legal-reviewer specialist output" not in result.final_report
     assert "worker_execution_failed" in result.final_report
+    agreement_section = result.final_report.split("## ✅ 합의안", 1)[1].split("## 🚀 다음 액션", 1)[0]
+    conclusion_section = result.final_report.split("## 🎯 결론", 1)[1].split("## ✅ 합의안", 1)[0].strip()
+    assert "최종 합의는 `" not in agreement_section
+    assert conclusion_section not in agreement_section
+    assert "legal-reviewer placeholder" in agreement_section
+    assert "worker_execution_failed" in agreement_section
+    action_section = result.final_report.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
+    assert "legal-reviewer placeholder" in action_section
+    assert "worker_execution_failed" in action_section
+    assert "evidence 분리와 specialist 고유 output을 회귀 테스트로 고정한다" not in action_section
     legal_line = next(
         line for line in result.final_report.splitlines() if line.startswith("legal-reviewer")
     )
