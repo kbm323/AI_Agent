@@ -519,7 +519,7 @@ Done only when all are true:
 - Discord renderer produces <= 1600-char user-facing decision report.
 - Local renderer stores full evidence.
 - Phase 14 pipeline generates `final_report_v3.md` and `decision_summary.json`.
-- Discord final message uses v3 report.
+- Default meeting completion does not post any automatic final message. On-demand report request produces v3 report.
 - Live Discord audit passes by reading the actual thread body.
 - Broad pytest suite passes.
 - Docs updated.
@@ -529,5 +529,5 @@ Remaining stages after this plan is accepted:
 1. Implement Task 1-2 — schema, parser, validator.
 2. Implement Task 3 — AI summarizer adapter.
 3. Implement Task 4-5 — v3 renderers and specialist filtering.
-4. Implement Task 6-7 — Phase 14 integration and Discord final switch.
+4. Implement Task 6-7 — on-demand export integration and requested report rendering.
 5. Implement Task 8 — docs, broad tests, live Discord audit, commit/push.
