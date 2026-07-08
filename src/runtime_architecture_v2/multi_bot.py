@@ -91,6 +91,16 @@ BOT_PERSONAS: dict[str, str] = {
     "hr_lead": "인사/문화",
 }
 
+PHASE33_VISIBLE_ROLE_ORDER: tuple[str, ...] = (
+    "ceo_coordinator",
+    "content_lead",
+    "art_lead",
+    "tech_lead",
+    "marketing_lead",
+    "validation_audit",
+    "quality_lead",
+)
+
 BotMessageType = Literal[
     "meeting_open",
     "opinion",
@@ -399,6 +409,19 @@ def _select_internal_specialist_roles(
     return tuple(selected)
 
 
+def _phase33_order_roles(roles: tuple[str, ...]) -> tuple[str, ...]:
+    """Return visible meeting roles in chaired Phase 33 order."""
+
+    remaining = list(roles)
+    ordered: list[str] = []
+    for role in PHASE33_VISIBLE_ROLE_ORDER:
+        if role in remaining:
+            ordered.append(role)
+            remaining.remove(role)
+    ordered.extend(remaining)
+    return tuple(ordered)
+
+
 # ── Multi-bot Meeting Phase ────────────────────────────────────────────
 
 
@@ -417,7 +440,8 @@ def run_meeting_phase(
     Live bots execute through opencode-go workers. Fake bots produce
     deterministic injected output tagged with their role.
     """
-    all_bots = live_bot_roles + fake_bot_roles
+    all_bots = _phase33_order_roles(live_bot_roles + fake_bot_roles)
+    live_role_set = set(live_bot_roles)
     if not participants:
         raise ValueError("meeting phase requires at least one participant")
 
@@ -426,7 +450,7 @@ def run_meeting_phase(
     # Round 1 — Opinions
     round1_msgs: list[BotMessage] = []
     for role in all_bots:
-        is_live = role in live_bot_roles
+        is_live = role in live_role_set
         content = _generate_bot_content(
             role=role,
             round_num=1,
@@ -456,7 +480,7 @@ def run_meeting_phase(
     if rounds >= 2:
         round2_msgs: list[BotMessage] = []
         for role in all_bots:
-            is_live = role in live_bot_roles
+            is_live = role in live_role_set
             opponents = tuple(r for r in all_bots if r != role)
             content = _generate_bot_content(
                 role=role,
@@ -681,7 +705,9 @@ def run_phase14_multi_bot_pilot(
         else ()
     )
     if mode == "live-worker" and (
-        max_live_workers < 1 or max_live_workers > len(live_bot_roles)
+        max_live_workers < 0
+        or max_live_workers > len(live_bot_roles)
+        or (live_bot_roles and max_live_workers < 1)
     ):
         raise Phase13PilotModeError(
             "invalid_live_worker_count",
@@ -724,7 +750,7 @@ def run_phase14_multi_bot_pilot(
         root,
         live_worker_count=live_count,
         internal_specialist_roles=internal_specialist_roles,
-        live_specialists=(mode == "live-worker"),
+        live_specialists=(mode == "live-worker" and live_count > 0),
     )
 
     run = replace(
@@ -910,7 +936,12 @@ def _generate_bot_content(
 ) -> str:
     """Generate content for a bot message — live via opencode-go or fake."""
     if not is_live:
-        return _fake_bot_content(role, round_num, msg_type)
+        return _fake_bot_content(
+            role,
+            round_num,
+            msg_type,
+            agenda=str(run.trigger.get("text", "")),
+        )
     return _live_bot_content(
         role,
         round_num,
@@ -922,93 +953,53 @@ def _generate_bot_content(
     )
 
 
-def _fake_bot_content(role: str, round_num: int, msg_type: str) -> str:
-    """Deterministic fake content per role, round, and message type."""
-    _ = round_num  # unused, reserved for future variation
-    templates: dict[str, dict[str, str]] = {
-        "content_lead": {
-            "opinion": (
-                "신규 버추얼 아이돌 그룹의 데뷔 컨셉으로 "
-                "'AI와 함께 성장하는 아이돌'을 제안합니다. "
-                "팬 투표로 세트리스트와 의상을 결정하고, "
-                "제작 과정을 숏폼으로 공개하는 방식입니다."
-            ),
-            "rebuttal": (
-                "마케팅 팀장님 의견에 동의합니다. 시장성은 중요하지만, "
-                "콘텐츠의 진정성이 팬덤 형성의 핵심이라고 생각합니다."
-            ),
-        },
-        "marketing_lead": {
-            "opinion": (
-                "시장성 측면에서 '참여형 아이돌' 컨셉은 "
-                "Z세대 타겟에 매우 효과적입니다. "
-                "팬 투표 참여율이 높은 숏폼 플랫폼과의 연계를 추천합니다."
-            ),
-            "rebuttal": (
-                "콘텐츠 팀장님 의견에 보충하자면, 진정성과 시장성은 양립 가능합니다. "
-                "제작 과정 자체가 마케팅 자산이 될 수 있습니다."
-            ),
-        },
-        "quality_lead": {
-            "opinion": (
-                "검증 관점에서 확인할 리스크: 저작권(팬 아트 사용), "
-                "개인정보(투표 시스템), 과장 광고(아이돌 AI 능력 표시). "
-                "이 세 가지는 데뷔 전에 정책을 확정해야 합니다."
-            ),
-            "rebuttal": (
-                "양 팀장님 의견 모두 타당합니다. 다만 'AI와 함께 성장'이라는 표현이 "
-                "AI의 실제 능력 이상을 암시하지 않도록 주의가 필요합니다."
-            ),
-        },
-        "tech_lead": {
-            "opinion": (
-                "기술적으로 팬 투표 플랫폼과 "
-                "숏폼 제작 파이프라인 구축에 약 2주 소요 예상. "
-                "실시간 투표 반영을 위한 API 설계가 선행되어야 합니다."
-            ),
-            "rebuttal": (
-                "마케팅에서 제안한 숏폼 플랫폼 연계는 기술적으로 가능합니다. "
-                "다만 실시간 데이터 동기화에 추가 리소스가 필요합니다."
-            ),
-        },
-        "art_lead": {
-            "opinion": (
-                "비주얼 컨셉으로 '미래적이면서도 친근한' 디자인을 제안합니다. "
-                "캐릭터 디자인에 AI 모티프를 자연스럽게 녹이는 방향입니다."
-            ),
-            "rebuttal": (
-                "콘텐츠 팀장님의 'AI와 성장' 컨셉을 비주얼로 표현한다면, "
-                "시즌별로 진화하는 캐릭터 디자인이 가능합니다."
-            ),
-        },
-        "business_support_lead": {
-            "opinion": (
-                "사업 측면에서 IP 권리, 수익 분배, "
-                "팬 데이터 소유권을 명확히 해야 합니다. "
-                "초기 계약서에 AI 생성 콘텐츠의 권리 귀속 조항이 필요합니다."
-            ),
-            "rebuttal": (
-                "법무 검토 결과, 팬 투표 콘텐츠의 2차 저작물 권리는 "
-                "명시적인 약관 동의가 필요합니다."
-            ),
-        },
-        "ceo_coordinator": {
-            "opinion": (
-                "각 팀장님들의 의견을 종합하여 회의를 시작하겠습니다. "
-                "오늘 안건은 신규 버추얼 아이돌 그룹의 데뷔 컨셉입니다."
-            ),
-            "rebuttal": (
-                "1차 의견을 검토한 결과, 콘텐츠-마케팅-검증 세 축이 정렬되었습니다. "
-                "합의안을 도출하겠습니다."
-            ),
-        },
-    }
+def _fake_bot_content(
+    role: str,
+    round_num: int,
+    msg_type: str,
+    *,
+    agenda: str = "",
+) -> str:
+    """Deterministic agenda-bound content per role, round, and message type."""
 
-    role_templates = templates.get(role, {})
+    agenda_text = agenda.strip() or "회의 안건 미지정"
     persona = BOT_PERSONAS.get(role, role)
-    return role_templates.get(
-        msg_type,
-        f"[{persona}] 의견: 추가 검토가 필요합니다.",
+    if role in {"quality_lead", "validation_audit"}:
+        persona = "품질관리 팀장"
+
+    if role == "ceo_coordinator" and round_num <= 1:
+        return (
+            f"{agenda_text} 안건으로 회의를 개회합니다. "
+            "발언 순서는 대표, 콘텐츠, 아트, 기술, 마케팅, 품질관리이며 "
+            "각 팀장은 안건 유지와 실행 조건을 중심으로 말해주세요."
+        )
+    if role == "ceo_coordinator":
+        return (
+            f"{agenda_text} 1라운드 발언을 종합해 2라운드 쟁점을 제시합니다. "
+            "각 팀장은 앞선 의견을 반복하지 말고 보완/반박과 합의 조건을 제시해주세요."
+        )
+
+    if role in {"quality_lead", "validation_audit"} and round_num <= 1:
+        return (
+            f"{agenda_text} 검증 기준: 안건 유지, 발언 순서 준수, "
+            "라운드별 반복 방지, 사용자-facing 근거 제시를 확인합니다. "
+            "리스크는 안건 이탈과 근거 없는 합의입니다."
+        )
+    if role in {"quality_lead", "validation_audit"}:
+        return (
+            f"{agenda_text} Round 2 최종 검증: 수정요구 조건은 안건 유지 증거, "
+            "대표 브리핑 반영, 반복 없는 팀별 보완안입니다. "
+            "남은 리스크가 해결되면 조건부 승인합니다."
+        )
+
+    if round_num <= 1:
+        return (
+            f"{persona} 관점에서 {agenda_text} 안건의 핵심 판단과 근거를 제시합니다. "
+            "1라운드에서는 역할별 리스크와 실행 조건을 구체화합니다."
+        )
+    return (
+        f"{persona} Round 2 의견: 1라운드 대표 브리핑과 타 팀 의견을 반영해 "
+        f"{agenda_text} 안건의 보완/반박 및 최종 합의 조건을 제안합니다."
     )
 
 
@@ -1122,7 +1113,12 @@ def _live_bot_content(
                     return content
             except (OSError, ValueError, TypeError):
                 pass
-        return _fake_bot_content(role, round_num, msg_type)
+        return _fake_bot_content(
+            role,
+            round_num,
+            msg_type,
+            agenda=str(run.trigger.get("text", "")),
+        )
 
     try:
         result = command_runner(
@@ -1143,7 +1139,12 @@ def _live_bot_content(
                 return content
     except Exception:
         pass
-    return _fake_bot_content(role, round_num, msg_type)
+    return _fake_bot_content(
+        role,
+        round_num,
+        msg_type,
+        agenda=str(run.trigger.get("text", "")),
+    )
 
 
 def _execute_phase14_tasks(

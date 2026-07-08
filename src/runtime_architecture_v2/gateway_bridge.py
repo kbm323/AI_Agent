@@ -18,29 +18,14 @@ Design (Option A):
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from src.runtime_architecture_v2.multi_bot import (
     MultiBotPilotResult,
     _default_discord_http_post,
     run_phase14_multi_bot_pilot,
-)
-from src.runtime_architecture_v2.projection import (
-    DiscordLiveBoundaryPolicy,
-    LiveDiscordProjectionSink,
-    LiveDiscordThreadManager,
-    SharedMeetingThreadProjectionPolicy,
-    ProjectionPublishResult,
-    ThreadCreateResult,
-    _default_discord_http_post as _projection_default_post,
-    _sanitize_discord_content,
-)
-from src.runtime_architecture_v2.discord_channels import (
-    current_discord_home_channel_ids_by_profile,
 )
 
 # ── Gateway trigger shape ────────────────────────────────────────────────
@@ -59,7 +44,13 @@ class GatewayMeetingTrigger:
     priority: str = "P1"
 
     @classmethod
-    def from_discord_mention(cls, content: str, channel_id: str, user_id: str, guild_id: str = "1505600166676271244") -> GatewayMeetingTrigger:
+    def from_discord_mention(
+        cls,
+        content: str,
+        channel_id: str,
+        user_id: str,
+        guild_id: str = "1505600166676271244",
+    ) -> GatewayMeetingTrigger:
         return cls(
             text=content,
             user_id=user_id,
@@ -134,9 +125,6 @@ def run_meeting_from_gateway(
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
 
-    boundary_policy = DiscordLiveBoundaryPolicy.current_verified()
-    guild_id = boundary_policy.guild_id
-
     # Intent gate: skip multi-bot pipeline for trivial messages
     if not classify_meeting_intent(trigger.text):
         return GatewayMeetingResult(
@@ -147,6 +135,11 @@ def run_meeting_from_gateway(
     # CEO env is used only for thread creation. Individual bot projections
     # load their own profile tokens from the role→profile map in multi_bot.py.
     ceo_env = _build_profile_env("aicompanyceo")
+    if live_discord and not ceo_env.get("DISCORD_BOT_TOKEN"):
+        return GatewayMeetingResult(
+            success=False,
+            error="thread creation requires aicompanyceo DISCORD_BOT_TOKEN",
+        )
 
     # Derive a thread name from the trigger text
     thread_name = _derive_thread_name(trigger.text)
@@ -176,23 +169,108 @@ def run_meeting_from_gateway(
         )
 
     if not result.ok:
+        if live_discord and _is_provider_failure(result.error):
+            fallback = _run_deterministic_live_fallback(
+                root=root,
+                trigger=trigger,
+                create_thread=create_thread,
+                bot_roles=bot_roles,
+                ceo_env=ceo_env,
+                thread_name=thread_name,
+                http_post=post,
+                existing_thread_id=result.meeting_thread_id,
+            )
+            if fallback.ok:
+                return _gateway_success_result(
+                    fallback,
+                    thread_name=thread_name,
+                    fallback_reason=result.error or "provider failure",
+                )
+            return GatewayMeetingResult(
+                success=False,
+                meeting_run_id=fallback.meeting_run.meeting_run_id,
+                error=f"provider fallback failed: {fallback.error or 'meeting_failed'}",
+            )
         return GatewayMeetingResult(
             success=False,
             meeting_run_id=result.meeting_run.meeting_run_id,
             error=result.error or "meeting_failed",
         )
 
+    return _gateway_success_result(result, thread_name=thread_name)
+
+
+def _run_deterministic_live_fallback(
+    *,
+    root: Path,
+    trigger: GatewayMeetingTrigger,
+    create_thread: bool,
+    bot_roles: tuple[str, ...],
+    ceo_env: Mapping[str, str],
+    thread_name: str,
+    http_post: Callable[..., Mapping[str, object]],
+    existing_thread_id: str = "",
+) -> MultiBotPilotResult:
+    """Post deterministic role messages when provider workers are unavailable."""
+
+    target_thread_id = existing_thread_id or trigger.thread_id
+    return run_phase14_multi_bot_pilot(
+        root=root,
+        mode="live-worker",
+        max_live_workers=0,
+        live_discord=True,
+        env=ceo_env,
+        target_channel_id=trigger.channel_id,
+        target_thread_id=target_thread_id,
+        create_meeting_thread=create_thread and not target_thread_id,
+        thread_name=thread_name,
+        trigger_text=trigger.text,
+        discord_http_post=http_post,
+        live_bot_roles_override=(),
+        fake_bot_roles_override=bot_roles,
+    )
+
+
+def _is_provider_failure(error: str) -> bool:
+    normalized = (error or "").lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "hermes_provider_error",
+            "provider",
+            "http 503",
+            "inference is temporarily unavailable",
+            "failover_exhausted",
+        )
+    )
+
+
+def _gateway_success_result(
+    result: MultiBotPilotResult,
+    *,
+    thread_name: str,
+    fallback_reason: str = "",
+) -> GatewayMeetingResult:
     # Phase 32: gateway response does not claim a final report was generated.
     # The default meeting thread contains only team-lead discussion messages.
     # Reports, summaries, and exports are on-demand actions.
+    fallback_notice = (
+        "\n운영 참고: provider 실패로 deterministic fallback을 사용했습니다 "
+        f"({fallback_reason})."
+        if fallback_reason
+        else ""
+    )
     summary = result.final_report or (
         f"회의 완료: {thread_name}\n"
-        f"참여자: {', '.join(BOT_PERSONA_DISPLAY.get(r, r) for r in result.bot_participants)}\n"
+        "참여자: "
+        f"{', '.join(BOT_PERSONA_DISPLAY.get(r, r) for r in result.bot_participants)}\n"
         f"라운드: {result.rounds_completed}\n"
         f"발언: {result.projection_messages_posted}건\n"
         f"스레드: {'생성됨' if result.meeting_thread_id else '미생성'}\n"
+        f"{fallback_notice}"
         f"\n"
-        f"필요하면 '요약해줘', '최종보고서로 정리해줘', 'Notion에 저장해줘', '세컨드브레인에 넣어줘'라고 요청하세요."
+        "필요하면 '요약해줘', '최종보고서로 정리해줘', "
+        "'Notion에 저장해줘', '세컨드브레인에 넣어줘'라고 요청하세요."
     )
 
     return GatewayMeetingResult(
@@ -304,9 +382,6 @@ def classify_meeting_intent(text: str) -> bool:
         return True
 
     # Category 4: "해줘" + substantive target (not just chitchat)
-    if "해줘" in t and len(t.split()) >= 3:
-        return True
-
-    return False
+    return bool("해줘" in t and len(t.split()) >= 3)
 
 

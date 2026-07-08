@@ -8,17 +8,16 @@ through gateway_bridge.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from src.runtime_architecture_v2.gateway_bridge import (
-    GatewayMeetingResult,
     GatewayMeetingTrigger,
-    run_meeting_from_gateway,
     classify_meeting_intent,
+    run_meeting_from_gateway,
 )
 
 
@@ -45,8 +44,15 @@ def test_dry_run_succeeds(tmp_root: Path) -> None:
     assert result.bot_participants
 
 
-def test_live_mode_needs_discord_token(tmp_root: Path) -> None:
+def test_live_mode_needs_discord_token(
+    tmp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Live mode with no Discord token should fail gracefully."""
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.gateway_bridge._build_profile_env",
+        lambda _profile: {},
+    )
     trigger = GatewayMeetingTrigger(
         text="테스트 회의",
         user_id="u1",
@@ -61,6 +67,62 @@ def test_live_mode_needs_discord_token(tmp_root: Path) -> None:
     )
     assert not result.success
     assert "thread" in result.error or "meeting_failed" in result.error
+
+
+def test_gateway_provider_error_falls_back_to_deterministic_live_projection(
+    tmp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider failures should still create a live deterministic meeting thread."""
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_pilot(**kwargs: Any) -> SimpleNamespace:
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return SimpleNamespace(
+                ok=False,
+                meeting_run=SimpleNamespace(meeting_run_id="failed-provider-run"),
+                meeting_thread_id="",
+                error="hermes_provider_error: HTTP 503",
+            )
+        return SimpleNamespace(
+            ok=True,
+            meeting_run=SimpleNamespace(meeting_run_id="fallback-run"),
+            meeting_thread_id="thread-123",
+            final_report="",
+            bot_participants=("ceo_coordinator", "content_lead"),
+            rounds_completed=2,
+            projection_messages_posted=12,
+        )
+
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.gateway_bridge.run_phase14_multi_bot_pilot",
+        fake_pilot,
+    )
+
+    trigger = GatewayMeetingTrigger(
+        text="쇼츠 컨텐츠 마케팅 회의 시작하자",
+        user_id="u1",
+        channel_id="ch1",
+    )
+    result = run_meeting_from_gateway(
+        trigger,
+        root=tmp_root,
+        live_discord=True,
+        create_thread=True,
+    )
+
+    assert result.success is True
+    assert result.meeting_run_id == "fallback-run"
+    assert result.thread_id == "thread-123"
+    assert "deterministic fallback" in result.summary
+    assert len(calls) == 2
+    assert calls[0]["live_bot_roles_override"]
+    assert calls[0]["fake_bot_roles_override"] == ()
+    assert calls[1]["live_bot_roles_override"] == ()
+    assert calls[1]["fake_bot_roles_override"] == calls[0]["live_bot_roles_override"]
+    assert calls[1]["max_live_workers"] == 0
 
 
 def test_gateway_trigger_cli_roundtrip(tmp_root: Path) -> None:

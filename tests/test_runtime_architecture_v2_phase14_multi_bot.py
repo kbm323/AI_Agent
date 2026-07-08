@@ -13,6 +13,7 @@ from src.runtime_architecture_v2.multi_bot import (
     MultiBotSession,
     _build_final_report,
     _discord_env_for_profile,
+    _phase33_order_roles,
     build_phase14_pilot_request,
     route_bot_projection,
     run_meeting_phase,
@@ -31,6 +32,22 @@ from src.runtime_architecture_v2.schemas import (
 from src.runtime_architecture_v2.workers import OpenCodeGoRunResult
 
 # ── Schema Tests ────────────────────────────────────────────────────────
+
+
+def test_phase33_order_roles_keeps_chair_first_and_quality_last():
+    roles = (
+        "content_lead",
+        "ceo_coordinator",
+        "validation_audit",
+        "marketing_lead",
+    )
+
+    assert _phase33_order_roles(roles) == (
+        "ceo_coordinator",
+        "content_lead",
+        "marketing_lead",
+        "validation_audit",
+    )
 
 
 def test_bot_message_serialization_round_trips():
@@ -663,6 +680,63 @@ def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messag
     assert all('"status": "succeeded"' not in body for body in message_bodies)
     assert all("test-model" not in body for body in message_bodies)
     assert all("\\u" not in body for body in message_bodies)
+
+
+def test_phase33_live_projection_order_is_chair_led_even_when_ceo_is_fake(
+    tmp_path: Path,
+):
+    calls = []
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout=json.dumps(
+                {"content": "Phase33 안건을 반영한 콘텐츠팀장 live 발언입니다."},
+                ensure_ascii=False,
+            ),
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    def fake_http_post(*args, **kwargs):
+        calls.append((args, kwargs))
+        url = args[0]
+        if url.endswith("/channels/1505600167221526621/threads"):
+            return {"status_code": 201, "json": {"id": "thread-phase33"}}
+        if url.endswith("/channels/thread-phase33/messages"):
+            return {"status_code": 200, "json": {"id": f"msg-{len(calls)}"}}
+        return {"status_code": 404, "json": {}}
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=1,
+        command_runner=command_runner,
+        live_discord=True,
+        env={"DISCORD_BOT_TOKEN": "test-token"},
+        target_channel_id="1505600167221526621",
+        thread_name="Phase33 회의 진행 품질 검증",
+        trigger_text="Phase33 회의 진행 품질 검증 회의",
+        discord_http_post=fake_http_post,
+        live_bot_roles_override=("content_lead",),
+        fake_bot_roles_override=(
+            "ceo_coordinator",
+            "art_lead",
+            "tech_lead",
+            "marketing_lead",
+            "validation_audit",
+        ),
+    )
+
+    assert result.ok is True
+    message_bodies = [kwargs["json_body"]["content"] for _args, kwargs in calls[1:]]
+    assert len(message_bodies) == 12
+    assert "[대표]" in message_bodies[0]
+    assert "[콘텐츠 팀장]" in message_bodies[1]
+    assert "[대표]" in message_bodies[6]
+    assert "[검증 팀장]" in message_bodies[11]
+    assert "신규 버추얼 아이돌 그룹의 데뷔 컨셉" not in "\n".join(message_bodies)
 
 
 def test_phase14_live_discord_thread_creation_failure_fails_closed(tmp_path: Path):
