@@ -70,7 +70,7 @@ Discord mention → MeetingRun 생성
 
 ```bash
 # 전체 테스트 (5664개)
-cd /home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent
+cd /home/ubuntu/hermes-workspace/AI_Agent
 PYTHONPATH=src python3 -m pytest tests/ -q
 
 # Runtime v2 전용 테스트만
@@ -277,7 +277,7 @@ git clone https://github.com/kbm323/AI_Agent.git
 cd AI_Agent
 
 # 권장 작업 디렉토리
-/home/kbm/F:ai-projects/10_PROJECTS/2026-06_AI_Agent
+/home/ubuntu/hermes-workspace/AI_Agent
 ```
 
 ---

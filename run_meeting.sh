@@ -5,7 +5,7 @@
 
 SEED="${1:-seeds/seed_remaining.yaml}"
 STATE_FILE=".ouroboros_last_session"
-PROJECT_DIR="/home/kbm/F:ai-projects/AI_Agent"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 cd "$PROJECT_DIR"
 
