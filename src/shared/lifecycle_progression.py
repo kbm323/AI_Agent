@@ -42,13 +42,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional, TypeAlias
 
 from src.shared.lifecycle import LifecycleState, validate_transition
 
 if TYPE_CHECKING:
     from src.meeting_trigger import MeetingManifest
-    from src.transition_engine import PreConditionGuard, TransitionResult
+    from src.transition_engine import TransitionResult
 
 # ── Logger ────────────────────────────────────────────────────────────────
 
@@ -57,8 +57,8 @@ logger = logging.getLogger(__name__)
 # ── Type aliases ──────────────────────────────────────────────────────────
 
 # Re-exported for callers (must match transition_engine.PreConditionGuard)
-PreConditionGuard = Callable[
-    [object], tuple[bool, Optional[str]]
+PreConditionGuard: TypeAlias = Callable[
+    ["MeetingManifest"], tuple[bool, Optional[str]]
 ]
 """A pre-condition guard function.
 Receives a MeetingManifest and returns (allowed, reason)."""
