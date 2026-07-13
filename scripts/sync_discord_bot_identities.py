@@ -7,7 +7,6 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from urllib.request import Request, urlopen
 
-
 DISCORD_CURRENT_USER_URL = "https://discord.com/api/v10/users/@me"
 PROFILE_ROLES: dict[str, str] = {
     "aicompanyassistant": "비서",

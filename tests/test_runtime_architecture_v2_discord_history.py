@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts import sync_discord_bot_identities as identity_sync
+from scripts.sync_discord_bot_identities import PROFILE_ROLES, sync_bot_identities
 from src.runtime_architecture_v2.discord_conversation import (
     DiscordAttachment,
     DiscordAuthor,
@@ -13,8 +15,6 @@ from src.runtime_architecture_v2.discord_conversation import (
     ParticipantResolver,
     load_bot_identities,
 )
-from scripts.sync_discord_bot_identities import PROFILE_ROLES, sync_bot_identities
-from scripts import sync_discord_bot_identities as identity_sync
 
 
 def test_participant_resolver_uses_discord_id_before_display_name(tmp_path):
