@@ -260,7 +260,7 @@ set -euo pipefail
 for profile in "${profiles[@]}"; do
   hermes --profile "$profile" plugins disable ai-agent-commands
   hermes --profile "$profile" plugins list
-  hermes --profile "$profile" skills uninstall save --yes
+  hermes --profile "$profile" skills uninstall save
   hermes --profile "$profile" skills list
 done
 ```
