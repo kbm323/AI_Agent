@@ -569,6 +569,93 @@ def test_later_cutoff_migrates_first_wave_cutoff_named_checkpoint(tmp_path):
     assert (checkpoint_root / "200__start.json").is_file()
 
 
+def test_near_full_checkpoint_fetches_entire_newer_interval_before_cap(tmp_path):
+    checkpoint_root = tmp_path / "collection"
+    checkpoint_root.mkdir()
+    (checkpoint_root / "200__start.json").write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "source_id": "200",
+                "cutoff_message_id": "10000",
+                "after_message_id": None,
+                "before": "50",
+                "complete": True,
+                "messages": [_message(str(i)) for i in range(50, 10000)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    queries = []
+
+    def request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        queries.append(query)
+        before = int(query["before"])
+        if before > 10000:
+            return [_message(str(i)) for i in range(before - 1, before - 101, -1)]
+        raise AssertionError("collector crossed the adopted cutoff")
+
+    result = _fetch(
+        DiscordHistoryClient(
+            token="secret",
+            request_json=request,
+            checkpoint_root=checkpoint_root,
+        ),
+        cutoff_message_id="10300",
+    )
+
+    assert [query["before"] for query in queries] == ["10300", "10200", "10100"]
+    ids = [int(message.message_id) for message in result.messages]
+    assert len(ids) == 10_000
+    assert ids == list(range(300, 10300))
+
+
+def test_full_checkpoint_is_discarded_after_newer_interval_reaches_cap(tmp_path):
+    checkpoint_root = tmp_path / "collection"
+    checkpoint_root.mkdir()
+    (checkpoint_root / "200__start.json").write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "source_id": "200",
+                "cutoff_message_id": "10001",
+                "after_message_id": None,
+                "before": "1",
+                "complete": True,
+                "messages": [_message(str(i)) for i in range(1, 10001)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    queries = []
+
+    def request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        queries.append(query)
+        before = int(query["before"])
+        if before > 10001:
+            return [_message(str(i)) for i in range(before - 1, before - 101, -1)]
+        raise AssertionError("inherited history must not be fetched")
+
+    result = _fetch(
+        DiscordHistoryClient(
+            token="secret",
+            request_json=request,
+            checkpoint_root=checkpoint_root,
+        ),
+        cutoff_message_id="20001",
+    )
+
+    assert len(queries) == 100
+    assert queries[0]["before"] == "20001"
+    assert queries[-1]["before"] == "10101"
+    ids = [int(message.message_id) for message in result.messages]
+    assert ids == list(range(10001, 20001))
+
+
 def test_participant_resolver_uses_discord_id_before_display_name(tmp_path):
     path = tmp_path / "identities.json"
     path.write_text(

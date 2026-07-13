@@ -1,5 +1,7 @@
+import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -7,6 +9,16 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 RUNBOOK = ROOT / "docs" / "operations" / "discord-save-slash-command.md"
 SECRET_SCAN = ROOT / "scripts" / "pre-commit-secret-scan.sh"
+ROLLBACK_SCRIPT = ROOT / "scripts" / "rollback_discord_save_profiles.sh"
+PROFILES = (
+    "aicompanyassistant",
+    "aicompanyceo",
+    "aicompanycontent",
+    "aicompanyart",
+    "aicompanytech",
+    "aicompanymarketing",
+    "aicompanyquality",
+)
 
 
 def _bash() -> str:
@@ -23,6 +35,20 @@ def _bash() -> str:
             if adjacent.is_file():
                 return str(adjacent)
     pytest.skip("Git Bash is unavailable")
+
+
+def _bash_path(path: Path) -> str:
+    resolved = path.resolve()
+    temporary_root = Path(tempfile.gettempdir()).resolve()
+    try:
+        relative = resolved.relative_to(temporary_root)
+    except ValueError:
+        pass
+    else:
+        return f"/tmp/{relative.as_posix()}"
+    drive = resolved.drive.rstrip(":").lower()
+    tail = resolved.as_posix().split(":", 1)[-1]
+    return f"/{drive}{tail}"
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -59,6 +85,145 @@ def _scan(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
     )
+
+
+def _write_fake_gateway_commands(fake_bin: Path) -> None:
+    fake_bin.mkdir()
+    (fake_bin / "tmux").write_text(
+        """#!/bin/bash
+set -euo pipefail
+command="$1"
+shift
+session=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -t|-s) session="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+case "$command" in
+  has-session) test -f "$FAKE_TMUX_STATE/$session" ;;
+  kill-session)
+    printf 'kill %s\\n' "$session" >> "$FAKE_TMUX_LOG"
+    rm -f "$FAKE_TMUX_STATE/$session"
+    ;;
+  new-session)
+    test ! -f "$FAKE_TMUX_STATE/$session" || {
+      printf 'collision %s\\n' "$session" >> "$FAKE_TMUX_LOG"
+      exit 1
+    }
+    printf 'start %s\\n' "$session" >> "$FAKE_TMUX_LOG"
+    : > "$FAKE_TMUX_STATE/$session"
+    ;;
+  *) exit 2 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    (fake_bin / "hermes").write_text(
+        """#!/bin/bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$FAKE_HERMES_LOG"
+printf 'ok\\n'
+""",
+        encoding="utf-8",
+    )
+    (fake_bin / "tmux").chmod(0o755)
+    (fake_bin / "hermes").chmod(0o755)
+
+
+@pytest.mark.parametrize("failure_point", ["before_assistant_smoke", "mid_reload"])
+def test_rollback_script_resyncs_all_profiles_without_session_collisions(
+    tmp_path,
+    failure_point,
+):
+    work_root = tmp_path
+    fake_bin = work_root / "bin"
+    _write_fake_gateway_commands(fake_bin)
+    tmux_state = work_root / "tmux"
+    tmux_state.mkdir()
+    tmux_log = work_root / "tmux.log"
+    hermes_log = work_root / "hermes.log"
+    profile_root = work_root / "profiles"
+    rollback_state = work_root / "rollback-state"
+    deploy_record = work_root / "deploy-record"
+    deploy_record.mkdir()
+    prior_running = set(PROFILES[:4])
+
+    for profile in PROFILES:
+        state_root = rollback_state / profile
+        current_root = profile_root / profile
+        state_root.mkdir(parents=True)
+        (current_root / "plugins" / "ai-agent-commands").mkdir(parents=True)
+        (current_root / "skills" / "save").mkdir(parents=True)
+        (current_root / "config.yaml").write_text("candidate\n", encoding="utf-8")
+        marker = "was-running" if profile in prior_running else "was-stopped"
+        (state_root / marker).touch()
+        if profile in prior_running:
+            (state_root / "config.yaml").write_text("prior\n", encoding="utf-8")
+        else:
+            (state_root / "config-was-absent").touch()
+
+    existing_profiles = set(prior_running)
+    if failure_point == "mid_reload":
+        for profile in PROFILES[:2]:
+            (rollback_state / profile / "loaded-by-deployment").touch()
+    for profile in existing_profiles:
+        (tmux_state / f"hermes-{profile}").touch()
+
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "PATH": f"{_bash_path(fake_bin)}:{environment['PATH']}",
+            "FAKE_TMUX_STATE": _bash_path(tmux_state),
+            "FAKE_TMUX_LOG": _bash_path(tmux_log),
+            "FAKE_HERMES_LOG": _bash_path(hermes_log),
+            "HERMES_PROFILE_ROOT": _bash_path(profile_root),
+            "ROLLBACK_STATE_DIR": _bash_path(rollback_state),
+            "DEPLOY_RECORD_DIR": _bash_path(deploy_record),
+        }
+    )
+
+    prepared = subprocess.run(
+        [_bash(), str(ROLLBACK_SCRIPT), "prepare"],
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert prepared.returncode == 0, prepared.stdout + prepared.stderr
+    assert {path.name for path in tmux_state.iterdir()} == {
+        f"hermes-{profile}" for profile in PROFILES
+    }
+    tmux_actions = tmux_log.read_text(encoding="utf-8").splitlines()
+    assert tmux_actions[:7] == [f"kill hermes-{profile}" for profile in PROFILES]
+    assert not any(action.startswith("collision ") for action in tmux_actions)
+
+    for profile in PROFILES:
+        (deploy_record / f"{profile}.rollback-absence.txt").write_text(
+            "tool absent: save_discord_thread_to_obsidian\npicker absent: /save\n",
+            encoding="utf-8",
+        )
+
+    finalized = subprocess.run(
+        [_bash(), str(ROLLBACK_SCRIPT), "finalize"],
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert finalized.returncode == 0, finalized.stdout + finalized.stderr
+    assert {path.name for path in tmux_state.iterdir()} == {
+        f"hermes-{profile}" for profile in prior_running
+    }
+    for profile in PROFILES:
+        current_root = profile_root / profile
+        assert not (current_root / "plugins" / "ai-agent-commands").exists()
+        assert not (current_root / "skills" / "save").exists()
+        if profile in prior_running:
+            assert (current_root / "config.yaml").read_text(
+                encoding="utf-8"
+            ) == "prior\n"
+        else:
+            assert not (current_root / "config.yaml").exists()
 
 
 def test_secret_scan_preserves_staged_mode_and_adds_tree_and_range_modes():
@@ -166,12 +331,14 @@ def test_runbook_documents_verified_cutoff_and_precise_dm_limitation():
 
 def test_rollback_stops_resyncs_restores_and_verifies_absence():
     rollback = RUNBOOK.read_text(encoding="utf-8").split("## 롤백", 1)[1]
+    script = ROLLBACK_SCRIPT.read_text(encoding="utf-8")
 
-    assert "tmux kill-session -t hermes-aicompanyassistant" in rollback
+    assert "rollback_discord_save_profiles.sh prepare" in rollback
+    assert 'tmux kill-session -t "$session" 2>/dev/null || true' in script
     assert "rollback-state" in rollback
-    assert "plugins disable ai-agent-commands" in rollback
-    assert "skills uninstall save" in rollback
-    assert "gateway run" in rollback
+    assert "plugins disable ai-agent-commands" in script
+    assert "skills uninstall save" in script
+    assert "gateway run" in script
     assert "save_discord_thread_to_obsidian" in rollback
     assert "/save" in rollback
     assert "picker" in rollback
@@ -198,12 +365,13 @@ def test_runbook_reloads_all_profiles_after_assistant_first_smoke():
 def test_rollback_tracks_stops_restores_resyncs_and_verifies_all_profiles():
     runbook = RUNBOOK.read_text(encoding="utf-8")
     rollback = runbook[runbook.index("## ", runbook.index("smoke", 1)) :]
+    script = ROLLBACK_SCRIPT.read_text(encoding="utf-8")
 
     assert 'tmux has-session -t "$session"' in runbook
     assert ': > "$state_root/was-running"' in runbook
-    assert 'tmux kill-session -t "$session" 2>/dev/null || true' in rollback
-    assert 'if [ -f "$state_root/was-running" ]; then' in rollback
-    assert 'tmux new-session -d -s "$session"' in rollback
+    assert 'tmux kill-session -t "$session" 2>/dev/null || true' in script
+    assert 'if [ -f "$state_root/was-running" ]; then' in script
+    assert 'tmux new-session -d -s "$session"' in script
     assert "save_discord_thread_to_obsidian" in rollback
     assert "/save" in rollback
     assert "picker" in rollback

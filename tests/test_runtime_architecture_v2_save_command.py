@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import multiprocessing
+import queue
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -98,6 +104,100 @@ def _thread_context() -> HermesCommandContext:
         session_id="session-1",
         invocation_message_id="250",
     )
+
+
+class _ConcurrentMeetingStore:
+    def find_by_discord_thread_id(self, _source_id):
+        return None
+
+
+class _ConcurrentSummarizer:
+    def __init__(self, *, fail: bool) -> None:
+        self._fail = fail
+
+    async def summarize(self, _transcript):
+        if self._fail:
+            raise RuntimeError("expected summary failure")
+        return ConversationSummary(summary="Concurrent save.")
+
+
+class _ConcurrentObsidianStore:
+    def __init__(self, persist_started, persist_release) -> None:
+        self._persist_started = persist_started
+        self._persist_release = persist_release
+
+    def save(self, **_kwargs):
+        self._persist_started.set()
+        if not self._persist_release.wait(timeout=15):
+            raise TimeoutError("test persist release timeout")
+        return ObsidianSaveResult(
+            status="created",
+            classification="conversation",
+            new_message_count=1,
+            snapshot_path="raw/chat-logs/concurrent.md",
+            canonical_path="wiki/conversations/concurrent.md",
+            document_title="Concurrent",
+            one_line_summary="Concurrent save.",
+        )
+
+
+def _concurrent_save_worker(
+    *,
+    runtime_root,
+    cutoff,
+    fail_after_collection,
+    collected,
+    persist_started,
+    persist_release,
+    result_queue,
+):
+    runtime_root = Path(runtime_root)
+
+    def request(_method, path, _query):
+        if path == "/channels/200":
+            return {
+                "id": "200",
+                "type": 11,
+                "name": "Concurrent",
+                "parent_id": "100",
+                "guild_id": "1",
+            }
+        collected.set()
+        return [
+            {
+                "id": str(int(cutoff) - 25),
+                "timestamp": "2026-07-13T01:00:00+00:00",
+                "content": f"message for {cutoff}",
+                "author": {"id": "300", "username": "KBM"},
+            }
+        ]
+
+    result = asyncio.run(
+        run_save_command(
+            context=HermesCommandContext(
+                platform="discord",
+                chat_id="200",
+                thread_id="200",
+                session_id=f"session-{cutoff}",
+                invocation_message_id=str(cutoff),
+            ),
+            history_client=DiscordHistoryClient(
+                token="secret",
+                request_json=request,
+                checkpoint_root=(
+                    runtime_root / "runtime" / "discord_save" / "collection"
+                ),
+            ),
+            meeting_store=_ConcurrentMeetingStore(),
+            participant_resolver=ParticipantResolver({}),
+            summarizer=_ConcurrentSummarizer(fail=fail_after_collection),
+            obsidian_store=_ConcurrentObsidianStore(
+                persist_started,
+                persist_release,
+            ),
+        )
+    )
+    result_queue.put((str(cutoff), result.ok, result.error))
 
 
 @pytest.mark.asyncio
@@ -322,11 +422,14 @@ async def test_sync_history_lookup_and_save_run_through_to_thread(monkeypatch) -
         obsidian_store=obsidian,
     )
 
+    lifecycle_lock = history.collection_lifecycle_lock.return_value
     assert [call.args[0] for call in to_thread.await_args_list] == [
+        lifecycle_lock.acquire,
         history.fetch_conversation,
         meetings.find_by_discord_thread_id,
         obsidian.save,
         history.discard_collection_checkpoint,
+        lifecycle_lock.release,
     ]
 
 
@@ -830,3 +933,115 @@ async def test_explicit_private_dm_boundary_persists_through_real_store(tmp_path
     assert 'discord_source_kind: "dm"' in written
     assert 'discord_source_id: "900"' in written
     assert 'visibility: "private"' in written
+
+
+def test_same_source_threaded_lifecycle_preserves_failed_later_generation(tmp_path):
+    first_collected = threading.Event()
+    second_collected = threading.Event()
+    persist_started = threading.Event()
+    persist_release = threading.Event()
+    results = queue.Queue()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(
+            _concurrent_save_worker,
+            runtime_root=tmp_path,
+            cutoff="250",
+            fail_after_collection=False,
+            collected=first_collected,
+            persist_started=persist_started,
+            persist_release=persist_release,
+            result_queue=results,
+        )
+        assert persist_started.wait(timeout=10)
+        second = executor.submit(
+            _concurrent_save_worker,
+            runtime_root=tmp_path,
+            cutoff="300",
+            fail_after_collection=True,
+            collected=second_collected,
+            persist_started=threading.Event(),
+            persist_release=threading.Event(),
+            result_queue=results,
+        )
+
+        second_was_blocked = second_collected.wait(timeout=0.5) is False
+        persist_release.set()
+        first.result(timeout=15)
+        second.result(timeout=15)
+
+    assert second_was_blocked
+    assert sorted(results.get_nowait() for _ in range(2)) == [
+        ("250", True, ""),
+        ("300", False, "save_failed"),
+    ]
+    checkpoint_path = (
+        tmp_path / "runtime" / "discord_save" / "collection" / "200__start.json"
+    )
+    checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    assert checkpoint["cutoff_message_id"] == "300"
+
+
+def test_same_source_multiprocess_lifecycle_preserves_failed_later_generation(
+    tmp_path,
+):
+    context = multiprocessing.get_context("spawn")
+    first_collected = context.Event()
+    second_collected = context.Event()
+    persist_started = context.Event()
+    persist_release = context.Event()
+    unused_started = context.Event()
+    unused_release = context.Event()
+    results = context.Queue()
+    first = context.Process(
+        target=_concurrent_save_worker,
+        kwargs={
+            "runtime_root": str(tmp_path),
+            "cutoff": "250",
+            "fail_after_collection": False,
+            "collected": first_collected,
+            "persist_started": persist_started,
+            "persist_release": persist_release,
+            "result_queue": results,
+        },
+    )
+    second = context.Process(
+        target=_concurrent_save_worker,
+        kwargs={
+            "runtime_root": str(tmp_path),
+            "cutoff": "300",
+            "fail_after_collection": True,
+            "collected": second_collected,
+            "persist_started": unused_started,
+            "persist_release": unused_release,
+            "result_queue": results,
+        },
+    )
+
+    first.start()
+    assert persist_started.wait(timeout=15)
+    second.start()
+    try:
+        assert second_collected.wait(timeout=0.75) is False
+        persist_release.set()
+        first.join(timeout=20)
+        second.join(timeout=20)
+    finally:
+        persist_release.set()
+        for process in (first, second):
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+
+    assert first.exitcode == 0
+    assert second.exitcode == 0
+    observed = sorted(results.get(timeout=5) for _ in range(2))
+    assert observed == [
+        ("250", True, ""),
+        ("300", False, "save_failed"),
+    ]
+    checkpoint_path = (
+        tmp_path / "runtime" / "discord_save" / "collection" / "200__start.json"
+    )
+    checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    assert checkpoint["cutoff_message_id"] == "300"

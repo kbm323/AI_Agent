@@ -6,6 +6,7 @@ import json
 import os
 import re
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -22,6 +23,7 @@ from src.runtime_architecture_v2.discord_conversation import (
     DiscordSourceIdentity,
 )
 from src.runtime_architecture_v2.knowledge import sanitize_knowledge_text
+from src.runtime_architecture_v2.obsidian_conversations import _InterProcessFileLock
 
 RequestJson = Callable[[str, str, Mapping[str, str]], object]
 Sleep = Callable[[float], None]
@@ -35,7 +37,9 @@ _DM_CHANNEL_TYPES = {1, 3}
 _MAX_MESSAGES = 10_000
 _SNOWFLAKE_RE = re.compile(r"^[0-9]{1,24}$")
 _HTTP_STATUS_RE = re.compile(r"^discord_http_status_([0-9]{3})$")
-_CHECKPOINT_VERSION = 2
+_CHECKPOINT_VERSION = 3
+_LIFECYCLE_LOCKS_GUARD = threading.Lock()
+_LIFECYCLE_LOCKS: dict[str, threading.Lock] = {}
 
 
 class DiscordHistoryError(RuntimeError):
@@ -45,6 +49,39 @@ class DiscordHistoryError(RuntimeError):
         super().__init__(code)
         self.code = code
         self.retry_after = retry_after
+
+
+class DiscordCollectionLifecycleLock:
+    """Serialize one source/boundary through collection and durable cleanup."""
+
+    def __init__(
+        self,
+        local_lock: threading.Lock,
+        process_lock: _InterProcessFileLock | None,
+    ) -> None:
+        self._local_lock = local_lock
+        self._process_lock = process_lock
+        self._acquired = False
+
+    def acquire(self) -> None:
+        self._local_lock.acquire()
+        try:
+            if self._process_lock is not None:
+                self._process_lock.__enter__()
+        except BaseException:
+            self._local_lock.release()
+            raise
+        self._acquired = True
+
+    def release(self) -> None:
+        if not self._acquired:
+            return
+        try:
+            if self._process_lock is not None:
+                self._process_lock.__exit__(None, None, None)
+        finally:
+            self._acquired = False
+            self._local_lock.release()
 
 
 class DiscordHistoryClient:
@@ -91,6 +128,31 @@ class DiscordHistoryClient:
         if channel_type in _DM_CHANNEL_TYPES:
             return "dm"
         return "guild_channel"
+
+    def collection_lifecycle_lock(
+        self,
+        source_id: str,
+        *,
+        after_message_id: str | None = None,
+    ) -> DiscordCollectionLifecycleLock:
+        _validate_snowflake(source_id, "source_id")
+        if after_message_id is not None:
+            _validate_snowflake(after_message_id, "after_message_id")
+        boundary = after_message_id or "start"
+        if self._checkpoint_root is None:
+            key = f"memory:{id(self)}:{source_id}:{boundary}"
+            process_lock = None
+        else:
+            lock_path = (
+                self._checkpoint_root.parent
+                / ".locks"
+                / f"collection-{source_id}-{boundary}.lock"
+            )
+            key = os.path.normcase(os.path.normpath(str(lock_path.resolve())))
+            process_lock = _InterProcessFileLock(lock_path)
+        with _LIFECYCLE_LOCKS_GUARD:
+            local_lock = _LIFECYCLE_LOCKS.setdefault(key, threading.Lock())
+        return DiscordCollectionLifecycleLock(local_lock, process_lock)
 
     def fetch_conversation(
         self,
@@ -199,13 +261,19 @@ class DiscordHistoryClient:
             if not isinstance(page, list):
                 raise DiscordHistoryError("invalid_message_page")
             if not page:
-                if adopted_cutoff is not None and not adopted_complete:
-                    before = adopted_before
+                if adopted_cutoff is not None:
+                    complete = (
+                        adopted_complete or len(messages_by_id) == self._max_messages
+                    )
+                    if not complete:
+                        before = adopted_before
                     adopted_cutoff = None
                     adopted_before = ""
                     adopted_complete = False
-                    continue
-                complete = True
+                    if not complete:
+                        continue
+                else:
+                    complete = True
                 self._write_collection_checkpoint(
                     source_id,
                     cutoff_message_id,
@@ -213,6 +281,9 @@ class DiscordHistoryClient:
                     before=before,
                     complete=True,
                     messages=messages_by_id.values(),
+                    adopted_cutoff=None,
+                    adopted_before="",
+                    adopted_complete=False,
                 )
                 break
 
@@ -238,11 +309,24 @@ class DiscordHistoryClient:
             next_before = min(page_ids, key=int)
             if int(next_before) >= int(before):
                 raise DiscordHistoryError("invalid_pagination_cursor")
-            reached_adopted_interval = adopted_cutoff is not None and (
-                len(page) < 100
-                or any(int(message_id) < int(adopted_cutoff) for message_id in page_ids)
+            newer_count = (
+                sum(
+                    int(message_id) >= int(adopted_cutoff)
+                    for message_id in messages_by_id
+                )
+                if adopted_cutoff is not None
+                else 0
             )
-            if reached_adopted_interval:
+            reached_adopted_interval = adopted_cutoff is not None and (
+                len(page) < 100 or int(next_before) <= int(adopted_cutoff)
+            )
+            if adopted_cutoff is not None and newer_count >= self._max_messages:
+                complete = True
+                before = next_before
+                adopted_cutoff = None
+                adopted_before = ""
+                adopted_complete = False
+            elif reached_adopted_interval:
                 if adopted_complete or len(messages_by_id) == self._max_messages:
                     complete = True
                     before = next_before
@@ -254,9 +338,13 @@ class DiscordHistoryClient:
             else:
                 before = next_before
                 complete = (
-                    len(page) < 100
-                    or len(messages_by_id) == self._max_messages
-                    or crossed_after_boundary
+                    (
+                        len(page) < 100
+                        or len(messages_by_id) == self._max_messages
+                        or crossed_after_boundary
+                    )
+                    if adopted_cutoff is None
+                    else False
                 )
             self._write_collection_checkpoint(
                 source_id,
@@ -265,6 +353,9 @@ class DiscordHistoryClient:
                 before=before,
                 complete=complete,
                 messages=messages_by_id.values(),
+                adopted_cutoff=adopted_cutoff,
+                adopted_before=adopted_before,
+                adopted_complete=adopted_complete,
             )
 
         return tuple(
@@ -400,7 +491,7 @@ class DiscordHistoryClient:
             path = legacy_paths[0]
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(payload, dict) or set(payload) != {
+            base_keys = {
                 "version",
                 "source_id",
                 "cutoff_message_id",
@@ -408,10 +499,18 @@ class DiscordHistoryClient:
                 "before",
                 "complete",
                 "messages",
-            }:
+            }
+            adoption_keys = {
+                "adopted_cutoff_message_id",
+                "adopted_before",
+                "adopted_complete",
+            }
+            if not isinstance(payload, dict) or (
+                set(payload) != base_keys and set(payload) != base_keys | adoption_keys
+            ):
                 raise TypeError
             if (
-                payload["version"] not in {1, _CHECKPOINT_VERSION}
+                payload["version"] not in {1, 2, _CHECKPOINT_VERSION}
                 or payload["source_id"] != source_id
                 or payload["after_message_id"] != after_message_id
                 or not isinstance(payload["before"], str)
@@ -419,12 +518,50 @@ class DiscordHistoryClient:
                 or not isinstance(payload["messages"], list)
             ):
                 raise TypeError
+            if payload["version"] == _CHECKPOINT_VERSION:
+                if set(payload) != base_keys | adoption_keys:
+                    raise TypeError
+                persisted_adopted_cutoff = payload["adopted_cutoff_message_id"]
+                persisted_adopted_before = payload["adopted_before"]
+                persisted_adopted_complete = payload["adopted_complete"]
+                if persisted_adopted_cutoff is not None:
+                    if (
+                        not isinstance(persisted_adopted_before, str)
+                        or not isinstance(persisted_adopted_complete, bool)
+                        or payload["complete"]
+                    ):
+                        raise TypeError
+                    _validate_snowflake(
+                        persisted_adopted_cutoff,
+                        "checkpoint_adopted_cutoff_message_id",
+                    )
+                    _validate_snowflake(
+                        persisted_adopted_before,
+                        "checkpoint_adopted_before",
+                    )
+                elif persisted_adopted_before or persisted_adopted_complete:
+                    raise TypeError
+            else:
+                if set(payload) != base_keys:
+                    raise TypeError
+                persisted_adopted_cutoff = None
+                persisted_adopted_before = ""
+                persisted_adopted_complete = False
             _validate_snowflake(payload["before"], "checkpoint_before")
             _validate_snowflake(
                 payload["cutoff_message_id"], "checkpoint_cutoff_message_id"
             )
             stored_cutoff = str(payload["cutoff_message_id"])
             if int(stored_cutoff) > int(cutoff_message_id):
+                raise ValueError
+            if persisted_adopted_cutoff is not None and (
+                int(persisted_adopted_cutoff) >= int(stored_cutoff)
+                or int(persisted_adopted_before) >= int(persisted_adopted_cutoff)
+                or (
+                    after_message_id is not None
+                    and int(persisted_adopted_before) <= int(after_message_id)
+                )
+            ):
                 raise ValueError
             messages = tuple(self._to_message(item) for item in payload["messages"])
             if len(messages) > self._max_messages:
@@ -444,6 +581,13 @@ class DiscordHistoryClient:
             if path != target_path:
                 migrated_payload = dict(payload)
                 migrated_payload["version"] = _CHECKPOINT_VERSION
+                migrated_payload.update(
+                    {
+                        "adopted_cutoff_message_id": None,
+                        "adopted_before": "",
+                        "adopted_complete": False,
+                    }
+                )
                 _atomic_write_json(target_path, migrated_payload)
                 for legacy_path in legacy_paths:
                     legacy_path.unlink(missing_ok=True)
@@ -458,13 +602,19 @@ class DiscordHistoryClient:
                 ),
                 "messages": messages,
                 "adopted_cutoff": (
-                    None if stored_cutoff == cutoff_message_id else stored_cutoff
+                    persisted_adopted_cutoff
+                    if stored_cutoff == cutoff_message_id
+                    else stored_cutoff
                 ),
                 "adopted_before": (
-                    "" if stored_cutoff == cutoff_message_id else payload["before"]
+                    persisted_adopted_before
+                    if stored_cutoff == cutoff_message_id
+                    else payload["before"]
                 ),
                 "adopted_complete": (
-                    False if stored_cutoff == cutoff_message_id else payload["complete"]
+                    persisted_adopted_complete
+                    if stored_cutoff == cutoff_message_id
+                    else payload["complete"]
                 ),
             }
         except (
@@ -497,7 +647,7 @@ class DiscordHistoryClient:
                 if (
                     payload.get("source_id") != source_id
                     or payload.get("after_message_id") != after_message_id
-                    or payload.get("version") not in {1, _CHECKPOINT_VERSION}
+                    or payload.get("version") not in {1, 2, _CHECKPOINT_VERSION}
                 ):
                     continue
                 _validate_snowflake(stored_cutoff, "checkpoint_cutoff_message_id")
@@ -526,6 +676,9 @@ class DiscordHistoryClient:
         before: str,
         complete: bool,
         messages: Any,
+        adopted_cutoff: str | None,
+        adopted_before: str,
+        adopted_complete: bool,
     ) -> None:
         path = self._checkpoint_path(source_id, after_message_id)
         if path is None:
@@ -539,6 +692,9 @@ class DiscordHistoryClient:
             "before": before,
             "complete": complete,
             "messages": [_message_payload(message) for message in ordered],
+            "adopted_cutoff_message_id": adopted_cutoff,
+            "adopted_before": adopted_before,
+            "adopted_complete": adopted_complete,
         }
         _atomic_write_json(path, payload)
 

@@ -99,6 +99,44 @@ async def run_save_command(
             error="invocation_boundary_unavailable",
         )
 
+    lifecycle_lock = history_client.collection_lifecycle_lock(
+        source_id,
+        **(
+            {"after_message_id": context.session_start_message_id}
+            if source_kind == "dm"
+            else {}
+        ),
+    )
+    try:
+        await asyncio.to_thread(lifecycle_lock.acquire)
+    except (OSError, RuntimeError, TimeoutError):
+        return SaveCommandResult(ok=False, error="history_unavailable")
+    try:
+        return await _run_save_lifecycle(
+            context=context,
+            source_id=source_id,
+            source_kind=source_kind,
+            history_client=history_client,
+            meeting_store=meeting_store,
+            participant_resolver=participant_resolver,
+            summarizer=summarizer,
+            obsidian_store=obsidian_store,
+        )
+    finally:
+        await asyncio.to_thread(lifecycle_lock.release)
+
+
+async def _run_save_lifecycle(
+    *,
+    context: HermesCommandContext,
+    source_id: str,
+    source_kind: str,
+    history_client: DiscordHistoryClient,
+    meeting_store: MeetingRunStore,
+    participant_resolver: ParticipantResolver,
+    summarizer: HermesConversationSummarizer,
+    obsidian_store: ObsidianConversationStore,
+) -> SaveCommandResult:
     try:
         conversation = await asyncio.to_thread(
             history_client.fetch_conversation,
