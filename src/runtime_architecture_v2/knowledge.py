@@ -22,7 +22,7 @@ from .store import MeetingRunStore
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 _TOKEN_PATTERNS = (
     re.compile(
-        r"(?i)(api[_-]?key|secret|password|passwd|token)\s*[:=]\s*"
+        r"(?i)(api[_-]?key|secret|password|passwd|token)(\s*[:=]\s*)"
         r"[^\s\\`'\"]+"
     ),
     re.compile(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]{6,}"),
@@ -189,7 +189,7 @@ def write_meeting_knowledge(
     wikilink = f"[[meetings/{meeting_id}]]"
     created_at = _now_iso()
 
-    summary = _sanitize_knowledge_text(
+    summary = sanitize_knowledge_text(
         session.consensus_summary
         or str(meeting_run.trigger.get("text") or "No consensus summary recorded.")
     )
@@ -210,7 +210,7 @@ def write_meeting_knowledge(
         wiki_path=str(wiki_path.relative_to(root)),
         metadata={
             "participants": [
-                _sanitize_knowledge_text(participant)
+                sanitize_knowledge_text(participant)
                 for participant in session.participants
             ],
             "consensus_reached": session.consensus_reached,
@@ -342,11 +342,11 @@ def _build_raw_note(
     meeting_run: MeetingRun,
     session: MultiBotSession,
 ) -> str:
-    trigger_text = _sanitize_knowledge_text(str(meeting_run.trigger.get("text") or ""))
+    trigger_text = sanitize_knowledge_text(str(meeting_run.trigger.get("text") or ""))
     payload = json.dumps(
         session.to_dict(), ensure_ascii=False, indent=2, sort_keys=True
     )
-    payload = _sanitize_knowledge_text(payload)
+    payload = sanitize_knowledge_text(payload)
     return (
         entry.to_markdown()
         + "\n## Source Meeting\n\n"
@@ -362,10 +362,10 @@ def _build_raw_note(
 
 def _build_wiki_body(meeting_run: MeetingRun, session: MultiBotSession) -> str:
     participants = (
-        ", ".join(_sanitize_knowledge_text(p) for p in session.participants)
+        ", ".join(sanitize_knowledge_text(p) for p in session.participants)
         or "none"
     )
-    trigger_text = _sanitize_knowledge_text(str(meeting_run.trigger.get("text") or ""))
+    trigger_text = sanitize_knowledge_text(str(meeting_run.trigger.get("text") or ""))
     return (
         "\n## Meeting Facts\n\n"
         f"- Participants: {participants}\n"
@@ -418,9 +418,9 @@ def _ensure_agents_file(path: Path) -> None:
     _atomic_write_text(path, text)
 
 
-def _sanitize_knowledge_text(text: str) -> str:
-    safe = text
-    for pattern in _TOKEN_PATTERNS:
+def sanitize_knowledge_text(text: str) -> str:
+    safe = _TOKEN_PATTERNS[0].sub(r"\1\2[REDACTED_SECRET]", text)
+    for pattern in _TOKEN_PATTERNS[1:]:
         safe = pattern.sub("[REDACTED_SECRET]", safe)
     return _MENTION_RE.sub("@[redacted-mention]", safe)
 

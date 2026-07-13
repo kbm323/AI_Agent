@@ -9,6 +9,7 @@ from src.runtime_architecture_v2.knowledge import (
     KnowledgeEntry,
     retrieve_knowledge_context,
     run_phase15_knowledge_loop_pilot,
+    sanitize_knowledge_text,
     write_meeting_knowledge,
 )
 from src.runtime_architecture_v2.multi_bot import MultiBotSession
@@ -36,6 +37,12 @@ def _session() -> MultiBotSession:
             "Luna 데뷔는 팬 참여형 쇼츠와 세계관 티저를 결합한다. "
             "api_key=LEAK123456 @everyone Bearer SHOULD_NOT_LEAK"
         ),
+    )
+
+
+def test_public_sanitizer_redacts_secret_and_everyone():
+    assert sanitize_knowledge_text("token=abc123 @everyone") == (
+        "token=[REDACTED_SECRET] @[redacted-mention]"
     )
 
 
@@ -74,7 +81,9 @@ def test_write_meeting_knowledge_creates_raw_wiki_index_and_log(tmp_path: Path):
     assert result.log_path.exists()
     assert result.agents_path.exists()
     assert result.entry.source_meeting_run_id == "mr_phase15_test"
-    assert "knowledge/wiki/meetings" in result.meeting_run.metadata["knowledge_refs"][0]
+    assert "knowledge/wiki/meetings" in Path(
+        result.meeting_run.metadata["knowledge_refs"][0]
+    ).as_posix()
 
     raw = result.raw_path.read_text(encoding="utf-8")
     wiki = result.wiki_path.read_text(encoding="utf-8")
