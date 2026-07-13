@@ -48,3 +48,4 @@ Thumbs.db
 .hermes/
 .ouroboros/
 .ouroboros_monitor_state
+.worktrees/
