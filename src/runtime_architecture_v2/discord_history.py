@@ -23,6 +23,7 @@ _THREAD_VISIBILITY = {
     11: "public_thread",
     12: "private_thread",
 }
+_MAX_MESSAGES = 10_000
 
 
 class DiscordHistoryError(RuntimeError):
@@ -37,12 +38,14 @@ class DiscordHistoryClient:
         *,
         token: str,
         request_json: RequestJson | None = None,
-        max_messages: int = 10_000,
+        max_messages: int = _MAX_MESSAGES,
     ) -> None:
         if not token:
             raise DiscordHistoryError("missing_discord_token")
         if max_messages <= 0:
             raise DiscordHistoryError("invalid_max_messages")
+        if max_messages > _MAX_MESSAGES:
+            raise DiscordHistoryError("max_messages_exceeds_limit")
         self._token = token
         self._request_json = request_json or self._request
         self._max_messages = max_messages
@@ -172,6 +175,9 @@ class DiscordHistoryClient:
             with urllib.request.urlopen(request, timeout=20) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as error:
-            raise DiscordHistoryError(f"discord_http_status_{error.code}") from None
+            try:
+                error.close()
+            finally:
+                raise DiscordHistoryError(f"discord_http_status_{error.code}") from None
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             raise DiscordHistoryError("discord_transport_error") from None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import urllib.error
 from pathlib import Path
@@ -163,6 +164,11 @@ def test_fetch_conversation_stops_at_configured_message_cap():
     ]
 
 
+def test_client_rejects_message_caps_above_absolute_limit():
+    with pytest.raises(DiscordHistoryError, match="max_messages_exceeds_limit"):
+        DiscordHistoryClient(token="secret", max_messages=10_001)
+
+
 def test_transport_error_does_not_include_token(monkeypatch):
     client = DiscordHistoryClient(token="secret-token")
 
@@ -181,6 +187,7 @@ def test_transport_error_does_not_include_token(monkeypatch):
 
 def test_http_error_includes_only_sanitized_status(monkeypatch):
     client = DiscordHistoryClient(token="secret-token")
+    body = io.BytesIO(b"secret-token response body")
 
     def fail(request, *_args, **_kwargs):
         raise urllib.error.HTTPError(
@@ -188,7 +195,7 @@ def test_http_error_includes_only_sanitized_status(monkeypatch):
             403,
             "secret-token",
             {"Authorization": "secret-token"},
-            None,
+            body,
         )
 
     monkeypatch.setattr(
@@ -199,6 +206,7 @@ def test_http_error_includes_only_sanitized_status(monkeypatch):
         client.fetch_conversation("200")
 
     assert str(error.value) == "discord_http_status_403"
+    assert body.closed is True
 
 
 def test_participant_resolver_uses_discord_id_before_display_name(tmp_path):
