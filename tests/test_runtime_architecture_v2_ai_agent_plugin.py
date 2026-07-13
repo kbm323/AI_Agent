@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import builtins
 import importlib.util
 import inspect
@@ -14,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = PROJECT_ROOT / "hermes_plugins" / "ai-agent-commands"
 TOOL_NAME = "save_discord_thread_to_obsidian"
 SAVE_FAILED = "대화를 저장하지 못했습니다."
+SAVE_IN_PROGRESS = "대화를 저장하고 있습니다."
 
 
 class FakePluginContext:
@@ -68,6 +70,49 @@ def _message(result: str) -> str:
     return payload["message"]
 
 
+def _stub_successful_save(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    side_effect: object | None = None,
+) -> AsyncMock:
+    from src.runtime_architecture_v2 import (
+        discord_conversation,
+        hermes_command_context,
+        save_command,
+    )
+    from src.runtime_architecture_v2.hermes_command_context import HermesCommandContext
+
+    monkeypatch.setenv("AI_AGENT_ROOT", str(PROJECT_ROOT))
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(tmp_path / "vault"))
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "profile-token")
+    monkeypatch.setattr(
+        discord_conversation, "load_bot_identities", Mock(return_value={})
+    )
+    monkeypatch.setattr(
+        hermes_command_context,
+        "read_hermes_command_context",
+        Mock(
+            return_value=HermesCommandContext(
+                platform="discord",
+                thread_id="200",
+            )
+        ),
+    )
+    run_save = (
+        AsyncMock(return_value=object())
+        if side_effect is None
+        else AsyncMock(side_effect=side_effect)
+    )
+    monkeypatch.setattr(save_command, "run_save_command", run_save)
+    monkeypatch.setattr(
+        save_command,
+        "render_save_response",
+        Mock(return_value="rendered response"),
+    )
+    return run_save
+
+
 def test_manifest_declares_tool_without_secret_or_provider_dependencies() -> None:
     manifest = (PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8")
 
@@ -103,6 +148,185 @@ def test_plugin_registers_one_async_parameterless_tool_and_no_command() -> None:
         },
     }
     assert tool["description"] == "Save the current Discord thread to Obsidian."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("args", [None, [], "", {"unexpected": True}])
+async def test_save_tool_rejects_non_dict_or_non_empty_args_before_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    args: object,
+) -> None:
+    plugin = _load_plugin()
+    env_get = Mock(side_effect=AssertionError("configuration must not be read"))
+    monkeypatch.setattr(plugin.os.environ, "get", env_get)
+    ctx = FakePluginContext()
+    plugin.register(ctx)
+    handler = ctx.tools[TOOL_NAME]["handler"]
+    assert callable(handler)
+
+    response = await handler(
+        args,
+        session_id="session-strict-args",
+        task_id="turn-strict-args",
+    )
+
+    assert _message(response) == SAVE_FAILED
+    env_get.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "dispatch_context",
+    [
+        {},
+        {"session_id": "session", "task_id": ""},
+        {"session_id": " ", "task_id": "turn"},
+        {"session_id": "session", "task_id": None},
+    ],
+)
+async def test_save_tool_requires_nonblank_session_and_task_identity_before_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    dispatch_context: dict[str, object],
+) -> None:
+    plugin = _load_plugin()
+    env_get = Mock(side_effect=AssertionError("configuration must not be read"))
+    monkeypatch.setattr(plugin.os.environ, "get", env_get)
+    ctx = FakePluginContext()
+    plugin.register(ctx)
+    handler = ctx.tools[TOOL_NAME]["handler"]
+    assert callable(handler)
+
+    response = await handler({}, **dispatch_context)
+
+    assert _message(response) == SAVE_FAILED
+    env_get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_save_tool_sequential_duplicate_returns_cached_result_without_resaving(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _, tool = _registered_tool()
+    run_save = _stub_successful_save(monkeypatch, tmp_path)
+    handler = tool["handler"]
+    assert callable(handler)
+    dispatch_context = {"session_id": "session-1", "task_id": "turn-1"}
+
+    first = await handler({}, **dispatch_context)
+    duplicate = await handler({}, **dispatch_context)
+
+    assert duplicate == first
+    assert _message(first) == "rendered response"
+    run_save.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_save_tool_concurrent_duplicate_runs_save_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    save_calls = 0
+
+    async def delayed_save(**_kwargs: object) -> object:
+        nonlocal save_calls
+        save_calls += 1
+        if save_calls == 1:
+            started.set()
+            await release.wait()
+        return object()
+
+    _, tool = _registered_tool()
+    run_save = _stub_successful_save(
+        monkeypatch,
+        tmp_path,
+        side_effect=delayed_save,
+    )
+    handler = tool["handler"]
+    assert callable(handler)
+    dispatch_context = {"session_id": "session-2", "task_id": "turn-2"}
+
+    owner = asyncio.create_task(handler({}, **dispatch_context))
+    await started.wait()
+    concurrent = await handler({}, **dispatch_context)
+    release.set()
+    first = await owner
+    cached = await handler({}, **dispatch_context)
+
+    assert _message(concurrent) == SAVE_IN_PROGRESS
+    assert cached == first
+    run_save.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_save_tool_allows_future_turn_with_different_task_id(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _, tool = _registered_tool()
+    run_save = _stub_successful_save(monkeypatch, tmp_path)
+    handler = tool["handler"]
+    assert callable(handler)
+
+    await handler({}, session_id="session-3", task_id="turn-3a")
+    await handler({}, session_id="session-3", task_id="turn-3b")
+
+    assert run_save.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_bounded_registry_evicts_completed_entry_without_breaking_active_one(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    save_calls = 0
+
+    async def first_save_waits(**_kwargs: object) -> object:
+        nonlocal save_calls
+        save_calls += 1
+        if save_calls == 1:
+            started.set()
+            await release.wait()
+        return object()
+
+    plugin = _load_plugin()
+    monkeypatch.setattr(plugin, "_MAX_INVOCATIONS", 2)
+    ctx = FakePluginContext()
+    plugin.register(ctx)
+    run_save = _stub_successful_save(
+        monkeypatch,
+        tmp_path,
+        side_effect=first_save_waits,
+    )
+    handler = ctx.tools[TOOL_NAME]["handler"]
+    assert callable(handler)
+
+    active = asyncio.create_task(
+        handler({}, session_id="session-4", task_id="turn-active")
+    )
+    await started.wait()
+    await handler({}, session_id="session-4", task_id="turn-completed")
+    await handler({}, session_id="session-4", task_id="turn-evicts-completed")
+    active_duplicate = await handler({}, session_id="session-4", task_id="turn-active")
+
+    assert _message(active_duplicate) == SAVE_IN_PROGRESS
+    assert len(plugin._invocations) == 2
+    assert (
+        ctx.profile_name,
+        "session-4",
+        "turn-active",
+    ) in plugin._invocations
+
+    release.set()
+    first = await active
+    cached = await handler({}, session_id="session-4", task_id="turn-active")
+
+    assert cached == first
+    assert run_save.await_count == 3
 
 
 @pytest.mark.asyncio
@@ -168,7 +392,11 @@ async def test_save_tool_reads_late_bound_context_and_constructs_reviewed_depend
 
     handler = tool["handler"]
     assert callable(handler)
-    response = await handler({}, task_id="late-bound-session")
+    response = await handler(
+        {},
+        session_id="late-bound-session",
+        task_id="late-bound-turn",
+    )
 
     assert _message(response) == "rendered response"
     read_context.assert_called_once_with()
@@ -222,7 +450,11 @@ async def test_save_tool_fails_closed_when_required_profile_env_is_missing(
 
     handler = tool["handler"]
     assert callable(handler)
-    response = await handler({})
+    response = await handler(
+        {},
+        session_id="configuration-session",
+        task_id=f"configuration-{missing_name}",
+    )
 
     assert _message(response) == expected_message
     assert ctx.commands == {}
@@ -241,7 +473,11 @@ async def test_save_tool_sanitizes_missing_ai_agent_root(
 
     handler = tool["handler"]
     assert callable(handler)
-    response = await handler({})
+    response = await handler(
+        {},
+        session_id="missing-root-session",
+        task_id="missing-root-turn",
+    )
 
     assert _message(response) == SAVE_FAILED
     assert str(missing_root) not in response
@@ -272,7 +508,11 @@ async def test_save_tool_sanitizes_runtime_import_failure(
     monkeypatch.setattr(builtins, "__import__", reject_runtime_import)
     handler = tool["handler"]
     assert callable(handler)
-    response = await handler({})
+    response = await handler(
+        {},
+        session_id="import-session",
+        task_id="import-turn",
+    )
 
     assert _message(response) == SAVE_FAILED
     assert "private deployment detail" not in response
@@ -313,7 +553,11 @@ async def test_save_tool_sanitizes_malformed_identity_map(
 
     handler = tool["handler"]
     assert callable(handler)
-    response = await handler({})
+    response = await handler(
+        {},
+        session_id="identity-session",
+        task_id="identity-turn",
+    )
 
     assert _message(response) == SAVE_FAILED
     assert expected_exception_text not in response

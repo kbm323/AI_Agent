@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
+from collections import OrderedDict
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -26,14 +28,67 @@ _TOOL_SCHEMA = {
 _MISSING_TOKEN_RESPONSE = "Discord 봇 토큰이 설정되지 않았습니다."
 _VAULT_UNAVAILABLE_RESPONSE = "Obsidian 보관함을 사용할 수 없습니다."
 _SAVE_FAILED_RESPONSE = "대화를 저장하지 못했습니다."
+_SAVE_IN_PROGRESS_RESPONSE = "대화를 저장하고 있습니다."
+_MAX_INVOCATIONS = 1024
+_InvocationKey = tuple[str, str, str]
+_invocations: OrderedDict[_InvocationKey, str | None] = OrderedDict()
+_invocations_lock = threading.Lock()
 
 
 def _tool_result(message: str) -> str:
     return json.dumps({"message": message}, ensure_ascii=False)
 
 
+def _invocation_key(
+    ctx: Any, dispatch_context: dict[str, Any]
+) -> _InvocationKey | None:
+    profile = getattr(ctx, "profile_name", None)
+    session_id = dispatch_context.get("session_id")
+    task_id = dispatch_context.get("task_id")
+    if not all(
+        isinstance(value, str) and value.strip()
+        for value in (profile, session_id, task_id)
+    ):
+        return None
+    return profile.strip(), session_id.strip(), task_id.strip()
+
+
+def _reserve_invocation(key: _InvocationKey) -> tuple[bool, str]:
+    with _invocations_lock:
+        if key in _invocations:
+            result = _invocations[key]
+            if result is None:
+                return False, _tool_result(_SAVE_IN_PROGRESS_RESPONSE)
+            _invocations.move_to_end(key)
+            return False, result
+
+        while len(_invocations) >= _MAX_INVOCATIONS:
+            completed_key = next(
+                (
+                    invocation_key
+                    for invocation_key, result in _invocations.items()
+                    if result is not None
+                ),
+                None,
+            )
+            if completed_key is None:
+                return False, _tool_result(_SAVE_FAILED_RESPONSE)
+            del _invocations[completed_key]
+
+        _invocations[key] = None
+        return True, ""
+
+
+def _complete_invocation(key: _InvocationKey, result: str) -> None:
+    with _invocations_lock:
+        if key not in _invocations:
+            return
+        _invocations[key] = result
+        _invocations.move_to_end(key)
+
+
 def register(ctx: Any) -> None:
-    async def handle_save(_args: dict[str, Any], **_kwargs: Any) -> str:
+    async def execute_save() -> str:
         token = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
         if not token:
             return _tool_result(_MISSING_TOKEN_RESPONSE)
@@ -104,6 +159,25 @@ def register(ctx: Any) -> None:
             return _tool_result(render_save_response(result))
         except Exception:
             return _tool_result(_SAVE_FAILED_RESPONSE)
+
+    async def handle_save(args: object, **dispatch_context: Any) -> str:
+        if not isinstance(args, dict) or args:
+            return _tool_result(_SAVE_FAILED_RESPONSE)
+
+        key = _invocation_key(ctx, dispatch_context)
+        if key is None:
+            return _tool_result(_SAVE_FAILED_RESPONSE)
+
+        should_execute, existing_result = _reserve_invocation(key)
+        if not should_execute:
+            return existing_result
+
+        result = _tool_result(_SAVE_FAILED_RESPONSE)
+        try:
+            result = await execute_save()
+        finally:
+            _complete_invocation(key, result)
+        return result
 
     ctx.register_tool(
         name=_TOOL_NAME,
