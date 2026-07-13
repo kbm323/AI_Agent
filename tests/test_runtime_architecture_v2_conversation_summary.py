@@ -98,6 +98,32 @@ async def test_hermes_summarizer_uses_bounded_host_owned_structured_call():
 
 
 @pytest.mark.asyncio
+async def test_hermes_summarizer_removes_url_userinfo_from_exact_llm_input():
+    llm = FakeLlm(parsed=_parsed_summary())
+    transcript = (
+        "Message: https://alice:p%40ss@example.test/private\n"
+        "Attachment: https://bob%3Aencoded%40cdn.example.test/file.pdf"
+    )
+
+    await HermesConversationSummarizer(llm).summarize(transcript)
+
+    exact_input = llm.calls[0]["input"]
+    assert exact_input == [
+        {
+            "type": "text",
+            "text": (
+                "Message: https://example.test/private\n"
+                "Attachment: https://cdn.example.test/file.pdf"
+            ),
+        }
+    ]
+    assert "alice" not in str(exact_input)
+    assert "p%40ss" not in str(exact_input)
+    assert "bob" not in str(exact_input)
+    assert "encoded" not in str(exact_input)
+
+
+@pytest.mark.asyncio
 async def test_hermes_summarizer_sanitizes_every_returned_string():
     llm = FakeLlm(
         parsed={

@@ -408,6 +408,47 @@ def test_urls_and_attachment_metadata_are_stored_without_attachment_content(tmp_
     assert "url: https://cdn.example.test/brief.pdf" in snapshot
 
 
+def test_url_userinfo_never_reaches_raw_or_canonical_markdown(tmp_path):
+    message = replace(
+        _conversation().messages[-1],
+        content="See https://alice:p%40ss@example.test/spec",
+        attachments=(
+            DiscordAttachment(
+                attachment_id="500",
+                filename="brief.pdf",
+                content_type="application/pdf",
+                size=42,
+                url="https://bob%3Aencoded%40cdn.example.test/brief.pdf",
+            ),
+        ),
+    )
+    conversation = replace(
+        _conversation(), messages=(_conversation().messages[0], message)
+    )
+
+    result = ObsidianConversationStore(
+        vault_root=tmp_path / "vault", runtime_root=tmp_path
+    ).save(
+        conversation=conversation,
+        participant_resolver=ParticipantResolver({}),
+        summary=replace(
+            _summary(), summary="See https://summary:secret@example.test/result"
+        ),
+    )
+
+    raw = (tmp_path / "vault" / result.snapshot_path).read_text(encoding="utf-8")
+    canonical = (tmp_path / "vault" / result.canonical_path).read_text(encoding="utf-8")
+    combined = raw + canonical
+    assert "alice" not in combined
+    assert "p%40ss" not in combined
+    assert "bob" not in combined
+    assert "encoded" not in combined
+    assert "summary:secret" not in combined
+    assert "https://example.test/spec" in combined
+    assert "https://cdn.example.test/brief.pdf" in combined
+    assert "https://example.test/result" in combined
+
+
 def test_meeting_evidence_contains_only_available_fields_and_paths(tmp_path):
     artifact = (
         tmp_path

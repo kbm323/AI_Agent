@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote
 
 from .conversation_summary import ConversationSummary
 from .discord_conversation import (
@@ -27,7 +27,7 @@ from .discord_conversation import (
     ParticipantIdentity,
     ParticipantResolver,
 )
-from .knowledge import sanitize_knowledge_text
+from .knowledge import sanitize_knowledge_text, sanitize_url
 from .schemas import MeetingRun
 
 _SNOWFLAKE_RE = re.compile(r"^[0-9]{1,24}$")
@@ -38,16 +38,6 @@ _MEETING_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 _EVIDENCE_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
 _LOG_MARKER_RE = re.compile(r"<!-- oracle-log:([0-9]{1,24}):([0-9]{1,24}) -->\s*$")
 _INDEX_MARKER_RE = re.compile(r"<!-- oracle-index:([0-9]{1,24}) -->\s*$")
-_SECRET_URL_KEYS = {
-    "access_token",
-    "auth",
-    "hm",
-    "key",
-    "sig",
-    "signature",
-    "token",
-    "x_amz_signature",
-}
 _LOCKS_GUARD = threading.Lock()
 _THREAD_LOCKS: dict[tuple[str, str], threading.RLock] = {}
 _VAULT_LOCKS: dict[str, threading.RLock] = {}
@@ -62,6 +52,7 @@ class ObsidianSaveResult:
     new_message_count: int
     snapshot_path: str
     canonical_path: str
+    document_title: str
     one_line_summary: str
 
 
@@ -180,6 +171,7 @@ class ObsidianConversationStore:
                     new_message_count=0,
                     snapshot_path=snapshot_paths[-1],
                     canonical_path=canonical_relative,
+                    document_title=_safe(conversation.thread_name),
                     one_line_summary=one_line_summary,
                 )
             snapshot_paths = self._merge_snapshot_paths(
@@ -215,6 +207,7 @@ class ObsidianConversationStore:
                     new_message_count=0,
                     snapshot_path=snapshot_paths[-1],
                     canonical_path=canonical_relative,
+                    document_title=_safe(conversation.thread_name),
                     one_line_summary=one_line_summary,
                 )
             status = "updated"
@@ -298,6 +291,7 @@ class ObsidianConversationStore:
             new_message_count=new_message_count,
             snapshot_path=snapshot_relative,
             canonical_path=canonical_relative,
+            document_title=_safe(conversation.thread_name),
             one_line_summary=one_line_summary,
         )
 
@@ -1247,19 +1241,7 @@ def _safe(value: object) -> str:
 
 
 def _sanitize_text(text: str) -> str:
-    urls: list[str] = []
-
-    def protect_url(match: re.Match[str]) -> str:
-        url, trailing = _split_url_trailing(match.group(0))
-        token = f"ORACLEURLPLACEHOLDER{len(urls)}END"
-        urls.append(_redact_url(url) + trailing)
-        return token
-
-    protected = _URL_RE.sub(protect_url, text)
-    sanitized = sanitize_knowledge_text(protected)
-    for index, url in enumerate(urls):
-        sanitized = sanitized.replace(f"ORACLEURLPLACEHOLDER{index}END", url)
-    return sanitized
+    return sanitize_knowledge_text(text)
 
 
 def _split_url_trailing(value: str) -> tuple[str, str]:
@@ -1268,51 +1250,7 @@ def _split_url_trailing(value: str) -> tuple[str, str]:
 
 
 def _redact_url(value: str) -> str:
-    try:
-        parsed = urlsplit(value)
-    except ValueError:
-        return sanitize_knowledge_text(value)
-    query = _redact_url_parameters(parsed.query)
-    fragment = (
-        _redact_url_parameters(parsed.fragment)
-        if "=" in parsed.fragment
-        else sanitize_knowledge_text(parsed.fragment)
-    )
-    return urlunsplit(
-        (
-            sanitize_knowledge_text(parsed.scheme),
-            sanitize_knowledge_text(parsed.netloc),
-            sanitize_knowledge_text(parsed.path),
-            query,
-            fragment,
-        )
-    )
-
-
-def _redact_url_parameters(value: str) -> str:
-    pairs = parse_qsl(value, keep_blank_values=True)
-    sanitized_pairs = []
-    for key, parameter_value in pairs:
-        safe_key = sanitize_knowledge_text(key)
-        safe_value = (
-            "[REDACTED_SECRET]"
-            if _is_secret_url_key(key)
-            else sanitize_knowledge_text(parameter_value)
-        )
-        sanitized_pairs.append((safe_key, safe_value))
-    return urlencode(sanitized_pairs, doseq=True, safe="[]/:+")
-
-
-def _is_secret_url_key(key: str) -> bool:
-    normalized = re.sub(r"[^a-z0-9]+", "_", key.casefold()).strip("_")
-    return (
-        normalized in _SECRET_URL_KEYS
-        or normalized.endswith(("_auth", "_key", "_sig", "_signature", "_token"))
-        or any(
-            marker in normalized
-            for marker in ("password", "passwd", "pwd", "secret", "credential")
-        )
-    )
+    return sanitize_url(value)
 
 
 def _md_inline(value: object) -> str:

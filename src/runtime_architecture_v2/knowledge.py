@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 from .multi_bot import MultiBotSession, run_phase14_multi_bot_pilot
 from .schemas import MeetingRun
@@ -29,6 +30,21 @@ _TOKEN_PATTERNS = (
 )
 _MENTION_RE = re.compile(r"@(everyone|here)\b", re.IGNORECASE)
 _WORD_RE = re.compile(r"[A-Za-z0-9가-힣_:-]+")
+_URL_RE = re.compile(
+    r'\b[a-z][a-z0-9+.-]*://[^\s<>"`]+',
+    re.IGNORECASE,
+)
+_ENCODED_TOKEN_RE = re.compile(r"\S*%[0-9a-f]{2}\S*", re.IGNORECASE)
+_SECRET_URL_KEYS = {
+    "access_token",
+    "auth",
+    "hm",
+    "key",
+    "sig",
+    "signature",
+    "token",
+    "x_amz_signature",
+}
 
 
 @dataclass(frozen=True)
@@ -362,8 +378,7 @@ def _build_raw_note(
 
 def _build_wiki_body(meeting_run: MeetingRun, session: MultiBotSession) -> str:
     participants = (
-        ", ".join(sanitize_knowledge_text(p) for p in session.participants)
-        or "none"
+        ", ".join(sanitize_knowledge_text(p) for p in session.participants) or "none"
     )
     trigger_text = sanitize_knowledge_text(str(meeting_run.trigger.get("text") or ""))
     return (
@@ -419,10 +434,129 @@ def _ensure_agents_file(path: Path) -> None:
 
 
 def sanitize_knowledge_text(text: str) -> str:
+    """Redact credentials, including URL userinfo and encoded nested URLs."""
+
+    urls: list[str] = []
+
+    def protect_url(match: re.Match[str]) -> str:
+        url, trailing = _split_url_trailing(match.group(0))
+        placeholder = f"ORACLEURLPLACEHOLDER{len(urls)}END"
+        urls.append(sanitize_url(url) + trailing)
+        return placeholder
+
+    protected = _URL_RE.sub(protect_url, text)
+
+    def protect_encoded_url(match: re.Match[str]) -> str:
+        decoded = _decode_percent_encoding(match.group(0))
+        if not _URL_RE.search(decoded):
+            return match.group(0)
+        placeholder = f"ORACLEURLPLACEHOLDER{len(urls)}END"
+        urls.append(sanitize_knowledge_text(decoded))
+        return placeholder
+
+    protected = _ENCODED_TOKEN_RE.sub(protect_encoded_url, protected)
+    safe = _sanitize_non_url_text(protected)
+    for index, url in enumerate(urls):
+        safe = safe.replace(f"ORACLEURLPLACEHOLDER{index}END", url)
+    return safe
+
+
+def sanitize_url(value: str) -> str:
+    """Remove URL userinfo and redact credential-like parameters."""
+
+    without_userinfo = _remove_url_userinfo(value)
+    try:
+        parsed = urlsplit(without_userinfo)
+    except ValueError:
+        return _sanitize_non_url_text(without_userinfo)
+    query = _sanitize_url_parameters(parsed.query)
+    fragment = (
+        _sanitize_url_parameters(parsed.fragment)
+        if "=" in parsed.fragment
+        else _sanitize_encoded_url_component(parsed.fragment)
+    )
+    return urlunsplit(
+        (
+            _sanitize_non_url_text(parsed.scheme),
+            _sanitize_non_url_text(parsed.netloc),
+            _sanitize_encoded_url_component(parsed.path),
+            query,
+            fragment,
+        )
+    )
+
+
+def _sanitize_non_url_text(text: str) -> str:
     safe = text
     for pattern in _TOKEN_PATTERNS:
         safe = pattern.sub("[REDACTED_SECRET]", safe)
     return _MENTION_RE.sub("@[redacted-mention]", safe)
+
+
+def _remove_url_userinfo(value: str) -> str:
+    scheme_end = value.find("://")
+    if scheme_end < 0:
+        return value
+    authority_start = scheme_end + 3
+    boundary_positions = [
+        position
+        for delimiter in "/?#"
+        if (position := value.find(delimiter, authority_start)) >= 0
+    ]
+    authority_end = min(boundary_positions, default=len(value))
+    authority = value[authority_start:authority_end]
+    decoded_authority = _decode_percent_encoding(authority)
+    if "@" not in decoded_authority:
+        return value
+    host = decoded_authority.rsplit("@", 1)[1]
+    return f"{value[:authority_start]}{host}{value[authority_end:]}"
+
+
+def _split_url_trailing(value: str) -> tuple[str, str]:
+    url = value.rstrip(".,;:!?)")
+    return url, value[len(url) :]
+
+
+def _sanitize_url_parameters(value: str) -> str:
+    sanitized_pairs = []
+    for key, parameter_value in parse_qsl(value, keep_blank_values=True):
+        safe_key = _sanitize_non_url_text(key)
+        safe_value = (
+            "[REDACTED_SECRET]"
+            if _is_secret_url_key(key)
+            else _sanitize_encoded_url_component(parameter_value)
+        )
+        sanitized_pairs.append((safe_key, safe_value))
+    return urlencode(sanitized_pairs, doseq=True, safe="[]/:+")
+
+
+def _sanitize_encoded_url_component(value: str) -> str:
+    decoded = _decode_percent_encoding(value)
+    if _URL_RE.search(decoded):
+        return sanitize_knowledge_text(decoded)
+    return _sanitize_non_url_text(value)
+
+
+def _decode_percent_encoding(value: str) -> str:
+    decoded = value
+    for _index in range(len(value) + 1):
+        next_decoded = unquote(decoded)
+        if next_decoded == decoded:
+            return decoded
+        decoded = next_decoded
+    return decoded
+
+
+def _is_secret_url_key(key: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "_", key.casefold()).strip("_")
+    return (
+        normalized in _SECRET_URL_KEYS
+        or normalized.endswith(("_auth", "_key", "_sig", "_signature", "_token"))
+        or any(
+            marker in normalized
+            for marker in ("password", "passwd", "pwd", "secret", "credential")
+        )
+    )
 
 
 def _query_terms(query: str) -> tuple[str, ...]:

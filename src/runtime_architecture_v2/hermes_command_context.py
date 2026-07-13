@@ -15,6 +15,10 @@ class HermesCommandContext:
     user_id: str = ""
     user_name: str = ""
     session_id: str = ""
+    invocation_message_id: str = ""
+    invocation_boundary_kind: str = ""
+    session_start_message_id: str = ""
+    source_kind: str = ""
     profile: str = ""
 
     @property
@@ -37,5 +41,6 @@ def read_hermes_command_context(
         user_id=get_env("HERMES_SESSION_USER_ID", ""),
         user_name=get_env("HERMES_SESSION_USER_NAME", ""),
         session_id=get_env("HERMES_SESSION_ID", ""),
+        invocation_message_id=get_env("HERMES_SESSION_MESSAGE_ID", ""),
         profile=get_env("HERMES_SESSION_PROFILE", ""),
     )

@@ -22,6 +22,19 @@ from src.runtime_architecture_v2.discord_history import (
     DiscordHistoryError,
 )
 
+_CUTOFF = "999"
+
+
+def _fetch(
+    client: DiscordHistoryClient,
+    source_id: str = "200",
+    cutoff_message_id: str = _CUTOFF,
+) -> DiscordConversation:
+    return client.fetch_conversation(
+        source_id,
+        cutoff_message_id=cutoff_message_id,
+    )
+
 
 def _message(message_id: str, *, attachments=None):
     return {
@@ -50,15 +63,13 @@ def test_fetch_conversation_paginates_deduplicates_and_sorts_oldest_first():
         calls.append((method, path, query))
         if path == "/channels/200":
             return _thread()
-        if "before" not in query:
+        if query.get("before") == _CUTOFF:
             return [_message(str(i)) for i in range(200, 100, -1)]
         if query["before"] == "101":
             return [_message(str(i)) for i in range(100, 0, -1)]
         return []
 
-    result = DiscordHistoryClient(
-        token="secret", request_json=request
-    ).fetch_conversation("200")
+    result = _fetch(DiscordHistoryClient(token="secret", request_json=request))
 
     assert len(result.messages) == 200
     assert result.messages[0].message_id == "1"
@@ -70,12 +81,138 @@ def test_fetch_conversation_paginates_deduplicates_and_sorts_oldest_first():
 def test_fetch_conversation_accepts_each_guild_thread_type(thread_type):
     client = DiscordHistoryClient(
         token="secret",
-        request_json=lambda _method, path, _query: _thread(thread_type)
-        if path == "/channels/200"
-        else [],
+        request_json=lambda _method, path, _query: (
+            _thread(thread_type) if path == "/channels/200" else []
+        ),
     )
 
-    assert client.fetch_conversation("200").thread_id == "200"
+    assert _fetch(client).thread_id == "200"
+
+
+@pytest.mark.parametrize(
+    ("channel_type", "expected"),
+    [
+        (1, "dm"),
+        (0, "guild_channel"),
+        (10, "thread"),
+        (11, "thread"),
+        (12, "thread"),
+    ],
+)
+def test_classify_source_uses_discord_channel_type(channel_type, expected):
+    client = DiscordHistoryClient(
+        token="secret",
+        request_json=lambda _method, _path, _query: {
+            "id": "200",
+            "type": channel_type,
+        },
+    )
+
+    assert client.classify_source("200") == expected
+
+
+def test_fetch_private_dm_honors_session_start_and_invocation_boundaries():
+    calls = []
+
+    def request(_method, path, query):
+        calls.append((path, query))
+        if path == "/channels/900":
+            return {"id": "900", "type": 1, "name": ""}
+        return [_message("951"), _message("900"), _message("800")]
+
+    result = DiscordHistoryClient(
+        token="secret", request_json=request
+    ).fetch_conversation(
+        "900",
+        cutoff_message_id="950",
+        after_message_id="800",
+        expected_kind="dm",
+    )
+
+    assert result.visibility == "private"
+    assert result.channel_kind == "dm"
+    assert [message.message_id for message in result.messages] == ["900"]
+    assert calls[1] == (
+        "/channels/900/messages",
+        {"limit": "100", "before": "950"},
+    )
+
+
+def test_dm_stops_and_resumes_when_page_crosses_session_boundary(tmp_path):
+    checkpoint_root = tmp_path / "collection"
+    message_calls = 0
+
+    def request(_method, path, query):
+        nonlocal message_calls
+        if path == "/channels/900":
+            return {"id": "900", "type": 1, "name": ""}
+        message_calls += 1
+        if query["before"] == "950":
+            return [_message(str(i)) for i in range(949, 849, -1)]
+        if query["before"] == "850":
+            return [_message(str(i)) for i in range(849, 749, -1)]
+        raise AssertionError("history older than the DM session was requested")
+
+    first = DiscordHistoryClient(
+        token="secret",
+        request_json=request,
+        checkpoint_root=checkpoint_root,
+    ).fetch_conversation(
+        "900",
+        cutoff_message_id="950",
+        after_message_id="800",
+        expected_kind="dm",
+    )
+
+    assert message_calls == 2
+    assert first.messages[0].message_id == "801"
+    assert first.messages[-1].message_id == "949"
+
+    resumed_message_calls = 0
+
+    def resumed_request(_method, path, _query):
+        nonlocal resumed_message_calls
+        if path == "/channels/900":
+            return {"id": "900", "type": 1, "name": ""}
+        resumed_message_calls += 1
+        return []
+
+    resumed = DiscordHistoryClient(
+        token="secret",
+        request_json=resumed_request,
+        checkpoint_root=checkpoint_root,
+    ).fetch_conversation(
+        "900",
+        cutoff_message_id="950",
+        after_message_id="800",
+        expected_kind="dm",
+    )
+
+    assert resumed == first
+    assert resumed_message_calls == 0
+
+
+def test_retry_budget_is_bounded_on_late_page_failure():
+    attempts = 0
+
+    def request(_method, path, _query):
+        nonlocal attempts
+        if path == "/channels/200":
+            return _thread()
+        attempts += 1
+        raise DiscordHistoryError("discord_http_status_503")
+
+    with pytest.raises(DiscordHistoryError, match="discord_http_status_503"):
+        _fetch(
+            DiscordHistoryClient(
+                token="secret",
+                request_json=request,
+                sleep=lambda _delay: None,
+                max_retries=2,
+            )
+        )
+
+    assert attempts == 3
 
 
 def test_fetch_conversation_rejects_non_thread_guild_channel():
@@ -85,35 +222,37 @@ def test_fetch_conversation_rejects_non_thread_guild_channel():
     )
 
     with pytest.raises(DiscordHistoryError, match="thread_required"):
-        client.fetch_conversation("100")
+        _fetch(client, "100")
 
 
 def test_fetch_conversation_rejects_malformed_message_page():
     client = DiscordHistoryClient(
         token="secret",
-        request_json=lambda _method, path, _query: _thread()
-        if path == "/channels/200"
-        else {"message": "not a list"},
+        request_json=lambda _method, path, _query: (
+            _thread() if path == "/channels/200" else {"message": "not a list"}
+        ),
     )
 
     with pytest.raises(DiscordHistoryError, match="invalid_message_page"):
-        client.fetch_conversation("200")
+        _fetch(client)
 
 
 def test_fetch_conversation_preserves_empty_thread_metadata():
-    result = DiscordHistoryClient(
-        token="secret",
-        request_json=lambda _method, path, _query: _thread(12)
-        if path == "/channels/200"
-        else [],
-    ).fetch_conversation("200")
+    result = _fetch(
+        DiscordHistoryClient(
+            token="secret",
+            request_json=lambda _method, path, _query: (
+                _thread(12) if path == "/channels/200" else []
+            ),
+        )
+    )
 
     assert result == DiscordConversation(
         guild_id="1",
         parent_channel_id="100",
         thread_id="200",
         thread_name="idea",
-        visibility="private_thread",
+        visibility="private",
         messages=(),
     )
 
@@ -126,12 +265,16 @@ def test_fetch_conversation_preserves_attachment_metadata_and_urls():
         "size": 42,
         "url": "https://cdn.discordapp.com/attachments/brief.pdf?signature=kept",
     }
-    result = DiscordHistoryClient(
-        token="secret",
-        request_json=lambda _method, path, _query: _thread()
-        if path == "/channels/200"
-        else [_message("1", attachments=[attachment])],
-    ).fetch_conversation("200")
+    result = _fetch(
+        DiscordHistoryClient(
+            token="secret",
+            request_json=lambda _method, path, _query: (
+                _thread()
+                if path == "/channels/200"
+                else [_message("1", attachments=[attachment])]
+            ),
+        )
+    )
 
     assert result.messages[0].attachments == (
         DiscordAttachment(
@@ -139,7 +282,10 @@ def test_fetch_conversation_preserves_attachment_metadata_and_urls():
             filename="brief.pdf",
             content_type="application/pdf",
             size=42,
-            url="https://cdn.discordapp.com/attachments/brief.pdf?signature=kept",
+            url=(
+                "https://cdn.discordapp.com/attachments/brief.pdf?"
+                "signature=[REDACTED_SECRET]"
+            ),
         ),
     )
 
@@ -153,14 +299,14 @@ def test_fetch_conversation_stops_at_configured_message_cap():
             return _thread()
         return [_message(str(i)) for i in range(10, 0, -1)]
 
-    result = DiscordHistoryClient(
-        token="secret", request_json=request, max_messages=3
-    ).fetch_conversation("200")
+    result = _fetch(
+        DiscordHistoryClient(token="secret", request_json=request, max_messages=3)
+    )
 
     assert [message.message_id for message in result.messages] == ["8", "9", "10"]
     assert calls == [
         ("/channels/200", {}),
-        ("/channels/200/messages", {"limit": "100"}),
+        ("/channels/200/messages", {"limit": "100", "before": _CUTOFF}),
     ]
 
 
@@ -180,7 +326,7 @@ def test_transport_error_does_not_include_token(monkeypatch):
     )
 
     with pytest.raises(DiscordHistoryError) as error:
-        client.fetch_conversation("200")
+        _fetch(client)
 
     assert "secret-token" not in str(error.value)
 
@@ -203,10 +349,139 @@ def test_http_error_includes_only_sanitized_status(monkeypatch):
     )
 
     with pytest.raises(DiscordHistoryError) as error:
-        client.fetch_conversation("200")
+        _fetch(client)
 
     assert str(error.value) == "discord_http_status_403"
     assert body.closed is True
+
+
+def test_invocation_cutoff_is_exclusive_even_if_api_returns_later_messages():
+    calls = []
+
+    def request(_method, path, query):
+        calls.append((path, query))
+        if path == "/channels/200":
+            return _thread()
+        return [_message("251"), _message("249"), _message("248")]
+
+    result = _fetch(
+        DiscordHistoryClient(token="secret", request_json=request),
+        cutoff_message_id="250",
+    )
+
+    assert [message.message_id for message in result.messages] == ["248", "249"]
+    assert calls[1] == (
+        "/channels/200/messages",
+        {"limit": "100", "before": "250"},
+    )
+
+
+def test_retries_429_with_bounded_retry_after():
+    attempts = 0
+    sleeps = []
+
+    def request(_method, path, _query):
+        nonlocal attempts
+        if path == "/channels/200":
+            return _thread()
+        attempts += 1
+        if attempts == 1:
+            raise DiscordHistoryError(
+                "discord_http_status_429",
+                retry_after=9.0,
+            )
+        return []
+
+    _fetch(
+        DiscordHistoryClient(
+            token="secret",
+            request_json=request,
+            sleep=sleeps.append,
+            max_retry_delay=2.0,
+        )
+    )
+
+    assert attempts == 2
+    assert sleeps == [2.0]
+
+
+def test_retries_transient_5xx_with_bounded_backoff():
+    attempts = 0
+    sleeps = []
+
+    def request(_method, path, _query):
+        nonlocal attempts
+        if path == "/channels/200":
+            return _thread()
+        attempts += 1
+        if attempts == 1:
+            raise DiscordHistoryError("discord_http_status_503")
+        return []
+
+    _fetch(
+        DiscordHistoryClient(
+            token="secret",
+            request_json=request,
+            sleep=sleeps.append,
+        )
+    )
+
+    assert attempts == 2
+    assert sleeps == [0.25]
+
+
+def test_paginated_collection_resumes_after_restart_without_duplicates_or_secrets(
+    tmp_path,
+):
+    checkpoint_root = tmp_path / "collection"
+    first_page = [_message(str(i)) for i in range(200, 100, -1)]
+    first_page[0]["content"] = "https://alice:p%40ss@example.test/private"
+
+    def first_request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        if query["before"] == "250":
+            return first_page
+        raise DiscordHistoryError("discord_http_status_503")
+
+    first_client = DiscordHistoryClient(
+        token="secret",
+        request_json=first_request,
+        checkpoint_root=checkpoint_root,
+        max_retries=0,
+    )
+    with pytest.raises(DiscordHistoryError, match="discord_http_status_503"):
+        _fetch(first_client, cutoff_message_id="250")
+
+    checkpoint_paths = list(checkpoint_root.glob("*.json"))
+    assert len(checkpoint_paths) == 1
+    checkpoint_text = checkpoint_paths[0].read_text(encoding="utf-8")
+    assert "alice" not in checkpoint_text
+    assert "p%40ss" not in checkpoint_text
+    assert "https://example.test/private" in checkpoint_text
+
+    resumed_queries = []
+
+    def resumed_request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        resumed_queries.append(query)
+        return [_message("100"), _message("99")]
+
+    result = _fetch(
+        DiscordHistoryClient(
+            token="secret",
+            request_json=resumed_request,
+            checkpoint_root=checkpoint_root,
+        ),
+        cutoff_message_id="250",
+    )
+
+    assert resumed_queries == [{"limit": "100", "before": "101"}]
+    assert len(result.messages) == 102
+    assert len({message.message_id for message in result.messages}) == 102
+    assert result.messages[0].message_id == "99"
+    assert result.messages[-1].message_id == "200"
 
 
 def test_participant_resolver_uses_discord_id_before_display_name(tmp_path):
@@ -265,7 +540,7 @@ def test_conversation_models_are_frozen_transport_data():
         parent_channel_id="channel-1",
         thread_id="thread-1",
         thread_name="Review",
-        visibility="private_thread",
+        visibility="private",
         messages=(message,),
     )
 
@@ -287,7 +562,8 @@ def test_sync_bot_identities_writes_only_non_secret_identity_data(tmp_path):
         env_path = profile_root / profile / ".env"
         env_path.parent.mkdir(parents=True)
         env_path.write_text(
-            "DISCORD_BOT_TOKEN=secret-token-for-test\nOTHER_SECRET=not-exported\n",
+            "DISCORD_BOT_"
+            "TOKEN=secret-token-for-test\nOTHER_SECRET=not-exported\n",
             encoding="utf-8",
         )
 

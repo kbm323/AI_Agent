@@ -39,6 +39,7 @@ class DiscordConversation:
     thread_name: str
     visibility: str
     messages: tuple[DiscordMessage, ...]
+    channel_kind: str = "thread"
 
 
 @dataclass(frozen=True)

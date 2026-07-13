@@ -6,7 +6,7 @@ import importlib.util
 import inspect
 import json
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -14,7 +14,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = PROJECT_ROOT / "hermes_plugins" / "ai-agent-commands"
 TOOL_NAME = "save_discord_thread_to_obsidian"
-SAVE_FAILED = "대화를 저장하지 못했습니다."
+SAVE_FAILED = "대화를 저장하지 못했습니다. 잠시 후 /save를 다시 시도해주세요."
 SAVE_IN_PROGRESS = "대화를 저장하고 있습니다."
 
 
@@ -22,6 +22,7 @@ class FakePluginContext:
     def __init__(self) -> None:
         self.commands: dict[str, dict[str, object]] = {}
         self.tools: dict[str, dict[str, object]] = {}
+        self.hooks: dict[str, object] = {}
         self.llm = object()
         self.profile_name = "aicompanyassistant"
 
@@ -45,6 +46,9 @@ class FakePluginContext:
             "is_async": is_async,
             "description": description,
         }
+
+    def register_hook(self, name: str, callback: object) -> None:
+        self.hooks[name] = callback
 
 
 def _load_plugin() -> ModuleType:
@@ -96,6 +100,8 @@ def _stub_successful_save(
             return_value=HermesCommandContext(
                 platform="discord",
                 thread_id="200",
+                session_id="session-plugin",
+                invocation_message_id="250",
             )
         ),
     )
@@ -148,6 +154,73 @@ def test_plugin_registers_one_async_parameterless_tool_and_no_command() -> None:
         },
     }
     assert tool["description"] == "Save the current Discord thread to Obsidian."
+    assert list(ctx.hooks) == ["pre_gateway_dispatch"]
+
+
+@pytest.mark.asyncio
+async def test_pre_dispatch_hook_carries_exact_slash_interaction_cutoff_to_tool(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    plugin = _load_plugin()
+    ctx = FakePluginContext()
+    plugin.register(ctx)
+    run_save = _stub_successful_save(monkeypatch, tmp_path)
+    hook = ctx.hooks["pre_gateway_dispatch"]
+    source = SimpleNamespace(
+        platform=SimpleNamespace(value="discord"),
+        chat_id="200",
+        thread_id="200",
+        chat_type="thread",
+    )
+    event = SimpleNamespace(
+        source=source,
+        raw_message=SimpleNamespace(id=123456789012345678),
+        message_id=None,
+    )
+
+    assert callable(hook)
+    assert hook(event=event, gateway=object(), session_store=object()) is None
+    handler = ctx.tools[TOOL_NAME]["handler"]
+    await handler({}, session_id="session-hook", task_id="turn-hook")
+
+    command_context = run_save.await_args.kwargs["context"]
+    assert command_context.invocation_message_id == "123456789012345678"
+    assert command_context.invocation_boundary_kind == "discord_interaction_id"
+    assert command_context.source_kind == "thread"
+
+
+@pytest.mark.asyncio
+async def test_pre_dispatch_fallback_cutoff_is_frozen_before_tool_delay(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    plugin = _load_plugin()
+    monkeypatch.setattr(plugin.time, "time", Mock(return_value=1_800_000_000.0))
+    ctx = FakePluginContext()
+    plugin.register(ctx)
+    run_save = _stub_successful_save(monkeypatch, tmp_path)
+    hook = ctx.hooks["pre_gateway_dispatch"]
+    event = SimpleNamespace(
+        source=SimpleNamespace(
+            platform="discord",
+            chat_id="200",
+            thread_id="200",
+            chat_type="thread",
+        ),
+        raw_message=SimpleNamespace(id=None),
+        message_id=None,
+    )
+
+    hook(event=event, gateway=object(), session_store=object())
+    monkeypatch.setattr(plugin.time, "time", Mock(return_value=1_900_000_000.0))
+    handler = ctx.tools[TOOL_NAME]["handler"]
+    await handler({}, session_id="session-fallback", task_id="turn-fallback")
+
+    command_context = run_save.await_args.kwargs["context"]
+    expected = str((1_800_000_000_000 - 1_420_070_400_000) << 22)
+    assert command_context.invocation_message_id == expected
+    assert command_context.invocation_boundary_kind == "gateway_turn_start"
 
 
 @pytest.mark.asyncio
@@ -355,6 +428,8 @@ async def test_save_tool_reads_late_bound_context_and_constructs_reviewed_depend
         platform="discord",
         chat_id="200",
         thread_id="200",
+        session_id="late-bound-session",
+        invocation_message_id="250",
     )
     read_context = Mock(return_value=command_context)
     history_client = object()
@@ -400,7 +475,10 @@ async def test_save_tool_reads_late_bound_context_and_constructs_reviewed_depend
 
     assert _message(response) == "rendered response"
     read_context.assert_called_once_with()
-    history_factory.assert_called_once_with(token="profile-token")
+    history_factory.assert_called_once_with(
+        token="profile-token",
+        checkpoint_root=PROJECT_ROOT / "runtime" / "discord_save" / "collection",
+    )
     meeting_factory.assert_called_once_with(PROJECT_ROOT)
     load_identities.assert_called_once_with(
         PROJECT_ROOT / "runtime" / "discord_bot_identities.json"
@@ -417,6 +495,8 @@ async def test_save_tool_reads_late_bound_context_and_constructs_reviewed_depend
             platform="discord",
             chat_id="200",
             thread_id="200",
+            session_id="late-bound-session",
+            invocation_message_id="250",
             profile=ctx.profile_name,
         ),
         "history_client": history_client,
@@ -432,8 +512,16 @@ async def test_save_tool_reads_late_bound_context_and_constructs_reviewed_depend
 @pytest.mark.parametrize(
     ("missing_name", "expected_message"),
     [
-        ("DISCORD_BOT_TOKEN", "Discord 봇 토큰이 설정되지 않았습니다."),
-        ("OBSIDIAN_VAULT_PATH", "Obsidian 보관함을 사용할 수 없습니다."),
+        (
+            "DISCORD_BOT_TOKEN",
+            "Discord 봇 토큰이 설정되지 않았습니다. 토큰을 설정한 뒤 "
+            "/save를 다시 실행해주세요.",
+        ),
+        (
+            "OBSIDIAN_VAULT_PATH",
+            "Obsidian 보관함을 사용할 수 없습니다. 보관함 경로와 쓰기 권한을 "
+            "확인한 뒤 /save를 다시 시도해주세요.",
+        ),
     ],
 )
 async def test_save_tool_fails_closed_when_required_profile_env_is_missing(

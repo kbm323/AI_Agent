@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import threading
+import time
 from collections import OrderedDict
+from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -25,14 +28,25 @@ _TOOL_SCHEMA = {
         "additionalProperties": False,
     },
 }
-_MISSING_TOKEN_RESPONSE = "Discord 봇 토큰이 설정되지 않았습니다."
-_VAULT_UNAVAILABLE_RESPONSE = "Obsidian 보관함을 사용할 수 없습니다."
-_SAVE_FAILED_RESPONSE = "대화를 저장하지 못했습니다."
+_MISSING_TOKEN_RESPONSE = (
+    "Discord 봇 토큰이 설정되지 않았습니다. 토큰을 설정한 뒤 /save를 다시 실행해주세요."
+)
+_VAULT_UNAVAILABLE_RESPONSE = (
+    "Obsidian 보관함을 사용할 수 없습니다. 보관함 경로와 쓰기 권한을 확인한 뒤 "
+    "/save를 다시 시도해주세요."
+)
+_SAVE_FAILED_RESPONSE = "대화를 저장하지 못했습니다. 잠시 후 /save를 다시 시도해주세요."
 _SAVE_IN_PROGRESS_RESPONSE = "대화를 저장하고 있습니다."
 _MAX_INVOCATIONS = 1024
+_DISCORD_EPOCH_MS = 1_420_070_400_000
+_SNOWFLAKE_RE = re.compile(r"^[0-9]{1,24}$")
 _InvocationKey = tuple[str, str, str]
 _invocations: OrderedDict[_InvocationKey, str | None] = OrderedDict()
 _invocations_lock = threading.Lock()
+_dispatch_boundary: ContextVar[dict[str, str] | None] = ContextVar(
+    "ai_agent_save_dispatch_boundary",
+    default=None,
+)
 
 
 def _tool_result(message: str) -> str:
@@ -85,6 +99,52 @@ def _complete_invocation(key: _InvocationKey, result: str) -> None:
             return
         _invocations[key] = result
         _invocations.move_to_end(key)
+
+
+def _platform_name(value: object) -> str:
+    raw = getattr(value, "value", value)
+    return str(raw or "").casefold()
+
+
+def _snowflake(value: object) -> str:
+    candidate = str(value or "")
+    return candidate if _SNOWFLAKE_RE.fullmatch(candidate) else ""
+
+
+def _turn_start_snowflake() -> str:
+    milliseconds = int(time.time() * 1000)
+    return str(max(0, milliseconds - _DISCORD_EPOCH_MS) << 22)
+
+
+def _capture_gateway_boundary(**kwargs: Any) -> None:
+    event = kwargs.get("event")
+    source = getattr(event, "source", None)
+    if _platform_name(getattr(source, "platform", None)) != "discord":
+        _dispatch_boundary.set(None)
+        return
+
+    raw_message = getattr(event, "raw_message", None)
+    cutoff = _snowflake(getattr(raw_message, "id", None))
+    boundary_kind = "discord_interaction_id"
+    if not cutoff:
+        cutoff = _snowflake(getattr(event, "message_id", None))
+        boundary_kind = "discord_message_id"
+    if not cutoff:
+        cutoff = _turn_start_snowflake()
+        boundary_kind = "gateway_turn_start"
+
+    chat_type = str(getattr(source, "chat_type", "") or "").casefold()
+    source_kind = (
+        "dm" if chat_type == "dm" else "thread" if chat_type == "thread" else ""
+    )
+    _dispatch_boundary.set(
+        {
+            "cutoff_message_id": cutoff,
+            "boundary_kind": boundary_kind,
+            "source_kind": source_kind,
+            "chat_id": str(getattr(source, "chat_id", "") or ""),
+        }
+    )
 
 
 def register(ctx: Any) -> None:
@@ -143,11 +203,26 @@ def register(ctx: Any) -> None:
 
         try:
             context = read_hermes_command_context()
+            boundary = _dispatch_boundary.get()
+            if boundary is not None and (
+                not context.chat_id
+                or not boundary["chat_id"]
+                or context.chat_id == boundary["chat_id"]
+            ):
+                context = replace(
+                    context,
+                    invocation_message_id=boundary["cutoff_message_id"],
+                    invocation_boundary_kind=boundary["boundary_kind"],
+                    source_kind=boundary["source_kind"],
+                )
             if not context.profile:
                 context = replace(context, profile=ctx.profile_name)
             result = await run_save_command(
                 context=context,
-                history_client=DiscordHistoryClient(token=token),
+                history_client=DiscordHistoryClient(
+                    token=token,
+                    checkpoint_root=(root / "runtime" / "discord_save" / "collection"),
+                ),
                 meeting_store=MeetingRunStore(root),
                 participant_resolver=ParticipantResolver(identities),
                 summarizer=HermesConversationSummarizer(ctx.llm),
@@ -187,3 +262,4 @@ def register(ctx: Any) -> None:
         is_async=True,
         description=_TOOL_DESCRIPTION,
     )
+    ctx.register_hook("pre_gateway_dispatch", _capture_gateway_boundary)

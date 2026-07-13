@@ -46,6 +46,30 @@ def test_public_sanitizer_redacts_secret_and_everyone():
     )
 
 
+def test_public_sanitizer_removes_plain_encoded_and_nested_url_userinfo():
+    text = (
+        "plain https://alice:p4ssw0rd@example.test/private "
+        "encoded https://alice:p%40ss@example.test/private "
+        "fully-encoded https://alice%3Ap4ss%40example.test/private "
+        "other-scheme ssh://alice:p4ss@host.test/private "
+        "nested https://redirect.test/?next="
+        "https%3A%2F%2Falice%3Ap4ss%40example.test%2Fprivate "
+        "double https://redirect.test/?next="
+        "https%253A%252F%252Falice%253Ap4ss%2540example.test%252Fprivate "
+        "standalone "
+        "https%253A%252F%252Falice%253Ap4ss%2540example.test%252Fprivate"
+    )
+
+    sanitized = sanitize_knowledge_text(text)
+
+    assert "alice" not in sanitized
+    assert "p4ss" not in sanitized
+    assert "p%40ss" not in sanitized
+    assert "example.test/private" in sanitized
+    assert "ssh://host.test/private" in sanitized
+    assert "redirect.test" in sanitized
+
+
 def test_knowledge_entry_serializes_with_obsidian_compatible_frontmatter():
     entry = KnowledgeEntry(
         knowledge_id="kb_mr_phase15_test_summary",
@@ -81,9 +105,10 @@ def test_write_meeting_knowledge_creates_raw_wiki_index_and_log(tmp_path: Path):
     assert result.log_path.exists()
     assert result.agents_path.exists()
     assert result.entry.source_meeting_run_id == "mr_phase15_test"
-    assert "knowledge/wiki/meetings" in Path(
-        result.meeting_run.metadata["knowledge_refs"][0]
-    ).as_posix()
+    assert (
+        "knowledge/wiki/meetings"
+        in Path(result.meeting_run.metadata["knowledge_refs"][0]).as_posix()
+    )
 
     raw = result.raw_path.read_text(encoding="utf-8")
     wiki = result.wiki_path.read_text(encoding="utf-8")
@@ -240,9 +265,7 @@ def test_retrieve_knowledge_context_is_stable_for_ties_and_no_matches(
             rounds=(),
             consensus_reached=True,
             escalation_required=False,
-            consensus_summary=(
-                "Luna 데뷔는 팬 참여형 쇼츠와 세계관 티저를 결합한다."
-            ),
+            consensus_summary=("Luna 데뷔는 팬 참여형 쇼츠와 세계관 티저를 결합한다."),
         ),
         phase="phase15",
     )
@@ -250,9 +273,7 @@ def test_retrieve_knowledge_context_is_stable_for_ties_and_no_matches(
     context = retrieve_knowledge_context(
         root=tmp_path, query="Luna 팬 참여 쇼츠", limit=2
     )
-    none = retrieve_knowledge_context(
-        root=tmp_path, query="unmatched-zebra", limit=2
-    )
+    none = retrieve_knowledge_context(root=tmp_path, query="unmatched-zebra", limit=2)
 
     assert [m["path"] for m in context.matches] == sorted(
         m["path"] for m in context.matches
@@ -312,9 +333,7 @@ def test_knowledge_writer_rejects_dot_only_meeting_run_ids(tmp_path: Path):
         except ValueError as exc:
             assert "unsafe meeting_run_id" in str(exc)
         else:  # pragma: no cover
-            raise AssertionError(
-                f"unsafe meeting_run_id must be rejected: {unsafe_id}"
-            )
+            raise AssertionError(f"unsafe meeting_run_id must be rejected: {unsafe_id}")
 
 
 def test_phase15_dry_run_pilot_writes_and_retrieves_knowledge(tmp_path: Path):
