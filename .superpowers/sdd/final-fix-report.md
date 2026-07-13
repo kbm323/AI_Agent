@@ -335,3 +335,146 @@ this report was appended.
   smoke, six-profile reload, native picker/tool checks, and live rollback smoke
   remain deployment gates. This wave changed and tested the runbook but did not
   perform a deployment.
+
+---
+
+## Third Final-Review Fix Wave
+
+### Status
+
+`DONE_WITH_CONCERNS`
+
+All three blocking Important findings in the overwritten `final-rereview.md`
+are fixed. The product/tests/runbook commit is
+`dbef4922d8c92e04088543084f954e78010e0fda` (`fix: close discord save third
+rereview findings`). The report commit is the commit containing this section;
+its resolved hash is returned in the final status because a commit cannot
+contain its own hash. No Hermes Core file or standalone Discord adapter was
+added or modified.
+
+### Changed Files
+
+- `docs/operations/discord-save-slash-command.md`
+- `scripts/rollback_discord_save_profiles.sh`
+- `src/runtime_architecture_v2/discord_history.py`
+- `src/runtime_architecture_v2/save_command.py`
+- `tests/test_discord_save_operational_guards.py`
+- `tests/test_runtime_architecture_v2_discord_history.py`
+- `tests/test_runtime_architecture_v2_save_command.py`
+- `.superpowers/sdd/final-fix-report.md` (this report commit only)
+
+### Root Causes And Solutions
+
+| Finding | Root cause | Implemented solution |
+| --- | --- | --- |
+| Early/partial rollback | Rollback stopped only the assistant and profiles with `loaded-by-deployment`; untouched live sessions then collided with unconditional restored-state `tmux new-session` calls and aborted the rollback under `set -e`. | Added a tested two-phase rollback helper. `prepare` idempotently stops all seven session names without consulting loaded markers, restores every profile's disk/config/plugin/skill state, and starts all seven against restored state for resynchronization. `finalize` requires tool and picker absence evidence for all seven, then alone uses `was-running`/`was-stopped` to restore final state. Immediate pre-start kills also make resync collision-safe. |
+| Near-cap adoption | Inherited entries populated the shared message dictionary, so their count could satisfy `max_messages` after only one newer page and produce a transcript with a missing middle interval. | Checkpoint version 3 persists the active adopted cutoff, cursor, and completion state. Newer entries are counted independently by the adopted cutoff; inherited entries cannot complete collection until the bridge is reached. The bounded payload evicts oldest inherited entries as newer pages arrive. If the newer interval reaches 10,000 by itself, inherited state is fully displaced and the newest contiguous 10,000 are returned. |
+| Same-source concurrency | Atomic JSON replacement prevented torn files but did not serialize load/write/persist/delete across profile processes; one invocation could overwrite or delete another generation. | Added a source plus DM-boundary lifecycle lock combining a process-local lock with the existing bounded interprocess file-lock pattern. `run_save_command` acquires it before collection and releases it only after summary, durable Obsidian persistence, and conditional cleanup (or failure). Different sources use different resolved lock paths. Threaded and spawned-process tests prove a successful invocation cannot delete a later failed invocation's resumable generation. |
+
+### TDD Evidence
+
+- Near/full-cap RED: `2 failed, 35 deselected`; both tests observed only one
+  newer page instead of three and 100 pages respectively.
+- Thread concurrency RED: `1 failed, 34 deselected`; the second invocation
+  reached Discord while the first was blocked in persistence.
+- Multiprocess concurrency RED: `1 failed, 34 deselected`; the spawned second
+  process likewise collected before the first completed.
+- Rollback RED: `2 failed, 11 deselected`; both executable state scenarios
+  failed because the rollback helper did not yet exist.
+
+Each RED was followed by its focused GREEN run before the combined verification
+below.
+
+### Verification
+
+All Python commands used `PYTHONUTF8=1` and the worktree `.venv` interpreter.
+
+Directly affected collector, orchestration, persistence, plugin/context, and
+operational tests:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_ai_agent_plugin.py tests\test_runtime_architecture_v2_hermes_command_context.py tests\test_runtime_architecture_v2_discord_history.py tests\test_runtime_architecture_v2_save_command.py tests\test_runtime_architecture_v2_obsidian_conversations.py tests\test_discord_save_operational_guards.py -q
+```
+
+Result: `162 passed in 45.87s`.
+
+Executable rollback and operational guards alone:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_discord_save_operational_guards.py -q
+```
+
+Result: `13 passed in 18.69s`. This includes both early-failure shell-state
+scenarios, all-seven resynchronization and absence evidence, collision checks,
+and final prior-state restoration.
+
+Updated aggregate focused suite:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_hermes_command_context.py tests\test_runtime_architecture_v2_discord_history.py tests\test_runtime_architecture_v2_conversation_summary.py tests\test_runtime_architecture_v2_obsidian_conversations.py tests\test_runtime_architecture_v2_save_command.py tests\test_runtime_architecture_v2_ai_agent_plugin.py tests\test_runtime_architecture_v2_store.py tests\test_runtime_architecture_v2_phase15_knowledge_loop.py tests\test_runtime_architecture_v2_phase25_command_surface.py tests\test_runtime_architecture_v2_save_skill.py tests\test_discord_save_operational_guards.py -q
+```
+
+Result: `214 passed in 49.23s`.
+
+Required regression selection:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_phase14_multi_bot.py tests\test_runtime_architecture_v2_phase21_discord_webhook.py tests\test_runtime_architecture_v2_phase30_meeting_e2e.py tests\test_runtime_architecture_v2_phase32_live_audit.py tests\test_runtime_architecture_v2_on_demand_exports.py tests\test_runtime_smoke_packet.py -q
+```
+
+Result: `99 passed, 3 failed in 11.66s`. The failures exactly match the
+untouched-baseline evidence already recorded in this report:
+
+- `test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messages`
+  returns `live_discord_publish_blocked`.
+- `test_phase33_live_projection_order_is_chair_led_even_when_ceo_is_fake`
+  returns `live_discord_publish_blocked`.
+- `test_gateway_provider_error_falls_back_to_deterministic_live_projection`
+  reports the missing `aicompanyceo` profile Discord token.
+
+Shell syntax, Ruff, and format:
+
+```powershell
+& 'C:\Program Files\Git\bin\bash.exe' -n scripts/rollback_discord_save_profiles.sh
+$files = git diff --name-only --diff-filter=ACMR be95fce82fb5302be19481784f2760e23ae80cb2..dbef4922d8c92e04088543084f954e78010e0fda -- '*.py'
+.\.venv\Scripts\ruff.exe check $files
+.\.venv\Scripts\ruff.exe format --check $files
+```
+
+Results: shell syntax passed with no output; `All checks passed!`; `5 files
+already formatted`.
+
+Non-vacuous committed-range secret scan:
+
+```powershell
+& 'C:\Program Files\Git\bin\bash.exe' scripts/pre-commit-secret-scan.sh --range 'be95fce82fb5302be19481784f2760e23ae80cb2..dbef4922d8c92e04088543084f954e78010e0fda'
+```
+
+Result: `Secret scan passed: 7 file(s) inspected in --range mode.`
+
+Diff and clean-worktree gates:
+
+```powershell
+git diff --check be95fce82fb5302be19481784f2760e23ae80cb2..dbef4922d8c92e04088543084f954e78010e0fda
+git diff --check c7d52c7fc6c3bb19ef048e16acd659a717dd6218..dbef4922d8c92e04088543084f954e78010e0fda
+git status --short
+```
+
+Results: both diff checks passed with no output; the worktree was clean before
+this report was appended.
+
+### Remaining Concerns
+
+- The three required-regression failures remain baseline-identical profile
+  token/fixture issues and require the documented Ubuntu profile environment.
+- Pinned Hermes still has no reliable Discord DM session-start message
+  boundary, so production DM `/save` intentionally remains fail closed with no
+  collection, summary, or persistence side effect.
+- Ubuntu static checks, real seven-profile install/hash proof, assistant-first
+  smoke, six-profile reload, native picker/tool checks, and live rollback smoke
+  remain deployment gates. The executable rollback state machine is tested but
+  no deployment was performed in this wave.
