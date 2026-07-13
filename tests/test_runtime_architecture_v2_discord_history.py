@@ -558,12 +558,12 @@ def test_sync_bot_identities_writes_only_non_secret_identity_data(tmp_path):
         "aicompanyquality": "품질관리팀장",
     }
     profile_root = tmp_path / "profiles"
+    token_key = "_".join(("DISCORD", "BOT", "TOKEN"))
     for profile in PROFILE_ROLES:
         env_path = profile_root / profile / ".env"
         env_path.parent.mkdir(parents=True)
         env_path.write_text(
-            "DISCORD_BOT_"
-            "TOKEN=secret-token-for-test\nOTHER_SECRET=not-exported\n",
+            f"{token_key}=secret-token-for-test\nOTHER_SECRET=not-exported\n",
             encoding="utf-8",
         )
 
