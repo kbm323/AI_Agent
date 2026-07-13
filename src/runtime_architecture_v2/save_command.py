@@ -147,6 +147,19 @@ async def run_save_command(
     except (RuntimeError, ValueError):
         return SaveCommandResult(ok=False, error="save_failed")
 
+    try:
+        await asyncio.to_thread(
+            history_client.discard_collection_checkpoint,
+            source_id,
+            **(
+                {"after_message_id": context.session_start_message_id}
+                if source_kind == "dm"
+                else {}
+            ),
+        )
+    except OSError:
+        return SaveCommandResult(ok=False, error="save_failed")
+
     return SaveCommandResult(
         ok=True,
         status=saved.status,

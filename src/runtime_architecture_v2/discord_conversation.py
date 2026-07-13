@@ -32,6 +32,29 @@ class DiscordMessage:
 
 
 @dataclass(frozen=True)
+class DiscordSourceIdentity:
+    kind: str
+    source_id: str
+    guild_id: str = ""
+    parent_channel_id: str = ""
+
+    @classmethod
+    def guild_thread(
+        cls, source_id: str, guild_id: str, parent_channel_id: str
+    ) -> DiscordSourceIdentity:
+        return cls(
+            kind="thread",
+            source_id=source_id,
+            guild_id=guild_id,
+            parent_channel_id=parent_channel_id,
+        )
+
+    @classmethod
+    def private_dm(cls, source_id: str) -> DiscordSourceIdentity:
+        return cls(kind="dm", source_id=source_id)
+
+
+@dataclass(frozen=True)
 class DiscordConversation:
     guild_id: str
     parent_channel_id: str
@@ -40,6 +63,7 @@ class DiscordConversation:
     visibility: str
     messages: tuple[DiscordMessage, ...]
     channel_kind: str = "thread"
+    source_identity: DiscordSourceIdentity | None = None
 
 
 @dataclass(frozen=True)

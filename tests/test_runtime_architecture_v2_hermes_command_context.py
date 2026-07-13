@@ -5,6 +5,7 @@ from src.runtime_architecture_v2.hermes_command_context import (
 
 
 def test_reads_discord_thread_context_from_hermes_session_vars():
+    timestamp_floor = (123456789012345678 >> 22) << 22
     values = {
         "HERMES_SESSION_PLATFORM": "discord",
         "HERMES_SESSION_CHAT_ID": "200",
@@ -13,7 +14,7 @@ def test_reads_discord_thread_context_from_hermes_session_vars():
         "HERMES_SESSION_USER_ID": "300",
         "HERMES_SESSION_USER_NAME": "KBM",
         "HERMES_SESSION_ID": "session-1",
-        "HERMES_SESSION_MESSAGE_ID": "250",
+        "HERMES_SESSION_MESSAGE_ID": str(timestamp_floor + 123),
         "HERMES_SESSION_PROFILE": "aicompanyassistant",
     }
     context = read_hermes_command_context(
@@ -27,10 +28,20 @@ def test_reads_discord_thread_context_from_hermes_session_vars():
         user_id="300",
         user_name="KBM",
         session_id="session-1",
-        invocation_message_id="250",
+        invocation_message_id=str(timestamp_floor),
         profile="aicompanyassistant",
     )
     assert context.is_discord_thread is True
+
+
+def test_invalid_session_message_id_fails_closed():
+    context = read_hermes_command_context(
+        lambda key, default="": (
+            "not-a-snowflake" if key == "HERMES_SESSION_MESSAGE_ID" else default
+        )
+    )
+
+    assert context.invocation_message_id == ""
 
 
 def test_guild_channel_without_thread_is_not_a_save_boundary():

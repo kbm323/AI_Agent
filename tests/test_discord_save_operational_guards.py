@@ -104,6 +104,31 @@ def test_secret_scan_range_rejects_vacuous_commit_range(tmp_path):
     assert "non-vacuous" in (result.stdout + result.stderr)
 
 
+def test_secret_scan_staged_and_range_modes_scan_rename_destinations(tmp_path):
+    repo, _base = _repo(tmp_path)
+    original = repo / "safe.txt"
+    original.write_text(
+        "\n".join(f"safe line {index}" for index in range(40)),
+        encoding="utf-8",
+    )
+    base = _commit(repo, "expand safe file")
+
+    renamed = repo / "renamed.env"
+    _git(repo, "mv", original.name, renamed.name)
+    with renamed.open("a", encoding="utf-8") as handle:
+        handle.write("\nDISCORD_BOT_TOKEN=" + ("a" * 32) + "\n")
+
+    _git(repo, "add", renamed.name)
+    staged = _scan(repo, "--staged")
+    assert staged.returncode == 1
+    head = _commit(repo, "rename with secret")
+    assert _git(repo, "diff", "--name-status", "-M", f"{base}..{head}").startswith("R")
+
+    ranged = _scan(repo, "--range", f"{base}..{head}")
+    assert ranged.returncode == 1
+    assert "renamed.env" in ranged.stdout
+
+
 def test_secret_scan_tree_mode_scans_the_named_commit(tmp_path):
     repo, base = _repo(tmp_path)
     assert _scan(repo, "--tree", base).returncode == 0
@@ -135,6 +160,8 @@ def test_runbook_documents_verified_cutoff_and_precise_dm_limitation():
     assert "HERMES_SESSION_MESSAGE_ID" in runbook
     assert "HERMES_SESSION_START_MESSAGE_ID" in runbook
     assert "dm_boundary_unavailable" in runbook
+    assert "lower 22 bit" in runbook
+    assert "durable" in runbook
 
 
 def test_rollback_stops_resyncs_restores_and_verifies_absence():
@@ -145,6 +172,38 @@ def test_rollback_stops_resyncs_restores_and_verifies_absence():
     assert "plugins disable ai-agent-commands" in rollback
     assert "skills uninstall save" in rollback
     assert "gateway run" in rollback
+    assert "save_discord_thread_to_obsidian" in rollback
+    assert "/save" in rollback
+    assert "picker" in rollback
+
+
+def test_runbook_reloads_all_profiles_after_assistant_first_smoke():
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+    assistant_smoke = runbook.index("tmux new-session -d -s hermes-aicompanyassistant")
+    remaining_reload = runbook.index(
+        'for profile in "${profiles[@]}"; do', assistant_smoke
+    )
+
+    assert assistant_smoke < remaining_reload
+    assert (
+        'test "$profile" = aicompanyassistant && continue' in runbook[remaining_reload:]
+    )
+    assert (
+        'tmux kill-session -t "$session" 2>/dev/null || true'
+        in runbook[remaining_reload:]
+    )
+    assert 'tmux new-session -d -s "$session"' in runbook[remaining_reload:]
+
+
+def test_rollback_tracks_stops_restores_resyncs_and_verifies_all_profiles():
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+    rollback = runbook[runbook.index("## ", runbook.index("smoke", 1)) :]
+
+    assert 'tmux has-session -t "$session"' in runbook
+    assert ': > "$state_root/was-running"' in runbook
+    assert 'tmux kill-session -t "$session" 2>/dev/null || true' in rollback
+    assert 'if [ -f "$state_root/was-running" ]; then' in rollback
+    assert 'tmux new-session -d -s "$session"' in rollback
     assert "save_discord_thread_to_obsidian" in rollback
     assert "/save" in rollback
     assert "picker" in rollback

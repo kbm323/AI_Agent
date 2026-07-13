@@ -14,6 +14,7 @@ from src.runtime_architecture_v2.discord_conversation import (
     DiscordAuthor,
     DiscordConversation,
     DiscordMessage,
+    DiscordSourceIdentity,
     ParticipantResolver,
     load_bot_identities,
 )
@@ -168,14 +169,13 @@ def test_dm_stops_and_resumes_when_page_crosses_session_boundary(tmp_path):
     assert first.messages[0].message_id == "801"
     assert first.messages[-1].message_id == "949"
 
-    resumed_message_calls = 0
+    resumed_queries = []
 
-    def resumed_request(_method, path, _query):
-        nonlocal resumed_message_calls
+    def resumed_request(_method, path, query):
         if path == "/channels/900":
             return {"id": "900", "type": 1, "name": ""}
-        resumed_message_calls += 1
-        return []
+        resumed_queries.append(query)
+        return [_message(str(i)) for i in range(999, 899, -1)]
 
     resumed = DiscordHistoryClient(
         token="secret",
@@ -183,13 +183,15 @@ def test_dm_stops_and_resumes_when_page_crosses_session_boundary(tmp_path):
         checkpoint_root=checkpoint_root,
     ).fetch_conversation(
         "900",
-        cutoff_message_id="950",
+        cutoff_message_id="1000",
         after_message_id="800",
         expected_kind="dm",
     )
 
-    assert resumed == first
-    assert resumed_message_calls == 0
+    assert resumed_queries == [{"limit": "100", "before": "1000"}]
+    assert resumed.messages[0].message_id == "801"
+    assert resumed.messages[-1].message_id == "999"
+    assert all(int(message.message_id) > 800 for message in resumed.messages)
 
 
 def test_retry_budget_is_bounded_on_late_page_failure():
@@ -254,6 +256,7 @@ def test_fetch_conversation_preserves_empty_thread_metadata():
         thread_name="idea",
         visibility="private",
         messages=(),
+        source_identity=DiscordSourceIdentity.guild_thread("200", "1", "100"),
     )
 
 
@@ -376,6 +379,31 @@ def test_invocation_cutoff_is_exclusive_even_if_api_returns_later_messages():
     )
 
 
+def test_timestamp_floor_excludes_later_same_millisecond_reversed_snowflake():
+    timestamp_floor = (123456789012345678 >> 22) << 22
+    raw_interaction_id = timestamp_floor + ((1 << 22) - 1)
+    later_message_id = timestamp_floor + 1
+    assert later_message_id < raw_interaction_id
+
+    calls = []
+
+    def request(_method, path, query):
+        calls.append((path, query))
+        if path == "/channels/200":
+            return _thread()
+        return [_message(str(later_message_id)), _message(str(timestamp_floor - 1))]
+
+    result = _fetch(
+        DiscordHistoryClient(token="secret", request_json=request),
+        cutoff_message_id=str(timestamp_floor),
+    )
+
+    assert [message.message_id for message in result.messages] == [
+        str(timestamp_floor - 1)
+    ]
+    assert calls[1][1]["before"] == str(timestamp_floor)
+
+
 def test_retries_429_with_bounded_retry_after():
     attempts = 0
     sleeps = []
@@ -430,7 +458,7 @@ def test_retries_transient_5xx_with_bounded_backoff():
     assert sleeps == [0.25]
 
 
-def test_paginated_collection_resumes_after_restart_without_duplicates_or_secrets(
+def test_later_cutoff_adopts_paginated_progress_without_duplicates_or_secrets(
     tmp_path,
 ):
     checkpoint_root = tmp_path / "collection"
@@ -466,7 +494,11 @@ def test_paginated_collection_resumes_after_restart_without_duplicates_or_secret
         if path == "/channels/200":
             return _thread()
         resumed_queries.append(query)
-        return [_message("100"), _message("99")]
+        if query["before"] == "300":
+            return [_message(str(i)) for i in range(299, 199, -1)]
+        if query["before"] == "101":
+            return [_message("100"), _message("99")]
+        raise AssertionError(f"unexpected query: {query}")
 
     result = _fetch(
         DiscordHistoryClient(
@@ -474,14 +506,67 @@ def test_paginated_collection_resumes_after_restart_without_duplicates_or_secret
             request_json=resumed_request,
             checkpoint_root=checkpoint_root,
         ),
-        cutoff_message_id="250",
+        cutoff_message_id="300",
     )
 
-    assert resumed_queries == [{"limit": "100", "before": "101"}]
-    assert len(result.messages) == 102
-    assert len({message.message_id for message in result.messages}) == 102
+    assert resumed_queries == [
+        {"limit": "100", "before": "300"},
+        {"limit": "100", "before": "101"},
+    ]
+    assert len(result.messages) == 201
+    assert len({message.message_id for message in result.messages}) == 201
     assert result.messages[0].message_id == "99"
-    assert result.messages[-1].message_id == "200"
+    assert result.messages[-1].message_id == "299"
+    assert len(list(checkpoint_root.glob("*.json"))) == 1
+
+
+def test_later_cutoff_migrates_first_wave_cutoff_named_checkpoint(tmp_path):
+    checkpoint_root = tmp_path / "collection"
+    checkpoint_root.mkdir()
+    legacy_path = checkpoint_root / "200__250.json"
+    legacy_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "source_id": "200",
+                "cutoff_message_id": "250",
+                "after_message_id": None,
+                "before": "150",
+                "complete": False,
+                "messages": [_message(str(i)) for i in range(249, 149, -1)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    queries = []
+
+    def request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        queries.append(query)
+        if query["before"] == "300":
+            return [_message(str(i)) for i in range(299, 199, -1)]
+        if query["before"] == "150":
+            return [_message("149")]
+        raise AssertionError(f"unexpected query: {query}")
+
+    result = _fetch(
+        DiscordHistoryClient(
+            token="secret",
+            request_json=request,
+            checkpoint_root=checkpoint_root,
+        ),
+        cutoff_message_id="300",
+    )
+
+    assert queries == [
+        {"limit": "100", "before": "300"},
+        {"limit": "100", "before": "150"},
+    ]
+    assert result.messages[0].message_id == "149"
+    assert result.messages[-1].message_id == "299"
+    assert legacy_path.exists() is False
+    assert (checkpoint_root / "200__start.json").is_file()
 
 
 def test_participant_resolver_uses_discord_id_before_display_name(tmp_path):

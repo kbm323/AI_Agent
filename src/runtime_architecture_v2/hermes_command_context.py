@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
 GetEnv = Callable[[str, str], str]
+_SNOWFLAKE_RE = re.compile(r"^[0-9]{1,24}$")
+_SNOWFLAKE_TIMESTAMP_MASK = ~((1 << 22) - 1)
+
+
+def discord_timestamp_floor_snowflake(value: object) -> str:
+    candidate = str(value or "")
+    if not _SNOWFLAKE_RE.fullmatch(candidate):
+        return ""
+    return str(int(candidate) & _SNOWFLAKE_TIMESTAMP_MASK)
 
 
 @dataclass(frozen=True)
@@ -41,6 +51,8 @@ def read_hermes_command_context(
         user_id=get_env("HERMES_SESSION_USER_ID", ""),
         user_name=get_env("HERMES_SESSION_USER_NAME", ""),
         session_id=get_env("HERMES_SESSION_ID", ""),
-        invocation_message_id=get_env("HERMES_SESSION_MESSAGE_ID", ""),
+        invocation_message_id=discord_timestamp_floor_snowflake(
+            get_env("HERMES_SESSION_MESSAGE_ID", "")
+        ),
         profile=get_env("HERMES_SESSION_PROFILE", ""),
     )

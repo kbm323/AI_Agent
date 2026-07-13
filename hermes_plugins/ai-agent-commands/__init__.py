@@ -108,7 +108,9 @@ def _platform_name(value: object) -> str:
 
 def _snowflake(value: object) -> str:
     candidate = str(value or "")
-    return candidate if _SNOWFLAKE_RE.fullmatch(candidate) else ""
+    if not _SNOWFLAKE_RE.fullmatch(candidate):
+        return ""
+    return str(int(candidate) & ~((1 << 22) - 1))
 
 
 def _turn_start_snowflake() -> str:

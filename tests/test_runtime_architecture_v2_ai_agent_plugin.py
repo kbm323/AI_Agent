@@ -158,7 +158,7 @@ def test_plugin_registers_one_async_parameterless_tool_and_no_command() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pre_dispatch_hook_carries_exact_slash_interaction_cutoff_to_tool(
+async def test_pre_dispatch_hook_floors_exact_slash_interaction_cutoff_to_timestamp(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -173,9 +173,11 @@ async def test_pre_dispatch_hook_carries_exact_slash_interaction_cutoff_to_tool(
         thread_id="200",
         chat_type="thread",
     )
+    timestamp_floor = (123456789012345678 >> 22) << 22
+    raw_interaction_id = timestamp_floor + ((1 << 22) - 1)
     event = SimpleNamespace(
         source=source,
-        raw_message=SimpleNamespace(id=123456789012345678),
+        raw_message=SimpleNamespace(id=raw_interaction_id),
         message_id=None,
     )
 
@@ -185,7 +187,7 @@ async def test_pre_dispatch_hook_carries_exact_slash_interaction_cutoff_to_tool(
     await handler({}, session_id="session-hook", task_id="turn-hook")
 
     command_context = run_save.await_args.kwargs["context"]
-    assert command_context.invocation_message_id == "123456789012345678"
+    assert command_context.invocation_message_id == str(timestamp_floor)
     assert command_context.invocation_boundary_kind == "discord_interaction_id"
     assert command_context.source_kind == "thread"
 

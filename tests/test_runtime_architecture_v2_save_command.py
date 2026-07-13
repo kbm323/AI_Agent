@@ -14,6 +14,7 @@ from src.runtime_architecture_v2.discord_conversation import (
     DiscordAuthor,
     DiscordConversation,
     DiscordMessage,
+    DiscordSourceIdentity,
     ParticipantResolver,
 )
 from src.runtime_architecture_v2.discord_history import (
@@ -325,6 +326,7 @@ async def test_sync_history_lookup_and_save_run_through_to_thread(monkeypatch) -
         history.fetch_conversation,
         meetings.find_by_discord_thread_id,
         obsidian.save,
+        history.discard_collection_checkpoint,
     ]
 
 
@@ -608,4 +610,223 @@ async def test_url_credentials_are_removed_end_to_end_before_llm_and_vault(tmp_p
     assert "https://example.test/private" in combined
     assert "https://cdn.example.test/file.pdf" in combined
     assert "https://example.test/result" in written
+    assert 'visibility: "private"' in written
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("durable_status", ["created", "unchanged"])
+async def test_durable_save_removes_full_collection_checkpoint(
+    tmp_path, durable_status
+):
+    checkpoint_root = tmp_path / "runtime" / "discord_save" / "collection"
+
+    def request(_method, path, _query):
+        if path == "/channels/200":
+            return {
+                "id": "200",
+                "type": 11,
+                "name": "Checkpoint cleanup",
+                "parent_id": "100",
+                "guild_id": "1",
+            }
+        return [
+            {
+                "id": "225",
+                "timestamp": "2026-07-13T01:00:00+00:00",
+                "content": "durable message",
+                "author": {"id": "300", "username": "KBM"},
+            }
+        ]
+
+    history = DiscordHistoryClient(
+        token="secret",
+        request_json=request,
+        checkpoint_root=checkpoint_root,
+    )
+    _, meetings, resolver, summarizer, obsidian = _dependencies(_save_conversation())
+    obsidian.save.return_value = ObsidianSaveResult(
+        status=durable_status,
+        classification="conversation",
+        new_message_count=0 if durable_status == "unchanged" else 1,
+        snapshot_path="raw/chat-logs/snapshot.md",
+        canonical_path="wiki/conversations/page.md",
+        document_title="Checkpoint cleanup",
+        one_line_summary="Saved.",
+    )
+
+    result = await run_save_command(
+        context=_thread_context(),
+        history_client=history,
+        meeting_store=meetings,
+        participant_resolver=resolver,
+        summarizer=summarizer,
+        obsidian_store=obsidian,
+    )
+
+    assert result.ok is True
+    assert list(checkpoint_root.glob("*.json")) == []
+
+
+@pytest.mark.asyncio
+async def test_failed_old_cutoff_is_adopted_by_later_save_then_cleaned(tmp_path):
+    checkpoint_root = tmp_path / "runtime" / "discord_save" / "collection"
+
+    def first_request(_method, path, query):
+        if path == "/channels/200":
+            return {
+                "id": "200",
+                "type": 11,
+                "name": "Resume",
+                "parent_id": "100",
+                "guild_id": "1",
+            }
+        if query["before"] == "250":
+            return [
+                {
+                    "id": str(message_id),
+                    "timestamp": "2026-07-13T01:00:00+00:00",
+                    "content": f"old {message_id}",
+                    "author": {"id": "300", "username": "KBM"},
+                }
+                for message_id in range(249, 149, -1)
+            ]
+        raise DiscordHistoryError("discord_http_status_503")
+
+    first = await run_save_command(
+        context=_thread_context(),
+        history_client=DiscordHistoryClient(
+            token="secret",
+            request_json=first_request,
+            checkpoint_root=checkpoint_root,
+            max_retries=0,
+        ),
+        meeting_store=Mock(),
+        participant_resolver=ParticipantResolver({}),
+        summarizer=Mock(),
+        obsidian_store=Mock(),
+    )
+    assert first == SaveCommandResult(ok=False, error="history_unavailable")
+    assert len(list(checkpoint_root.glob("*.json"))) == 1
+
+    resumed_queries = []
+
+    def resumed_request(_method, path, query):
+        if path == "/channels/200":
+            return {
+                "id": "200",
+                "type": 11,
+                "name": "Resume",
+                "parent_id": "100",
+                "guild_id": "1",
+            }
+        resumed_queries.append(query)
+        if query["before"] == "300":
+            ids = range(299, 199, -1)
+        elif query["before"] == "150":
+            ids = [149]
+        else:
+            raise AssertionError(f"unexpected query: {query}")
+        return [
+            {
+                "id": str(message_id),
+                "timestamp": "2026-07-13T01:00:00+00:00",
+                "content": f"new {message_id}",
+                "author": {"id": "300", "username": "KBM"},
+            }
+            for message_id in ids
+        ]
+
+    conversation = _save_conversation()
+    _, meetings, resolver, summarizer, obsidian = _dependencies(conversation)
+    second = await run_save_command(
+        context=HermesCommandContext(
+            platform="discord",
+            chat_id="200",
+            thread_id="200",
+            session_id="session-2",
+            invocation_message_id="300",
+        ),
+        history_client=DiscordHistoryClient(
+            token="secret",
+            request_json=resumed_request,
+            checkpoint_root=checkpoint_root,
+        ),
+        meeting_store=meetings,
+        participant_resolver=resolver,
+        summarizer=summarizer,
+        obsidian_store=obsidian,
+    )
+
+    assert second.ok is True
+    assert resumed_queries == [
+        {"limit": "100", "before": "300"},
+        {"limit": "100", "before": "150"},
+    ]
+    persisted = obsidian.save.call_args.kwargs["conversation"]
+    assert len(persisted.messages) == 151
+    assert list(checkpoint_root.glob("*.json")) == []
+
+
+@pytest.mark.asyncio
+async def test_explicit_private_dm_boundary_persists_through_real_store(tmp_path):
+    def request(_method, path, _query):
+        if path == "/channels/900":
+            return {"id": "900", "type": 1, "name": "Direct message"}
+        return [
+            {
+                "id": "900",
+                "timestamp": "2026-07-13T01:00:00+00:00",
+                "content": "private session message",
+                "author": {"id": "300", "username": "KBM"},
+            }
+        ]
+
+    llm = AsyncMock()
+    llm.acomplete_structured.return_value = SimpleNamespace(
+        parsed={
+            "summary": "Private session saved.",
+            "key_ideas": [],
+            "decisions": [],
+            "unresolved_questions": [],
+            "action_items": [],
+            "user_perspective": "",
+        }
+    )
+    history = DiscordHistoryClient(
+        token="secret",
+        request_json=request,
+        checkpoint_root=tmp_path / "runtime" / "discord_save" / "collection",
+    )
+    result = await run_save_command(
+        context=HermesCommandContext(
+            platform="discord",
+            chat_id="900",
+            session_id="future-supported-dm",
+            invocation_message_id="950",
+            session_start_message_id="800",
+            source_kind="dm",
+        ),
+        history_client=history,
+        meeting_store=Mock(),
+        participant_resolver=ParticipantResolver({}),
+        summarizer=HermesConversationSummarizer(llm),
+        obsidian_store=ObsidianConversationStore(
+            vault_root=tmp_path / "vault",
+            runtime_root=tmp_path,
+        ),
+    )
+
+    assert result.ok is True
+    collected = history.fetch_conversation(
+        "900",
+        cutoff_message_id="950",
+        after_message_id="800",
+        expected_kind="dm",
+    )
+    assert collected.source_identity == DiscordSourceIdentity.private_dm("900")
+    written = "\n".join(
+        path.read_text(encoding="utf-8") for path in (tmp_path / "vault").rglob("*.md")
+    )
+    assert 'discord_source_kind: "dm"' in written
+    assert 'discord_source_id: "900"' in written
     assert 'visibility: "private"' in written

@@ -34,7 +34,7 @@ case "$MODE" in
     staged|--staged)
         [ "$#" -eq 0 ] || usage
         MODE=staged
-        CHANGED="$(git diff --cached --name-only --diff-filter=ACM)"
+        CHANGED="$(git diff --cached --name-only --diff-filter=ACMR)"
         ;;
     --tree)
         [ "$#" -eq 1 ] || usage
@@ -58,7 +58,7 @@ case "$MODE" in
             echo "Committed range scan must be non-vacuous." >&2
             exit 2
         }
-        CHANGED="$(git diff --name-only --diff-filter=ACM "$RANGE")"
+        CHANGED="$(git diff --name-only --diff-filter=ACMR "$RANGE")"
         [ -n "$CHANGED" ] || {
             echo "Committed range scan must include changed files." >&2
             exit 2

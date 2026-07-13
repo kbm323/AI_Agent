@@ -24,6 +24,7 @@ from .conversation_summary import ConversationSummary
 from .discord_conversation import (
     DiscordAttachment,
     DiscordConversation,
+    DiscordSourceIdentity,
     ParticipantIdentity,
     ParticipantResolver,
 )
@@ -707,10 +708,13 @@ def _evidence_hash(
     *,
     thread_name: str | None = None,
 ) -> str:
+    source = _source_identity(conversation)
     payload = {
         "classification": classification,
         "meeting_run_id": meeting_run.meeting_run_id if meeting_run else "",
         "conversation": {
+            "source_kind": source.kind,
+            "source_id": source.source_id,
             "guild_id": conversation.guild_id,
             "parent_channel_id": conversation.parent_channel_id,
             "thread_id": conversation.thread_id,
@@ -846,14 +850,54 @@ def _read_frontmatter(path: Path) -> dict[str, object]:
 
 
 def _validate_conversation_ids(conversation: DiscordConversation) -> None:
-    _validate_snowflake(conversation.guild_id, "guild_id")
-    _validate_snowflake(conversation.parent_channel_id, "parent_channel_id")
     _validate_snowflake(conversation.thread_id, "thread_id")
+    source = _source_identity(conversation)
+    _validate_snowflake(source.source_id, "source_id")
+    if source.kind == "thread":
+        _validate_snowflake(conversation.guild_id, "guild_id")
+        _validate_snowflake(conversation.parent_channel_id, "parent_channel_id")
     for message in conversation.messages:
         _validate_snowflake(message.message_id, "message_id")
         _validate_snowflake(message.author.user_id, "discord_user_id")
         for attachment in message.attachments:
             _validate_snowflake(attachment.attachment_id, "attachment_id")
+
+
+def _source_identity(conversation: DiscordConversation) -> DiscordSourceIdentity:
+    source = conversation.source_identity or DiscordSourceIdentity.guild_thread(
+        conversation.thread_id,
+        conversation.guild_id,
+        conversation.parent_channel_id,
+    )
+    if source.source_id != conversation.thread_id:
+        raise ValueError("invalid source identity")
+    if source.kind == "thread":
+        if (
+            source.guild_id != conversation.guild_id
+            or source.parent_channel_id != conversation.parent_channel_id
+            or conversation.channel_kind != "thread"
+        ):
+            raise ValueError("invalid thread source identity")
+    elif source.kind == "dm":
+        if (
+            source.guild_id
+            or source.parent_channel_id
+            or conversation.guild_id
+            or conversation.parent_channel_id
+            or conversation.channel_kind != "dm"
+            or conversation.visibility != "private"
+        ):
+            raise ValueError("invalid private dm source identity")
+    else:
+        raise ValueError("invalid source kind")
+    return source
+
+
+def _discord_source_url(conversation: DiscordConversation) -> str:
+    source = _source_identity(conversation)
+    if source.kind == "dm":
+        return f"https://discord.com/channels/@me/{source.source_id}"
+    return f"https://discord.com/channels/{source.guild_id}/{source.source_id}"
 
 
 def _validate_snowflake(value: str, label: str) -> None:
@@ -881,6 +925,7 @@ def _render_raw_snapshot(
     latest_message_id: str,
     evidence_hash: str,
 ) -> str:
+    source = _source_identity(conversation)
     participant_lines = []
     for participant in participants:
         participant_lines.extend(
@@ -895,6 +940,8 @@ def _render_raw_snapshot(
         "---",
         f"type: {_yaml_value(classification)}",
         f"saved_at: {_yaml_value(saved_at)}",
+        f"discord_source_kind: {_yaml_value(source.kind)}",
+        f"discord_source_id: {_yaml_value(source.source_id)}",
         f"discord_guild_id: {_yaml_value(conversation.guild_id)}",
         f"discord_parent_channel_id: {_yaml_value(conversation.parent_channel_id)}",
         f"discord_thread_id: {_yaml_value(conversation.thread_id)}",
@@ -909,9 +956,7 @@ def _render_raw_snapshot(
         *(participant_lines or ["  []"]),
         "---",
     ]
-    source_url = (
-        f"https://discord.com/channels/{conversation.guild_id}/{conversation.thread_id}"
-    )
+    source_url = _discord_source_url(conversation)
     participant_body = [
         _participant_markdown(participant) for participant in participants
     ]
@@ -973,12 +1018,13 @@ def _render_canonical_page(
     snapshot_paths: list[str],
     artifact_paths: tuple[str, ...],
 ) -> str:
-    source_url = (
-        f"https://discord.com/channels/{conversation.guild_id}/{conversation.thread_id}"
-    )
+    source = _source_identity(conversation)
+    source_url = _discord_source_url(conversation)
     frontmatter = [
         "---",
         f"type: {_yaml_value(classification)}",
+        f"discord_source_kind: {_yaml_value(source.kind)}",
+        f"discord_source_id: {_yaml_value(source.source_id)}",
         f"discord_guild_id: {_yaml_value(conversation.guild_id)}",
         f"discord_parent_channel_id: {_yaml_value(conversation.parent_channel_id)}",
         f"discord_thread_id: {_yaml_value(conversation.thread_id)}",
