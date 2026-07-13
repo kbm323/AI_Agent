@@ -70,6 +70,7 @@ chmod 700 "$DEPLOY_RECORD_DIR"
 
 cd "$AI_AGENT_ROOT"
 git diff --quiet
+git diff --cached --quiet
 export AI_AGENT_COMMIT="$(git rev-parse HEAD)"
 export PLUGIN_SOURCE=kbm323/AI_Agent/hermes_plugins/ai-agent-commands
 export PLUGIN_NAME=ai-agent-commands
@@ -98,6 +99,11 @@ skill URL은 반드시 이 40자리 commit을 포함해야 하며 `main` URL을 
 `Hermes Agent v0.18.2 (2026.7.7.2) · upstream bd740f20 · local 1d689e19 (+1 carried commit)`일
 수 있으나, 배포 pin은 display의 upstream/local label이 아니라
 `HERMES_TARGET_COMMIT`이다.
+
+두 `git diff` 검사는 tracked file의 unstaged와 staged 변경을 모두 거부한다.
+`runtime/discord_bot_identities.json`은 이 freeze 뒤 identity sync가 만드는
+untracked/ignored runtime 산출물이므로 이 preflight에서 clean-checkout 위반으로
+취급하지 않으며, commit하거나 deployment hash 입력으로 사용하지 않는다.
 
 설치 직전과 각 profile 설치 직전에 remote default branch를 확인한다.
 
