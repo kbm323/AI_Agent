@@ -186,3 +186,152 @@ explicit staged, tree, secret-blocking range, and vacuous-range behavior.
   proof, gateway restarts, native picker smoke, and rollback smoke remain
   deployment gates. They were not run because this wave explicitly forbids
   deployment.
+
+---
+
+## Second Final-Review Fix Wave
+
+### Status
+
+`DONE_WITH_CONCERNS`
+
+All three Important and both Minor findings in `final-rereview.md` are fixed.
+The implementation commit is
+`9de53350e25be0178198449fe2a0e46b24e5d7e2` (`fix: close discord save second
+rereview findings`). The report commit is the commit containing this section;
+its resolved hash is returned with the final status because a commit cannot
+contain its own hash. No Hermes Core files or standalone Discord adapter were
+added or modified.
+
+### Changed Files
+
+- `docs/operations/discord-save-slash-command.md`
+- `hermes_plugins/ai-agent-commands/__init__.py`
+- `scripts/pre-commit-secret-scan.sh`
+- `src/runtime_architecture_v2/discord_conversation.py`
+- `src/runtime_architecture_v2/discord_history.py`
+- `src/runtime_architecture_v2/hermes_command_context.py`
+- `src/runtime_architecture_v2/obsidian_conversations.py`
+- `src/runtime_architecture_v2/save_command.py`
+- `tests/test_discord_save_operational_guards.py`
+- `tests/test_runtime_architecture_v2_ai_agent_plugin.py`
+- `tests/test_runtime_architecture_v2_discord_history.py`
+- `tests/test_runtime_architecture_v2_hermes_command_context.py`
+- `tests/test_runtime_architecture_v2_save_command.py`
+- `.superpowers/sdd/final-fix-report.md` (this report commit only)
+
+### Root Causes And Solutions
+
+| Finding | Root cause | Implemented solution |
+| --- | --- | --- |
+| Seven-profile lifecycle | Deployment used a start helper that skipped live tmux sessions; only the assistant's prior state, reload, rollback resync, and absence evidence were tracked. | Record `was-running`/`was-stopped` for every profile. Start only the assistant for the first smoke, then deliberately stop/start each previously running non-assistant profile. Rollback stops every profile marked as having loaded the candidate before restoring disk/config state, starts all seven against restored state for per-bot tool and picker absence evidence, and finally restores each profile's prior running/stopped state. |
+| Checkpoint lifecycle | Collection files were named by source plus invocation cutoff, so a later native `/save` could not find earlier progress; completed full transcripts were never retired. | Keep one versioned checkpoint per source and explicit DM start boundary, with the immutable cutoff in the payload. A newer cutoff adopts compatible progress, fetches the newer interval first, deduplicates, retains the newest messages under the 10,000 cap, and preserves the DM lower boundary. First-wave cutoff-named files are selected by deepest compatible progress, atomically migrated, and retired. Created, updated, and unchanged durable saves delete compatible collection state. |
+| Snowflake boundary | A complete raw interaction snowflake was used as `before`, so a later same-millisecond message from another generator could have a numerically lower ID and pass the filter. | Normalize both official boundary sources, raw gateway interaction/message IDs and `HERMES_SESSION_MESSAGE_ID`, to the exclusive timestamp-floor snowflake by clearing the lower 22 bits. The reversed-lower-bit test proves same-millisecond later messages remain excluded. |
+| Explicit DM persistence | The collector represented DMs with empty guild/parent IDs, while the store unconditionally required both as numeric thread containers; the prior positive test mocked the store. | Add `DiscordSourceIdentity` with explicit `thread` and `dm` variants. The collector emits `private_dm(channel_id)` without invented guild/parent IDs; the store validates the private DM invariant and persists source kind/ID through raw and canonical documents. A real collector, summarizer, and Obsidian store test passes. Pinned Hermes remains fail closed because it still has no reliable DM start boundary. |
+| Rename secret scan | Staged and range filename selection used `--diff-filter=ACM`, excluding rename destinations. | Use `--diff-filter=ACMR` in both modes and verify a lightly modified, Git-classified rename containing a credential assignment is blocked in staged and committed-range scans. |
+
+### TDD Evidence
+
+The first RED run stopped during collection with the expected
+`ImportError: cannot import name 'DiscordSourceIdentity'`. After the initial
+implementation, the affected selection produced `3 failed, 103 passed`; the
+three failures were the unchanged legacy conversation equality and the two
+still-unimplemented seven-profile runbook assertions. The first-wave checkpoint
+migration test was then added and failed `1 failed, 34 deselected` by requesting
+`before=200` instead of adopting the legacy file. Each RED was followed by a
+focused GREEN run; the final direct selection is recorded below.
+
+### Verification
+
+All Python commands used `PYTHONUTF8=1` and the worktree `.venv` interpreter.
+
+Directly affected implementation, persistence, plugin, boundary, and operations
+tests:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_ai_agent_plugin.py tests\test_runtime_architecture_v2_hermes_command_context.py tests\test_runtime_architecture_v2_discord_history.py tests\test_runtime_architecture_v2_save_command.py tests\test_runtime_architecture_v2_obsidian_conversations.py tests\test_discord_save_operational_guards.py -q
+```
+
+Result: `156 passed in 17.60s`.
+
+Operational lifecycle and secret-scanner guards alone:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_discord_save_operational_guards.py -q
+```
+
+Result: `11 passed in 9.44s`.
+
+Updated aggregate focused suite (the previous 198-test aggregate plus ten new
+cases):
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_hermes_command_context.py tests\test_runtime_architecture_v2_discord_history.py tests\test_runtime_architecture_v2_conversation_summary.py tests\test_runtime_architecture_v2_obsidian_conversations.py tests\test_runtime_architecture_v2_save_command.py tests\test_runtime_architecture_v2_ai_agent_plugin.py tests\test_runtime_architecture_v2_store.py tests\test_runtime_architecture_v2_phase15_knowledge_loop.py tests\test_runtime_architecture_v2_phase25_command_surface.py tests\test_runtime_architecture_v2_save_skill.py tests\test_discord_save_operational_guards.py -q
+```
+
+Result: `208 passed in 18.92s`.
+
+Required regression selection:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_phase14_multi_bot.py tests\test_runtime_architecture_v2_phase21_discord_webhook.py tests\test_runtime_architecture_v2_phase30_meeting_e2e.py tests\test_runtime_architecture_v2_phase32_live_audit.py tests\test_runtime_architecture_v2_on_demand_exports.py tests\test_runtime_smoke_packet.py -q
+```
+
+Result: `99 passed, 3 failed in 12.60s`. The failures are exactly the three
+recorded in the first-wave report's untouched-baseline run (`99 passed, 3
+failed in 10.78s`), with the same test names and causes:
+
+- `test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messages`
+  returns `live_discord_publish_blocked`.
+- `test_phase33_live_projection_order_is_chair_led_even_when_ceo_is_fake`
+  returns `live_discord_publish_blocked`.
+- `test_gateway_provider_error_falls_back_to_deterministic_live_projection`
+  reports the missing `aicompanyceo` profile Discord token.
+
+Changed-wave Ruff lint and format:
+
+```powershell
+$files = git diff --name-only --diff-filter=ACMR a0ea2afac98236b4e6eb5fc7cc5785ebb59fa368..9de53350e25be0178198449fe2a0e46b24e5d7e2 -- '*.py'
+.\.venv\Scripts\ruff.exe check $files
+.\.venv\Scripts\ruff.exe format --check $files
+```
+
+Results: `All checks passed!`; `11 files already formatted`.
+
+Non-vacuous committed-range secret scan:
+
+```powershell
+& 'C:\Program Files\Git\bin\bash.exe' scripts/pre-commit-secret-scan.sh --range 'a0ea2afac98236b4e6eb5fc7cc5785ebb59fa368..9de53350e25be0178198449fe2a0e46b24e5d7e2'
+```
+
+Result: `Secret scan passed: 13 file(s) inspected in --range mode.` The
+operational suite separately proves both staged and range modes inspect rename
+destinations and reject the renamed secret fixture.
+
+Diff and worktree gates:
+
+```powershell
+git diff --check a0ea2afac98236b4e6eb5fc7cc5785ebb59fa368..9de53350e25be0178198449fe2a0e46b24e5d7e2
+git diff --check c7d52c7fc6c3bb19ef048e16acd659a717dd6218..9de53350e25be0178198449fe2a0e46b24e5d7e2
+git status --short
+```
+
+Results: both diff checks passed with no output; the worktree was clean before
+this report was appended.
+
+### Remaining Concerns
+
+- The three required-regression failures remain baseline-identical profile
+  token/fixture issues and require the documented Ubuntu profile environment.
+- Pinned Hermes `1d689e19203281228878ac6770d4a6700d4ae385` still has no reliable
+  Discord DM session-start message boundary. Production DM `/save` therefore
+  intentionally returns `dm_boundary_unavailable` without collection,
+  summarization, or storage side effects.
+- Ubuntu static checks, real seven-profile install/hash proof, assistant-first
+  smoke, six-profile reload, native picker/tool checks, and live rollback smoke
+  remain deployment gates. This wave changed and tested the runbook but did not
+  perform a deployment.
