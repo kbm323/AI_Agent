@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
 import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -73,6 +75,83 @@ def _meeting() -> MeetingRun:
         channel_id="100",
         thread_id="200",
     )
+
+
+def _multiprocess_save_worker(
+    *,
+    label,
+    vault_root,
+    runtime_root,
+    thread_id,
+    latest_id,
+    start_event,
+    result_queue,
+    raw_started=None,
+    release_raw=None,
+    delay_shared_writes=False,
+    save_ready=None,
+):
+    if raw_started is not None and release_raw is not None:
+        original_write_raw = module.ObsidianConversationStore._write_raw_exclusive
+
+        def gated_write_raw(self, path, markdown):
+            raw_started.set()
+            if not release_raw.wait(timeout=15):
+                raise TimeoutError("test_raw_release_timeout")
+            return original_write_raw(self, path, markdown)
+
+        module.ObsidianConversationStore._write_raw_exclusive = gated_write_raw
+
+    if delay_shared_writes:
+        original_atomic_write = module._atomic_write_text
+
+        def delayed_atomic_write(path, text):
+            if path.name in {"log.md", "index.md"}:
+                time.sleep(0.08)
+            return original_atomic_write(path, text)
+
+        module._atomic_write_text = delayed_atomic_write
+
+    if not start_event.wait(timeout=15):
+        result_queue.put((label, "error", "start_timeout"))
+        return
+    if save_ready is not None:
+        save_ready.set()
+    try:
+        result = ObsidianConversationStore(
+            vault_root=vault_root,
+            runtime_root=runtime_root,
+        ).save(
+            conversation=replace(
+                _conversation(latest_id),
+                thread_id=thread_id,
+                thread_name=f"Thread {thread_id}",
+            ),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+    except Exception as exc:
+        result_queue.put((label, "error", f"{type(exc).__name__}: {exc}"))
+    else:
+        result_queue.put((label, "ok", result.status))
+
+
+def _multiprocess_lock_holder(lock_path, ready, release):
+    with module._InterProcessFileLock(Path(lock_path)):
+        ready.set()
+        if not release.wait(timeout=15):
+            raise TimeoutError("test_lock_release_timeout")
+
+
+def _finish_processes(processes):
+    for process in processes:
+        process.join(timeout=20)
+    hanging = [process for process in processes if process.is_alive()]
+    for process in hanging:
+        process.terminate()
+        process.join(timeout=5)
+    assert not hanging, "multiprocessing regression timed out"
+    assert all(process.exitcode == 0 for process in processes)
 
 
 def test_first_save_creates_snapshot_canonical_checkpoint_log_and_meeting_index(
@@ -739,6 +818,307 @@ def test_cross_thread_concurrency_preserves_every_log_and_index_record(
     for thread_id in map(str, range(200, 206)):
         assert f"{thread_id}:2" in log
         assert f"oracle-index:{thread_id}" in index
+
+
+def test_same_latest_id_multiprocess_saves_converge_created_unchanged(tmp_path):
+    context = multiprocessing.get_context("spawn")
+    start = context.Event()
+    results = context.Queue()
+    processes = [
+        context.Process(
+            target=_multiprocess_save_worker,
+            kwargs={
+                "label": str(index),
+                "vault_root": tmp_path / "vault",
+                "runtime_root": tmp_path,
+                "thread_id": "200",
+                "latest_id": "2",
+                "start_event": start,
+                "result_queue": results,
+            },
+        )
+        for index in range(2)
+    ]
+    for process in processes:
+        process.start()
+    start.set()
+    outcomes = [results.get(timeout=20) for _process in processes]
+    _finish_processes(processes)
+
+    assert all(outcome[1] == "ok" for outcome in outcomes), outcomes
+    assert sorted(outcome[2] for outcome in outcomes) == ["created", "unchanged"]
+    assert len(list((tmp_path / "vault" / "raw" / "chat-logs").glob("*.md"))) == 1
+
+
+def test_different_latest_id_multiprocess_saves_do_not_regress(tmp_path):
+    context = multiprocessing.get_context("spawn")
+    low_start = context.Event()
+    high_start = context.Event()
+    low_raw_started = context.Event()
+    release_low_raw = context.Event()
+    high_save_ready = context.Event()
+    results = context.Queue()
+    low = context.Process(
+        target=_multiprocess_save_worker,
+        kwargs={
+            "label": "low",
+            "vault_root": tmp_path / "vault",
+            "runtime_root": tmp_path,
+            "thread_id": "200",
+            "latest_id": "2",
+            "start_event": low_start,
+            "result_queue": results,
+            "raw_started": low_raw_started,
+            "release_raw": release_low_raw,
+        },
+    )
+    high = context.Process(
+        target=_multiprocess_save_worker,
+        kwargs={
+            "label": "high",
+            "vault_root": tmp_path / "vault",
+            "runtime_root": tmp_path,
+            "thread_id": "200",
+            "latest_id": "3",
+            "start_event": high_start,
+            "result_queue": results,
+            "save_ready": high_save_ready,
+        },
+    )
+    low.start()
+    low_start.set()
+    assert low_raw_started.wait(timeout=15)
+    high.start()
+    high_start.set()
+    assert high_save_ready.wait(timeout=15)
+    time.sleep(1)
+    release_low_raw.set()
+    outcomes = [results.get(timeout=20) for _process in (low, high)]
+    _finish_processes([low, high])
+
+    assert all(outcome[1] == "ok" for outcome in outcomes), outcomes
+    assert {outcome[0]: outcome[2] for outcome in outcomes} == {
+        "low": "created",
+        "high": "updated",
+    }
+    checkpoint = json.loads(
+        (tmp_path / "runtime" / "discord_save" / "200.json").read_text(encoding="utf-8")
+    )
+    assert checkpoint["latest_message_id"] == "3"
+    assert [path.rsplit("__", 1)[-1] for path in checkpoint["snapshot_paths"]] == [
+        "2.md",
+        "3.md",
+    ]
+
+
+def test_live_process_lock_times_out_without_breaking_owner_and_stale_file_reuses(
+    tmp_path, monkeypatch
+):
+    context = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    release = context.Event()
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    lock_path = store._runtime_path(
+        f".locks/thread-{module._vault_identity(vault)}-200.lock"
+    )
+    holder = context.Process(
+        target=_multiprocess_lock_holder,
+        args=(lock_path, ready, release),
+    )
+    holder.start()
+    assert ready.wait(timeout=15)
+    monkeypatch.setattr(module, "_INTERPROCESS_LOCK_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr(module, "_INTERPROCESS_LOCK_POLL_SECONDS", 0.01)
+
+    with pytest.raises(TimeoutError, match="interprocess_lock_timeout"):
+        store.save(
+            conversation=_conversation(),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+    assert holder.is_alive()
+    assert lock_path.exists()
+
+    release.set()
+    _finish_processes([holder])
+    result = store.save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+    assert result.status == "created"
+    assert lock_path.exists()
+
+
+def test_cross_thread_multiprocess_saves_preserve_log_and_index(tmp_path):
+    context = multiprocessing.get_context("spawn")
+    start = context.Event()
+    results = context.Queue()
+    thread_ids = [str(value) for value in range(200, 207)]
+    processes = [
+        context.Process(
+            target=_multiprocess_save_worker,
+            kwargs={
+                "label": thread_id,
+                "vault_root": tmp_path / "vault",
+                "runtime_root": tmp_path,
+                "thread_id": thread_id,
+                "latest_id": "2",
+                "start_event": start,
+                "result_queue": results,
+                "delay_shared_writes": True,
+            },
+        )
+        for thread_id in thread_ids
+    ]
+    for process in processes:
+        process.start()
+    start.set()
+    outcomes = [results.get(timeout=30) for _process in processes]
+    _finish_processes(processes)
+
+    assert all(outcome[1] == "ok" for outcome in outcomes), outcomes
+    log = (tmp_path / "vault" / "wiki" / "log.md").read_text(encoding="utf-8")
+    index = (tmp_path / "vault" / "wiki" / "index.md").read_text(encoding="utf-8")
+    for thread_id in thread_ids:
+        assert f"oracle-log:{thread_id}:2" in log
+        assert f"oracle-index:{thread_id}" in index
+
+
+def test_later_request_adopts_all_valid_earlier_orphan_snapshots(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    original_atomic_write = module._atomic_write_text
+    failed = False
+
+    def fail_first_canonical(path, text):
+        nonlocal failed
+        if not failed and path.parent.name == "conversations":
+            failed = True
+            raise OSError("canonical write failed")
+        return original_atomic_write(path, text)
+
+    monkeypatch.setattr(module, "_atomic_write_text", fail_first_canonical)
+    with pytest.raises(OSError, match="canonical write failed"):
+        store.save(
+            conversation=_conversation("2"),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+
+    result = store.save(
+        conversation=_conversation("3"),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+
+    checkpoint = json.loads(
+        (tmp_path / "runtime" / "discord_save" / "200.json").read_text(encoding="utf-8")
+    )
+    assert result.status == "created"
+    assert [path.rsplit("__", 1)[-1] for path in checkpoint["snapshot_paths"]] == [
+        "2.md",
+        "3.md",
+    ]
+    canonical = (vault / result.canonical_path).read_text(encoding="utf-8")
+    assert all(path in canonical for path in checkpoint["snapshot_paths"])
+
+
+def test_earliest_recovered_orphan_restores_stable_canonical_identity(
+    tmp_path, monkeypatch
+):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    original_atomic_write = module._atomic_write_text
+    failed = False
+
+    def fail_first_canonical(path, text):
+        nonlocal failed
+        if not failed and path.parent.name == "conversations":
+            failed = True
+            raise OSError("canonical write failed")
+        return original_atomic_write(path, text)
+
+    monkeypatch.setattr(module, "_atomic_write_text", fail_first_canonical)
+    original_conversation = replace(_conversation("2"), thread_name="Original name")
+    with pytest.raises(OSError, match="canonical write failed"):
+        store.save(
+            conversation=original_conversation,
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+    original_raw = next((vault / "raw" / "chat-logs").glob("*.md"))
+    held_raw = tmp_path / original_raw.name
+    original_raw.replace(held_raw)
+
+    newer = store.save(
+        conversation=_conversation("3"),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+    old_canonical = vault / newer.canonical_path
+    held_raw.replace(original_raw)
+
+    recovered = store.save(
+        conversation=_conversation("4"),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+    checkpoint = json.loads(
+        (tmp_path / "runtime" / "discord_save" / "200.json").read_text(encoding="utf-8")
+    )
+    expected_canonical = f"wiki/conversations/{original_raw.stem.rsplit('__', 1)[0]}.md"
+    assert recovered.canonical_path == expected_canonical
+    assert checkpoint["canonical_path"] == expected_canonical
+    assert not old_canonical.exists()
+    assert [path.rsplit("__", 1)[-1] for path in checkpoint["snapshot_paths"]] == [
+        "2.md",
+        "3.md",
+        "4.md",
+    ]
+
+    unchanged = store.save(
+        conversation=_conversation("4"),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+    assert unchanged.status == "unchanged"
+
+
+def test_runtime_checkpoint_namespace_rejects_directory_link_escape(tmp_path):
+    workspace = tmp_path / "workspace"
+    outside = tmp_path / "outside-runtime"
+    runtime_parent = workspace / "runtime"
+    link = runtime_parent / "discord_save"
+    runtime_parent.mkdir(parents=True)
+    outside.mkdir()
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(outside)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stderr
+    else:
+        link.symlink_to(outside, target_is_directory=True)
+
+    try:
+        with pytest.raises(ValueError, match="path escapes root"):
+            ObsidianConversationStore(
+                vault_root=workspace / "vault", runtime_root=workspace
+            ).save(
+                conversation=_conversation(),
+                participant_resolver=ParticipantResolver({}),
+                summary=_summary(),
+            )
+        assert list(outside.iterdir()) == []
+    finally:
+        if os.name == "nt":
+            os.rmdir(link)
+        else:
+            link.unlink()
 
 
 def test_markdown_and_comment_markers_from_user_values_are_escaped(tmp_path):

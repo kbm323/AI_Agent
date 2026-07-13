@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import html
 import json
@@ -9,6 +10,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 import unicodedata
 from collections.abc import Iterable, Mapping
 from contextlib import suppress
@@ -49,6 +51,8 @@ _SECRET_URL_KEYS = {
 _LOCKS_GUARD = threading.Lock()
 _THREAD_LOCKS: dict[tuple[str, str], threading.RLock] = {}
 _VAULT_LOCKS: dict[str, threading.RLock] = {}
+_INTERPROCESS_LOCK_TIMEOUT_SECONDS = 30.0
+_INTERPROCESS_LOCK_POLL_SECONDS = 0.02
 
 
 @dataclass(frozen=True)
@@ -59,6 +63,45 @@ class ObsidianSaveResult:
     snapshot_path: str
     canonical_path: str
     one_line_summary: str
+
+
+class _InterProcessFileLock:
+    """A bounded kernel lock whose persistent file is never treated as ownership."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._handle: Any | None = None
+
+    def __enter__(self) -> _InterProcessFileLock:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = self.path.open("a+b")
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        deadline = time.monotonic() + _INTERPROCESS_LOCK_TIMEOUT_SECONDS
+        while True:
+            try:
+                _lock_file_nonblocking(handle)
+                self._handle = handle
+                return self
+            except OSError as exc:
+                if not _lock_is_busy(exc):
+                    handle.close()
+                    raise
+                if time.monotonic() >= deadline:
+                    handle.close()
+                    raise TimeoutError("interprocess_lock_timeout") from exc
+                time.sleep(_INTERPROCESS_LOCK_POLL_SECONDS)
+
+    def __exit__(self, *_exc_info: object) -> None:
+        if self._handle is None:
+            return
+        try:
+            _unlock_file(self._handle)
+        finally:
+            self._handle.close()
+            self._handle = None
 
 
 class ObsidianConversationStore:
@@ -82,7 +125,11 @@ class ObsidianConversationStore:
         _validate_conversation_ids(conversation)
 
         lock = _thread_lock(self.vault_root, conversation.thread_id)
-        with lock:
+        process_lock = self._runtime_path(
+            ".locks/"
+            f"thread-{_vault_identity(self.vault_root)}-{conversation.thread_id}.lock"
+        )
+        with lock, _InterProcessFileLock(process_lock):
             return self._save_locked(
                 conversation=conversation,
                 participant_resolver=participant_resolver,
@@ -110,8 +157,10 @@ class ObsidianConversationStore:
         classification = "meeting" if meeting_run is not None else "conversation"
         one_line_summary = _safe(summary.summary)
         evidence_hash = _evidence_hash(conversation, classification, meeting_run)
-        checkpoint_path = self.runtime_root / f"{conversation.thread_id}.json"
+        checkpoint_relative = f"{conversation.thread_id}.json"
+        checkpoint_path = self._runtime_path(checkpoint_relative)
         checkpoint = self._load_checkpoint(checkpoint_path, conversation.thread_id)
+        obsolete_canonical_relative = None
 
         if checkpoint is not None:
             previous_latest = str(checkpoint["latest_message_id"])
@@ -133,6 +182,17 @@ class ObsidianConversationStore:
                     canonical_path=canonical_relative,
                     one_line_summary=one_line_summary,
                 )
+            snapshot_paths = self._merge_snapshot_paths(
+                conversation.thread_id,
+                snapshot_paths,
+                self._discover_orphan_snapshots(
+                    conversation.thread_id, latest_message_id
+                ),
+            )
+            recovered_canonical = _canonical_relative_from_snapshot(snapshot_paths[0])
+            if recovered_canonical != canonical_relative:
+                obsolete_canonical_relative = canonical_relative
+                canonical_relative = recovered_canonical
             if latest_message_id == previous_latest:
                 self._write_mutable_state(
                     conversation=conversation,
@@ -146,7 +206,8 @@ class ObsidianConversationStore:
                     snapshot_paths=snapshot_paths,
                     latest_message_id=latest_message_id,
                     saved_at=_now_iso(),
-                    checkpoint_path=checkpoint_path,
+                    checkpoint_relative=checkpoint_relative,
+                    obsolete_canonical_relative=obsolete_canonical_relative,
                 )
                 return ObsidianSaveResult(
                     status="unchanged",
@@ -163,8 +224,14 @@ class ObsidianConversationStore:
         else:
             status = "created"
             new_message_count = len(messages)
-            snapshot_paths = []
-            canonical_relative = self._canonical_relative_path(conversation)
+            snapshot_paths = self._discover_orphan_snapshots(
+                conversation.thread_id, latest_message_id
+            )
+            canonical_relative = (
+                _canonical_relative_from_snapshot(snapshot_paths[0])
+                if snapshot_paths
+                else self._canonical_relative_path(conversation)
+            )
 
         snapshot_relative = self._snapshot_relative_path(
             conversation, latest_message_id
@@ -193,9 +260,9 @@ class ObsidianConversationStore:
         else:
             self._write_raw_exclusive(snapshot_path, raw_markdown)
 
-        all_snapshot_paths = list(snapshot_paths)
-        if snapshot_relative not in all_snapshot_paths:
-            all_snapshot_paths.append(snapshot_relative)
+        all_snapshot_paths = self._merge_snapshot_paths(
+            conversation.thread_id, snapshot_paths, [snapshot_relative]
+        )
         self._write_mutable_state(
             conversation=conversation,
             participants=participants,
@@ -206,7 +273,8 @@ class ObsidianConversationStore:
             snapshot_paths=all_snapshot_paths,
             latest_message_id=latest_message_id,
             saved_at=saved_at,
-            checkpoint_path=checkpoint_path,
+            checkpoint_relative=checkpoint_relative,
+            obsolete_canonical_relative=obsolete_canonical_relative,
         )
         return ObsidianSaveResult(
             status=status,
@@ -229,7 +297,8 @@ class ObsidianConversationStore:
         snapshot_paths: list[str],
         latest_message_id: str,
         saved_at: str,
-        checkpoint_path: Path,
+        checkpoint_relative: str,
+        obsolete_canonical_relative: str | None,
     ) -> None:
         canonical_path = _contained_path(self.vault_root, canonical_relative)
         canonical_markdown = _render_canonical_page(
@@ -242,7 +311,14 @@ class ObsidianConversationStore:
             artifact_paths=self._meeting_artifact_paths(meeting_run),
         )
         _atomic_write_text(canonical_path, canonical_markdown)
-        with _vault_lock(self.vault_root):
+        if obsolete_canonical_relative is not None:
+            _contained_path(self.vault_root, obsolete_canonical_relative).unlink(
+                missing_ok=True
+            )
+        shared_process_lock = self._runtime_path(
+            f".locks/vault-{_vault_identity(self.vault_root)}.lock"
+        )
+        with _vault_lock(self.vault_root), _InterProcessFileLock(shared_process_lock):
             self._update_log(
                 conversation=conversation,
                 canonical_relative=canonical_relative,
@@ -259,7 +335,7 @@ class ObsidianConversationStore:
             )
 
         _atomic_write_json(
-            checkpoint_path,
+            self._runtime_path(checkpoint_relative),
             {
                 "thread_id": conversation.thread_id,
                 "latest_message_id": latest_message_id,
@@ -267,6 +343,42 @@ class ObsidianConversationStore:
                 "snapshot_paths": snapshot_paths,
             },
         )
+
+    def _runtime_path(self, relative: str) -> Path:
+        return _contained_path(self.workspace_root, f"runtime/discord_save/{relative}")
+
+    def _discover_orphan_snapshots(
+        self, thread_id: str, latest_message_id: str
+    ) -> list[str]:
+        raw_dir = _contained_path(self.vault_root, "raw/chat-logs")
+        if not raw_dir.exists():
+            return []
+        discovered = []
+        for path in raw_dir.glob(f"*__{thread_id}__*.md"):
+            relative = PurePosixPath("raw", "chat-logs", path.name).as_posix()
+            orphan_id = _snapshot_id_from_relative(relative, thread_id)
+            if int(orphan_id) > int(latest_message_id):
+                continue
+            _validate_snapshot(
+                _contained_path(self.vault_root, relative),
+                thread_id=thread_id,
+                latest_message_id=orphan_id,
+                expected_evidence_hash=None,
+            )
+            discovered.append(relative)
+        return self._merge_snapshot_paths(thread_id, discovered)
+
+    def _merge_snapshot_paths(
+        self, thread_id: str, *path_groups: Iterable[str]
+    ) -> list[str]:
+        by_latest_id: dict[str, str] = {}
+        for relative in (path for group in path_groups for path in group):
+            latest_id = _snapshot_id_from_relative(relative, thread_id)
+            existing = by_latest_id.get(latest_id)
+            if existing is not None and existing != relative:
+                raise ValueError("ambiguous_immutable_snapshot")
+            by_latest_id[latest_id] = relative
+        return [by_latest_id[latest_id] for latest_id in sorted(by_latest_id, key=int)]
 
     def _validate_checkpoint_evidence(
         self,
@@ -444,6 +556,40 @@ def _lock_path_key(path: Path) -> str:
     return _resolved_path_key(path)
 
 
+def _vault_identity(vault_root: Path) -> str:
+    return hashlib.sha256(_lock_path_key(vault_root).encode("utf-8")).hexdigest()[:24]
+
+
+def _lock_file_nonblocking(handle: Any) -> None:
+    handle.seek(0)
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _unlock_file(handle: Any) -> None:
+    handle.seek(0)
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _lock_is_busy(exc: OSError) -> bool:
+    return exc.errno in {errno.EACCES, errno.EAGAIN, errno.EDEADLK} or getattr(
+        exc, "winerror", None
+    ) in {33, 36}
+
+
 def _resolved_path_key(path: Path) -> str:
     resolved = str(path.resolve())
     if resolved.startswith("\\\\?\\UNC\\"):
@@ -523,6 +669,12 @@ def _snapshot_id_from_relative(relative: str, thread_id: str) -> str:
     if match is None:
         raise ValueError("invalid snapshot identity")
     return match.group(1)
+
+
+def _canonical_relative_from_snapshot(snapshot_relative: str) -> str:
+    snapshot = PurePosixPath(snapshot_relative)
+    stable_stem = snapshot.stem.rsplit("__", 1)[0]
+    return f"wiki/conversations/{stable_stem}.md"
 
 
 def _evidence_hash(
