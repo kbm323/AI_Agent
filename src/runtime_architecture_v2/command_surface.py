@@ -44,6 +44,7 @@ class HermesGatewayCommandSurfacePolicy:
     """
 
     priority_order: tuple[CommandSurfaceMode, ...]
+    hermes_plugin_commands_enabled: bool = False
     standalone_slash_adapter_enabled: bool = False
     interaction_endpoint_enabled: bool = False
     permission_mutation_allowed: bool = False
@@ -89,10 +90,13 @@ class HermesGatewayCommandSurfacePolicy:
             return CommandSurfaceDecision(False, "mention_gate_required")
         if free_response_channels:
             return CommandSurfaceDecision(False, "free_response_not_allowed")
-        if (
-            surface is CommandSurfaceMode.SEPARATE_STANDALONE_SLASH_ADAPTER
-            and not self.standalone_slash_adapter_enabled
-        ):
+        if surface is CommandSurfaceMode.HERMES_SUPPORTED_CUSTOM_SURFACE:
+            if not self.hermes_plugin_commands_enabled:
+                return CommandSurfaceDecision(False, "hermes_plugin_commands_disabled")
+            return CommandSurfaceDecision(
+                True, "hermes_supported_custom_surface_allowed"
+            )
+        if surface is CommandSurfaceMode.SEPARATE_STANDALONE_SLASH_ADAPTER:
             return CommandSurfaceDecision(False, "standalone_slash_adapter_deferred")
         return CommandSurfaceDecision(True, "allowed")
 

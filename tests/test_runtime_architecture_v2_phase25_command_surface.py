@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from src.runtime_architecture_v2.command_surface import (
     CommandSurfaceDecision,
     CommandSurfaceMode,
@@ -42,6 +44,56 @@ def test_phase25_allows_hermes_gateway_and_mention_surface_only_when_safe():
 
 def test_phase25_blocks_standalone_slash_until_explicit_adapter_is_enabled():
     policy = HermesGatewayCommandSurfacePolicy.current_verified()
+
+    decision = policy.evaluate(
+        requested_surface=CommandSurfaceMode.SEPARATE_STANDALONE_SLASH_ADAPTER,
+        require_mention=True,
+        thread_require_mention=True,
+        free_response_channels=(),
+    )
+
+    assert decision == CommandSurfaceDecision(
+        False, "standalone_slash_adapter_deferred"
+    )
+
+
+def test_phase25_hermes_plugin_surface_requires_explicit_enablement():
+    policy = HermesGatewayCommandSurfacePolicy.current_verified()
+
+    decision = policy.evaluate(
+        requested_surface=CommandSurfaceMode.HERMES_SUPPORTED_CUSTOM_SURFACE,
+        require_mention=True,
+        thread_require_mention=True,
+        free_response_channels=(),
+    )
+
+    assert policy.hermes_plugin_commands_enabled is False
+    assert decision == CommandSurfaceDecision(False, "hermes_plugin_commands_disabled")
+
+
+def test_phase25_allows_enabled_hermes_plugin_only_with_safe_posture():
+    policy = replace(
+        HermesGatewayCommandSurfacePolicy.current_verified(),
+        hermes_plugin_commands_enabled=True,
+    )
+
+    decision = policy.evaluate(
+        requested_surface=CommandSurfaceMode.HERMES_SUPPORTED_CUSTOM_SURFACE,
+        require_mention=True,
+        thread_require_mention=True,
+        free_response_channels=(),
+    )
+
+    assert decision == CommandSurfaceDecision(
+        True, "hermes_supported_custom_surface_allowed"
+    )
+
+
+def test_phase25_standalone_adapter_remains_blocked_when_legacy_flag_is_true():
+    policy = replace(
+        HermesGatewayCommandSurfacePolicy.current_verified(),
+        standalone_slash_adapter_enabled=True,
+    )
 
     decision = policy.evaluate(
         requested_surface=CommandSurfaceMode.SEPARATE_STANDALONE_SLASH_ADAPTER,
