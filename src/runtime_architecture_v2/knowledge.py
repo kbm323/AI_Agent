@@ -22,7 +22,7 @@ from .store import MeetingRunStore
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 _TOKEN_PATTERNS = (
     re.compile(
-        r"(?i)(api[_-]?key|secret|password|passwd|token)(\s*[:=]\s*)"
+        r"(?i)(api[_-]?key|secret|password|passwd|token)\s*[:=]\s*"
         r"[^\s\\`'\"]+"
     ),
     re.compile(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]{6,}"),
@@ -419,8 +419,8 @@ def _ensure_agents_file(path: Path) -> None:
 
 
 def sanitize_knowledge_text(text: str) -> str:
-    safe = _TOKEN_PATTERNS[0].sub(r"\1\2[REDACTED_SECRET]", text)
-    for pattern in _TOKEN_PATTERNS[1:]:
+    safe = text
+    for pattern in _TOKEN_PATTERNS:
         safe = pattern.sub("[REDACTED_SECRET]", safe)
     return _MENTION_RE.sub("@[redacted-mention]", safe)
 

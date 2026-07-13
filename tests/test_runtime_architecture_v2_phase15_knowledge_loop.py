@@ -42,7 +42,7 @@ def _session() -> MultiBotSession:
 
 def test_public_sanitizer_redacts_secret_and_everyone():
     assert sanitize_knowledge_text("token=abc123 @everyone") == (
-        "token=[REDACTED_SECRET] @[redacted-mention]"
+        "[REDACTED_SECRET] @[redacted-mention]"
     )
 
 
@@ -97,10 +97,11 @@ def test_write_meeting_knowledge_creates_raw_wiki_index_and_log(tmp_path: Path):
 
 
 def test_knowledge_writer_redacts_secrets_and_uncontrolled_mentions(tmp_path: Path):
+    session = _session()
     result = write_meeting_knowledge(
         root=tmp_path,
         meeting_run=_meeting_run(),
-        session=_session(),
+        session=session,
         phase="phase15",
     )
 
@@ -119,6 +120,7 @@ def test_knowledge_writer_redacts_secrets_and_uncontrolled_mentions(tmp_path: Pa
     assert "@everyone" not in combined
     assert "@here" not in combined
     assert "[REDACTED" in combined
+    assert result.entry.summary == sanitize_knowledge_text(session.consensus_summary)
 
 
 def test_knowledge_writer_redacts_mixed_case_mentions_and_bearer_values(

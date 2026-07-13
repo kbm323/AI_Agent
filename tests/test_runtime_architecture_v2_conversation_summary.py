@@ -72,7 +72,7 @@ async def test_hermes_summarizer_uses_bounded_host_owned_structured_call():
     assert call["input"] == [
         {
             "type": "text",
-            "text": "token=[REDACTED_SECRET] @[redacted-mention]",
+            "text": "[REDACTED_SECRET] @[redacted-mention]",
         }
     ]
     assert call["json_mode"] is True
@@ -178,9 +178,7 @@ async def test_hermes_summarizer_falls_back_on_parse_or_schema_failure(
     result = await HermesConversationSummarizer(llm).summarize(transcript)
 
     assert result == ConversationSummary(
-        summary=(
-            "token=[REDACTED_SECRET] @[redacted-mention] " + ("x" * 260)
-        )[:240]
+        summary=("[REDACTED_SECRET] @[redacted-mention] " + ("x" * 260))[:240]
     )
     assert "RAW_MODEL_SECRET" not in result.summary
 
