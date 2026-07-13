@@ -314,18 +314,46 @@ def test_response_reports_path_count_summary_and_status() -> None:
     )
 
 
-def test_unchanged_response_reports_existing_path() -> None:
+def test_updated_response_reports_all_success_details_with_distinct_status() -> None:
     result = SaveCommandResult(
         ok=True,
-        status="unchanged",
+        status="updated",
         classification="conversation",
+        new_message_count=7,
         canonical_path="wiki/conversations/page.md",
+        summary="후속 결정을 반영했습니다.",
     )
 
     rendered = render_save_response(result)
 
-    assert "새로 저장할 메시지가 없습니다" in rendered
-    assert "wiki/conversations/page.md" in rendered
+    assert rendered == (
+        "저장 업데이트 완료\n"
+        "- 유형: 대화\n"
+        "- 새 메시지: 7개\n"
+        "- 문서: wiki/conversations/page.md\n"
+        "- 요약: 후속 결정을 반영했습니다."
+    )
+
+
+def test_unchanged_response_reports_all_success_details_and_no_new_notice() -> None:
+    result = SaveCommandResult(
+        ok=True,
+        status="unchanged",
+        classification="conversation",
+        new_message_count=0,
+        canonical_path="wiki/conversations/page.md",
+        summary="기존 콘텐츠 방향을 유지합니다.",
+    )
+
+    rendered = render_save_response(result)
+
+    assert rendered == (
+        "새로 저장할 메시지가 없습니다.\n"
+        "- 유형: 대화\n"
+        "- 새 메시지: 0개\n"
+        "- 문서: wiki/conversations/page.md\n"
+        "- 요약: 기존 콘텐츠 방향을 유지합니다."
+    )
 
 
 def test_thread_required_response_is_concise_korean_guidance() -> None:

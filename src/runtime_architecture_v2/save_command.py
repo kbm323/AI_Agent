@@ -22,6 +22,11 @@ _ERROR_RESPONSES = {
     "vault_unavailable": "Obsidian 보관함을 사용할 수 없습니다.",
     "save_failed": "대화를 저장하지 못했습니다.",
 }
+_SUCCESS_STATUS_RESPONSES = {
+    "created": "저장 완료",
+    "updated": "저장 업데이트 완료",
+    "unchanged": "새로 저장할 메시지가 없습니다.",
+}
 _SUMMARY_ERRORS = (OSError, RuntimeError, ValueError)
 
 
@@ -119,12 +124,11 @@ def render_save_response(result: SaveCommandResult) -> str:
 
     if not result.ok:
         return _ERROR_RESPONSES.get(result.error, _ERROR_RESPONSES["save_failed"])
-    if result.status == "unchanged":
-        return f"새로 저장할 메시지가 없습니다.\n- 문서: {result.canonical_path}"
 
+    status = _SUCCESS_STATUS_RESPONSES.get(result.status, "저장 완료")
     classification = "회의" if result.classification == "meeting" else "대화"
     return (
-        "저장 완료\n"
+        f"{status}\n"
         f"- 유형: {classification}\n"
         f"- 새 메시지: {result.new_message_count}개\n"
         f"- 문서: {result.canonical_path}\n"
