@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
 import pytest
 
+from src.runtime_architecture_v2 import obsidian_conversations as module
 from src.runtime_architecture_v2.conversation_summary import (
     ActionItem,
     ConversationSummary,
@@ -324,6 +330,16 @@ def test_urls_and_attachment_metadata_are_stored_without_attachment_content(tmp_
 
 
 def test_meeting_evidence_contains_only_available_fields_and_paths(tmp_path):
+    artifact = (
+        tmp_path
+        / "runtime"
+        / "meeting_runs"
+        / "mr-1"
+        / "worker_outputs"
+        / "worker-1.md"
+    )
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("existing evidence", encoding="utf-8")
     meeting = replace(
         _meeting(),
         worker_task_ids=("worker-1",),
@@ -390,8 +406,6 @@ def test_result_and_checkpoint_paths_are_posix_relative_on_windows(tmp_path):
 
 
 def test_atomic_write_cleans_temporary_file_when_replace_fails(tmp_path, monkeypatch):
-    from src.runtime_architecture_v2 import obsidian_conversations as module
-
     destination = tmp_path / "vault" / "wiki" / "conversations" / "page.md"
     destination.parent.mkdir(parents=True)
     destination.write_text("original", encoding="utf-8")
@@ -409,3 +423,449 @@ def test_atomic_write_cleans_temporary_file_when_replace_fails(tmp_path, monkeyp
     assert destination.read_text(encoding="utf-8") == "original"
     assert temporary_paths
     assert not temporary_paths[0].exists()
+
+
+@pytest.mark.parametrize(
+    ("field", "attack_path"),
+    [
+        ("canonical_path", "wiki/log.md"),
+        ("canonical_path", "wiki/conversations/not-stable__200.md"),
+        ("snapshot_paths", ["wiki/index.md"]),
+        ("snapshot_paths", ["raw/chat-logs/2026-07-13_plan__999__2.md"]),
+        ("snapshot_paths", ["raw/chat-logs/2026-07-13_plan__200__3.md"]),
+    ],
+)
+def test_checkpoint_paths_must_match_thread_namespaces_and_identity(
+    tmp_path, field, attack_path
+):
+    store = ObsidianConversationStore(
+        vault_root=tmp_path / "vault", runtime_root=tmp_path
+    )
+    store.save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+    checkpoint_path = tmp_path / "runtime" / "discord_save" / "200.json"
+    checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    checkpoint[field] = attack_path
+    checkpoint_path.write_text(json.dumps(checkpoint), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid_checkpoint"):
+        store.save(
+            conversation=_conversation(),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+
+
+def test_partial_raw_snapshot_is_removed_when_fsync_fails(tmp_path, monkeypatch):
+    store = ObsidianConversationStore(
+        vault_root=tmp_path / "vault", runtime_root=tmp_path
+    )
+
+    def fail_fsync(_descriptor):
+        raise OSError("raw fsync failed")
+
+    monkeypatch.setattr(module.os, "fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="raw fsync failed"):
+        store.save(
+            conversation=_conversation(),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+
+    assert list((tmp_path / "vault" / "raw" / "chat-logs").glob("*.md")) == []
+
+
+def test_retry_adopts_complete_raw_snapshot_after_later_write_failure(
+    tmp_path, monkeypatch
+):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    original_atomic_write = module._atomic_write_text
+    failed = False
+
+    def fail_first_canonical(path, text):
+        nonlocal failed
+        if not failed and path.parent.name == "conversations":
+            failed = True
+            raise OSError("canonical write failed")
+        return original_atomic_write(path, text)
+
+    monkeypatch.setattr(module, "_atomic_write_text", fail_first_canonical)
+
+    with pytest.raises(OSError, match="canonical write failed"):
+        store.save(
+            conversation=_conversation(),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+    raw_paths = list((vault / "raw" / "chat-logs").glob("*.md"))
+    assert len(raw_paths) == 1
+    original_raw = raw_paths[0].read_text(encoding="utf-8")
+
+    result = store.save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+
+    assert result.status == "created"
+    assert raw_paths[0].read_text(encoding="utf-8") == original_raw
+    assert (vault / result.canonical_path).exists()
+    assert (tmp_path / "runtime" / "discord_save" / "200.json").exists()
+
+
+@pytest.mark.parametrize("damage", ["missing", "corrupt"])
+def test_unchanged_save_fails_safely_when_checkpoint_evidence_is_invalid(
+    tmp_path, damage
+):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    first = store.save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+    snapshot = vault / first.snapshot_path
+    if damage == "missing":
+        snapshot.unlink()
+        expected_error = "missing_immutable_snapshot"
+    else:
+        original = snapshot.read_text(encoding="utf-8")
+        snapshot.write_text(original + "corrupt body\n", encoding="utf-8")
+        expected_error = "invalid_immutable_snapshot"
+
+    with pytest.raises((FileNotFoundError, ValueError), match=expected_error):
+        store.save(
+            conversation=_conversation(),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+
+
+def test_unchanged_save_repairs_missing_canonical_log_and_index(tmp_path):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    first = store.save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+    (vault / first.canonical_path).unlink()
+    (vault / "wiki" / "log.md").unlink()
+    (vault / "wiki" / "index.md").unlink()
+
+    second = store.save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+
+    assert second.status == "unchanged"
+    assert (vault / second.canonical_path).exists()
+    assert "200:2" in (vault / "wiki" / "log.md").read_text(encoding="utf-8")
+    assert "oracle-index:200" in (vault / "wiki" / "index.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_meeting_evidence_ignores_nonexistent_metadata_paths(tmp_path):
+    meeting = replace(
+        _meeting(),
+        metadata={"artifact_paths": ["runtime/meeting_runs/mr-1/missing.md"]},
+    )
+
+    result = ObsidianConversationStore(
+        vault_root=tmp_path / "vault", runtime_root=tmp_path
+    ).save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+        meeting_run=meeting,
+    )
+
+    canonical = (tmp_path / "vault" / result.canonical_path).read_text(encoding="utf-8")
+    assert "missing.md" not in canonical
+
+
+def test_meeting_evidence_rejects_symlink_escape(tmp_path):
+    outside_dir = tmp_path.parent / f"{tmp_path.name}-artifact-outside"
+    outside_dir.mkdir()
+    outside = outside_dir / "outside.md"
+    outside.write_text("outside", encoding="utf-8")
+    link = tmp_path / "runtime" / "meeting_runs" / "mr-1" / "escape"
+    link.parent.mkdir(parents=True)
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(outside_dir)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stderr
+    else:
+        link.symlink_to(outside_dir, target_is_directory=True)
+    escaped_artifact = link / outside.name
+    meeting = replace(_meeting(), metadata={"artifact_paths": [str(escaped_artifact)]})
+
+    try:
+        result = ObsidianConversationStore(
+            vault_root=tmp_path / "vault", runtime_root=tmp_path
+        ).save(
+            conversation=_conversation(),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+            meeting_run=meeting,
+        )
+    finally:
+        if os.name == "nt":
+            os.rmdir(link)
+        else:
+            link.unlink()
+        outside.unlink()
+        outside_dir.rmdir()
+
+    canonical = (tmp_path / "vault" / result.canonical_path).read_text(encoding="utf-8")
+    assert "escape/outside.md" not in canonical
+    assert "outside.md" not in canonical
+
+
+def test_same_latest_id_concurrent_saves_create_then_converge_unchanged(tmp_path):
+    vault = tmp_path / "vault"
+    barrier = threading.Barrier(2)
+
+    def save_once():
+        barrier.wait()
+        return ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path).save(
+            conversation=_conversation(),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: save_once(), range(2)))
+
+    assert sorted(result.status for result in results) == ["created", "unchanged"]
+    assert len(list((vault / "raw" / "chat-logs").glob("*.md"))) == 1
+    checkpoint = json.loads(
+        (tmp_path / "runtime" / "discord_save" / "200.json").read_text(encoding="utf-8")
+    )
+    assert len(checkpoint["snapshot_paths"]) == 1
+
+
+def test_different_latest_id_concurrent_saves_never_regress_or_lose_paths(
+    tmp_path, monkeypatch
+):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    low_raw_started = threading.Event()
+    release_low_raw = threading.Event()
+    original_write_raw = module.ObsidianConversationStore._write_raw_exclusive
+
+    def gate_low_raw(self, path, markdown):
+        if path.name.endswith("__2.md"):
+            low_raw_started.set()
+            assert release_low_raw.wait(timeout=5)
+        return original_write_raw(self, path, markdown)
+
+    monkeypatch.setattr(
+        module.ObsidianConversationStore, "_write_raw_exclusive", gate_low_raw
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        low = executor.submit(
+            store.save,
+            conversation=_conversation("2"),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+        assert low_raw_started.wait(timeout=5)
+        high = executor.submit(
+            store.save,
+            conversation=_conversation("3"),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+        time.sleep(0.1)
+        release_low_raw.set()
+        results = [low.result(timeout=5), high.result(timeout=5)]
+
+    assert [result.status for result in results] == ["created", "updated"]
+    checkpoint = json.loads(
+        (tmp_path / "runtime" / "discord_save" / "200.json").read_text(encoding="utf-8")
+    )
+    assert checkpoint["latest_message_id"] == "3"
+    assert [path.rsplit("__", 1)[-1] for path in checkpoint["snapshot_paths"]] == [
+        "2.md",
+        "3.md",
+    ]
+
+
+def test_cross_thread_concurrency_preserves_every_log_and_index_record(
+    tmp_path, monkeypatch
+):
+    vault = tmp_path / "vault"
+    original_atomic_write = module._atomic_write_text
+
+    def delayed_shared_write(path, text):
+        if path.name in {"log.md", "index.md"}:
+            time.sleep(0.03)
+        return original_atomic_write(path, text)
+
+    monkeypatch.setattr(module, "_atomic_write_text", delayed_shared_write)
+    barrier = threading.Barrier(6)
+
+    def save_thread(index):
+        thread_id = str(200 + index)
+        barrier.wait()
+        return ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path).save(
+            conversation=replace(
+                _conversation(),
+                thread_id=thread_id,
+                thread_name=f"Thread {thread_id}",
+            ),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        list(executor.map(save_thread, range(6)))
+
+    log = (vault / "wiki" / "log.md").read_text(encoding="utf-8")
+    index = (vault / "wiki" / "index.md").read_text(encoding="utf-8")
+    for thread_id in map(str, range(200, 206)):
+        assert f"{thread_id}:2" in log
+        assert f"oracle-index:{thread_id}" in index
+
+
+def test_markdown_and_comment_markers_from_user_values_are_escaped(tmp_path):
+    payload = (
+        "Readable text\n## Injected heading\n- injected item\n"
+        "[[injected-note]] ![[injected-embed]] "
+        "<!-- oracle-log:999:9 -->"
+    )
+    conversation = replace(
+        _conversation(content=payload),
+        thread_name=payload,
+        messages=(
+            replace(
+                _conversation().messages[0],
+                author=DiscordAuthor("300", payload),
+            ),
+            _conversation(content=payload).messages[1],
+        ),
+    )
+    summary = replace(
+        _summary(),
+        summary=payload,
+        decisions=(payload,),
+        action_items=(ActionItem(payload, payload),),
+    )
+
+    result = ObsidianConversationStore(
+        vault_root=tmp_path / "vault", runtime_root=tmp_path
+    ).save(
+        conversation=conversation,
+        participant_resolver=ParticipantResolver({}),
+        summary=summary,
+    )
+
+    raw = (tmp_path / "vault" / result.snapshot_path).read_text(encoding="utf-8")
+    raw_body = raw.split("---", 2)[-1]
+    canonical = (tmp_path / "vault" / result.canonical_path).read_text(encoding="utf-8")
+    canonical_body = canonical.split("---", 2)[-1]
+    log = (tmp_path / "vault" / "wiki" / "log.md").read_text(encoding="utf-8")
+    index = (tmp_path / "vault" / "wiki" / "index.md").read_text(encoding="utf-8")
+    combined = "\n".join((raw_body, canonical_body, log, index))
+    assert "Readable text" in combined
+    assert "\n## Injected heading" not in combined
+    assert "\n- injected item" not in combined
+    assert "[[injected-note]]" not in combined
+    assert "![[injected-embed]]" not in combined
+    assert "<!-- oracle-log:999:9 -->" not in combined
+    assert "<!-- oracle-log:200:2 -->" in log
+    assert "<!-- oracle-index:200 -->" in index
+
+
+def test_later_unimportant_save_removes_stale_index_record(tmp_path):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    store.save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+    assert "oracle-index:200" in (vault / "wiki" / "index.md").read_text(
+        encoding="utf-8"
+    )
+
+    store.save(
+        conversation=_conversation("3"),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(important=False),
+    )
+
+    assert "oracle-index:200" not in (vault / "wiki" / "index.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_signed_message_and_attachment_urls_redact_secrets_but_keep_useful_parts(
+    tmp_path,
+):
+    message_url = (
+        "https://example.test/spec?foo=keep&X-Amz-Signature=AMZSECRET&"
+        "sig=SIGSECRET&Signature=SIGNATURESECRET&TOKEN=TOKENURLSECRET&"
+        "key=KEYSECRET#access_token=FRAGMENTSECRET&section=part"
+    )
+    attachment_url = (
+        "https://cdn.example.test/file.pdf?hm=HMSECRET&width=100&"
+        "Auth=AUTHSECRET&Password=PASSWORDSECRET"
+    )
+    message = replace(
+        _conversation().messages[-1],
+        content=f"Review {message_url}",
+        attachments=(
+            DiscordAttachment(
+                attachment_id="500",
+                filename="brief.pdf",
+                content_type="application/pdf",
+                size=42,
+                url=attachment_url,
+            ),
+        ),
+    )
+    conversation = replace(
+        _conversation(), messages=(_conversation().messages[0], message)
+    )
+
+    ObsidianConversationStore(
+        vault_root=tmp_path / "vault", runtime_root=tmp_path
+    ).save(
+        conversation=conversation,
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+
+    combined = "\n".join(
+        path.read_text(encoding="utf-8") for path in (tmp_path / "vault").rglob("*.md")
+    )
+    for secret in (
+        "AMZSECRET",
+        "SIGSECRET",
+        "SIGNATURESECRET",
+        "TOKENURLSECRET",
+        "KEYSECRET",
+        "FRAGMENTSECRET",
+        "HMSECRET",
+        "AUTHSECRET",
+        "PASSWORDSECRET",
+    ):
+        assert secret not in combined
+    assert "foo=keep" in combined
+    assert "section=part" in combined
+    assert "width=100" in combined
+    assert "[REDACTED_SECRET]" in combined
