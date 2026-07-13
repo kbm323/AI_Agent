@@ -40,9 +40,14 @@ profiles=(
 
 ## Hermes 버전과 배포 revision 고정
 
-이 절차의 검증 대상 Hermes는 정확히 `v0.18.2 (2026.7.7.2), upstream
-1d689e19`다. live server의 `hermes --version` 출력이 이 값과 다르면
-중단하고, 다른 Hermes 버전의 CLI/installer 동작을 추측하지 않는다.
+이 절차의 검증 대상 Hermes revision은
+`1d689e19203281228878ac6770d4a6700d4ae385`다. 이 값은
+`/home/ubuntu/.hermes/hermes-agent`의 검증된 설치 Git HEAD다. display용
+`hermes --version`은 여러 줄이며 upstream/local 표시는 설치 상태에 따라
+바뀔 수 있으므로, 전체 문자열을 고정값과 비교하지 않는다. 첫 줄이
+`Hermes Agent v0.18.2 (2026.7.7.2)`로 시작하는지만 확인하고, 정확한 revision은
+설치 Git HEAD로 비교한다. 둘 중 하나라도 다르면 중단하고 다른 Hermes
+버전의 CLI/installer 동작을 추측하지 않는다.
 
 Hermes v0.18.2의 plugin installer는 GitHub subdirectory를 선택할 때 default
 branch를 shallow clone하며 browser tree ref/commit 선택을 보존하지 않는다.
@@ -55,7 +60,9 @@ hash 검증이 실패하고 재시작 전에 중단한다.
 ```bash
 export AI_AGENT_ROOT=/home/ubuntu/hermes-workspace/AI_Agent
 export OBSIDIAN_VAULT_PATH=/home/ubuntu/Obsidian
-export HERMES_TARGET_VERSION='v0.18.2 (2026.7.7.2), upstream 1d689e19'
+export HERMES_AGENT_ROOT=/home/ubuntu/.hermes/hermes-agent
+export HERMES_TARGET_COMMIT=1d689e19203281228878ac6770d4a6700d4ae385
+export HERMES_VERSION_PREFIX='Hermes Agent v0.18.2 (2026.7.7.2)'
 export DEPLOY_RECORD_DIR=/home/ubuntu/hermes-workspace/deploy-records/discord-save-$(date -u +%Y%m%dT%H%M%SZ)
 
 mkdir -p "$DEPLOY_RECORD_DIR"
@@ -70,8 +77,15 @@ export SKILL_NAME=save
 export SKILL_SOURCE="https://raw.githubusercontent.com/kbm323/AI_Agent/$AI_AGENT_COMMIT/hermes_skills/save/SKILL.md"
 
 actual_hermes_version="$(hermes --version)"
-test "$actual_hermes_version" = "$HERMES_TARGET_VERSION"
+actual_hermes_version_first_line="$(printf '%s\n' "$actual_hermes_version" | sed -n '1p')"
+case "$actual_hermes_version_first_line" in
+  "$HERMES_VERSION_PREFIX"*) ;;
+  *) exit 1 ;;
+esac
+actual_hermes_commit="$(git -C "$HERMES_AGENT_ROOT" rev-parse HEAD)"
+test "$actual_hermes_commit" = "$HERMES_TARGET_COMMIT"
 printf '%s\n' "$actual_hermes_version" > "$DEPLOY_RECORD_DIR/hermes-version.txt"
+printf '%s\n' "$actual_hermes_commit" > "$DEPLOY_RECORD_DIR/hermes-agent-commit.txt"
 printf '%s\n' "$AI_AGENT_COMMIT" > "$DEPLOY_RECORD_DIR/ai-agent-commit.txt"
 printf '%s\n' "$PLUGIN_SOURCE" > "$DEPLOY_RECORD_DIR/plugin-source.txt"
 printf '%s\n' "$SKILL_SOURCE" > "$DEPLOY_RECORD_DIR/skill-source.txt"
@@ -79,7 +93,11 @@ printf '%s\n' "$SKILL_SOURCE" > "$DEPLOY_RECORD_DIR/skill-source.txt"
 
 `AI_AGENT_COMMIT`은 배포할 clean checkout의 실제 HEAD에서만 설정한다. raw
 skill URL은 반드시 이 40자리 commit을 포함해야 하며 `main` URL을 사용하지
-않는다.
+않는다. `hermes-version.txt`에는 전체 multi-line 출력, `hermes-agent-commit.txt`에는
+검증된 설치 revision을 남긴다. 예를 들어 현재 첫 줄의 mutable 표시는
+`Hermes Agent v0.18.2 (2026.7.7.2) · upstream bd740f20 · local 1d689e19 (+1 carried commit)`일
+수 있으나, 배포 pin은 display의 upstream/local label이 아니라
+`HERMES_TARGET_COMMIT`이다.
 
 설치 직전과 각 profile 설치 직전에 remote default branch를 확인한다.
 
