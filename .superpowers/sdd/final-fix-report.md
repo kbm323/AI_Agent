@@ -13,11 +13,49 @@ deployment gates that were intentionally not run. No deployment was performed.
 
 - Reviewed feature dispatch: `c7d52c7fc6c3bb19ef048e16acd659a717dd6218..cef68467fbdddf4eaea67a0d1bfa47fd39403261`
 - Final fix implementation: `cef68467fbdddf4eaea67a0d1bfa47fd39403261..bb4ec9e701a7f7a1dc8450f8a819e7f0928b5bf2`
-- Whole reviewed branch after fixes: `c7d52c7fc6c3bb19ef048e16acd659a717dd6218..bb4ec9e701a7f7a1dc8450f8a819e7f0928b5bf2`
+- Format-safe fixture/report follow-up: `bb4ec9e701a7f7a1dc8450f8a819e7f0928b5bf2..c8e5f68bf137490822bcc199440da6934466a3e0`
+- Whole reviewed branch after fixes: `c7d52c7fc6c3bb19ef048e16acd659a717dd6218..c8e5f68bf137490822bcc199440da6934466a3e0`
 - Implementation commit: `bb4ec9e701a7f7a1dc8450f8a819e7f0928b5bf2` (`fix: close discord save final review findings`)
+- Fixture/report commit: `c8e5f68bf137490822bcc199440da6934466a3e0` (`test: keep secret scan fixture format-safe`)
 
-This report is committed separately after the implementation commit; the final
-response records that documentation commit and the resulting final `HEAD`.
+The final report-accuracy update is the commit containing this revision; its
+resolved hash is recorded in the final response to avoid self-referential commit
+content.
+
+## Changed Files
+
+- `.superpowers/sdd/final-fix-report.md`
+- `docs/operations/discord-save-slash-command.md`
+- `hermes_plugins/ai-agent-commands/__init__.py`
+- `scripts/pre-commit-secret-scan.sh`
+- `src/runtime_architecture_v2/discord_conversation.py`
+- `src/runtime_architecture_v2/discord_history.py`
+- `src/runtime_architecture_v2/hermes_command_context.py`
+- `src/runtime_architecture_v2/knowledge.py`
+- `src/runtime_architecture_v2/obsidian_conversations.py`
+- `src/runtime_architecture_v2/save_command.py`
+- `tests/test_discord_save_operational_guards.py`
+- `tests/test_runtime_architecture_v2_ai_agent_plugin.py`
+- `tests/test_runtime_architecture_v2_conversation_summary.py`
+- `tests/test_runtime_architecture_v2_discord_history.py`
+- `tests/test_runtime_architecture_v2_hermes_command_context.py`
+- `tests/test_runtime_architecture_v2_obsidian_conversations.py`
+- `tests/test_runtime_architecture_v2_phase15_knowledge_loop.py`
+- `tests/test_runtime_architecture_v2_save_command.py`
+
+## Finding Root Causes And Solutions
+
+| Finding | Root cause | Implemented solution |
+| --- | --- | --- |
+| URL credentials | Assignment redaction did not parse URL authority, so plain or encoded userinfo survived into LLM and storage paths. | Centralized URL-aware sanitization removes userinfo for arbitrary schemes, repeatedly decodes encoded/nested URLs, redacts secret parameters, and is used at Discord ingestion, host-LLM input, checkpoints, summaries, and Obsidian writes. |
+| Invocation snapshot | History began at delayed tool execution and had no immutable upper bound. | `HERMES_SESSION_MESSAGE_ID` is read as the official verified invocation cutoff. The supported pre-dispatch hook freezes a raw interaction/message ID when available or a conservative dispatch-time snowflake fallback; every page and checkpoint uses an exclusive cutoff. |
+| DM contract | Every non-thread context returned thread-only guidance and no reliable session-start boundary was modeled. | Discord source type is classified. An explicit supported start ID can bound `(start, cutoff)`, but pinned Hermes supplies none and the production reader does not consume the unsupported `HERMES_SESSION_START_MESSAGE_ID`; deployed DMs return `dm_boundary_unavailable` before summary, checkpoint, or storage side effects. |
+| Retry/resume | Any 429/5xx discarded in-memory pagination progress and restarted from the newest page. | Added bounded Retry-After/5xx/transport retries and atomic sanitized checkpoints keyed by source/cutoff, with cursor validation, deduplication, restart resume, and the 10,000-message ceiling. |
+| Secret gate | Deployment required a clean index, then ran a staged-only scanner that inspected zero files. | Preserved staged mode and added non-vacuous `--tree`/`--range` committed-content modes; the runbook scans `REVIEWED_BASE..AI_AGENT_COMMIT`. |
+| Rollback | Disk state changed without stopping or resynchronizing the already-loaded assistant gateway. | Snapshot prior profile state, stop the assistant, disable/remove feature state, restore config, restart to force native sync, and require tool plus picker absence evidence. |
+| Clean checkout | Tracked diff checks allowed non-ignored untracked executable/importable files. | Reject all non-ignored untracked files before commit pin/install and restrict ignored runtime allowance to non-code data. |
+| Responses | Success omitted title and fixed failures lacked actionable retry/remediation text. | Added sanitized document title and deterministic guidance for command and plugin setup failures. |
+| Private visibility | Discord type 12 persisted the noncanonical `private_thread` value. | Normalize private thread and DM visibility to `private`, with `channel_kind` kept separately. |
 
 ## Implemented Decisions
 
@@ -26,16 +64,20 @@ response records that documentation commit and the resulting final `HEAD`.
    nested redirect URLs and secret query keys, and remains the single path used
    before the host LLM, collection checkpoints, raw snapshots, canonical pages,
    and LLM-returned summaries.
-2. The plugin registers Hermes' official `pre_gateway_dispatch` hook. It freezes
-   the raw Discord slash interaction ID before model/tool delay. If no exact
-   interaction or message ID exists, it creates an exclusive Discord snowflake
-   cutoff from the verified gateway turn-start time. A `ContextVar` carries the
-   immutable boundary through Hermes' official tool worker into the history API.
+2. The context reader binds Hermes' official `HERMES_SESSION_MESSAGE_ID` as the
+   verified invocation cutoff. The plugin also registers the official
+   `pre_gateway_dispatch` hook to freeze a raw Discord slash interaction/message
+   ID before model/tool delay when available. If neither exact ID is present, it
+   creates an exclusive Discord snowflake cutoff from gateway turn-start time. A
+   `ContextVar` carries that immutable boundary into the history API.
+   Precise fallback limitation: without an exact raw Discord ID, the synthetic
+   timestamp-floor snowflake can conservatively omit messages from the same
+   millisecond that preceded dispatch; it cannot include messages posted after
+   the hook froze the boundary.
 3. Installed Hermes revision `1d689e19203281228878ac6770d4a6700d4ae385`
-   was inspected read-only. Its native slash builder keeps the raw interaction
-   but does not populate `MessageEvent.message_id`, so
-   `HERMES_SESSION_MESSAGE_ID` is not an exact slash boundary. The hook is the
-   earliest supported boundary available in this revision.
+   was inspected read-only. The implementation uses only its supported session
+   context, hook, skill, and plugin surfaces; no Hermes Core edit or standalone
+   interaction adapter was introduced.
 4. The installed revision exposes session `created_at` but no exact Discord DM
    start-message snowflake and no supported `HERMES_SESSION_START_MESSAGE_ID`.
    Converting `created_at` would guess across dispatch latency, so it is not used.
@@ -62,24 +104,22 @@ response records that documentation commit and the resulting final `HEAD`.
 
 ## TDD Evidence
 
-Initial RED command over the seven affected Python suites produced
-`50 failed, 100 passed in 8.93s`. The expanded plugin/history/command RED run
-produced `58 failed, 27 passed`. Operational guard tests first produced
-`4 failed, 3 skipped`. The DM boundary-crossing and double-encoded URL tests first
-produced `2 failed`. A fresh source-only aggregate later caught a standalone fully
-encoded URL case as `1 failed, 189 passed`; the central sanitizer was corrected
-before the final GREEN run.
+The initial affected-suite RED run produced `61 failed, 99 passed`. The first
+partial implementation run narrowed this to `5 failed, 143 passed`. The
+unsupported DM-start environment test produced `1 failed, 2 passed`; plugin retry
+guidance produced `11 failed, 13 deselected`; the standalone repeatedly encoded
+URL probe produced `1 failed, 12 deselected`; and operational guards initially
+produced `4 failed, 3 passed`. Each was followed by its focused GREEN run before
+the final aggregate.
 
 ## Final Verification
 
-All final Python runs used `PYTHONUTF8=1` and a fresh
-`PYTHONPYCACHEPREFIX` so stale plugin bytecode could not mask source behavior.
+All final Python runs used `PYTHONUTF8=1` and the worktree `.venv` interpreter.
 
 Focused aggregate, including the historical 162-test selection and save skill:
 
 ```powershell
 $env:PYTHONUTF8='1'
-$env:PYTHONPYCACHEPREFIX="$env:TEMP\codex-discord-save-final-aggregate-2"
 .\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_hermes_command_context.py tests\test_runtime_architecture_v2_discord_history.py tests\test_runtime_architecture_v2_conversation_summary.py tests\test_runtime_architecture_v2_obsidian_conversations.py tests\test_runtime_architecture_v2_save_command.py tests\test_runtime_architecture_v2_ai_agent_plugin.py tests\test_runtime_architecture_v2_store.py tests\test_runtime_architecture_v2_phase15_knowledge_loop.py tests\test_runtime_architecture_v2_phase25_command_surface.py tests\test_runtime_architecture_v2_save_skill.py -q
 ```
 
@@ -88,50 +128,53 @@ Result: `190 passed in 10.40s`.
 Operational scanner/runbook suite:
 
 ```powershell
-$env:PYTHONPYCACHEPREFIX="$env:TEMP\codex-discord-save-final-ops"
 .\.venv\Scripts\python.exe -m pytest tests\test_discord_save_operational_guards.py -q
 ```
 
-Result: `8 passed in 5.71s`. This executes staged, tree, committed-range,
+Result: `8 passed in 6.09s`. This executes staged, tree, committed-range,
 non-vacuous-range, clean-gate, boundary-documentation, and rollback assertions;
 the shell cases ran through Git Bash.
 
 Required regression selection:
 
 ```powershell
-$env:PYTHONPYCACHEPREFIX="$env:TEMP\codex-discord-save-final-regressions"
 .\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_phase14_multi_bot.py tests\test_runtime_architecture_v2_phase21_discord_webhook.py tests\test_runtime_architecture_v2_phase30_meeting_e2e.py tests\test_runtime_architecture_v2_phase32_live_audit.py tests\test_runtime_architecture_v2_on_demand_exports.py tests\test_runtime_smoke_packet.py -q
 ```
 
-Result: `99 passed, 3 failed in 11.69s`. The failures exactly match both the
+Result: `99 passed, 3 failed in 11.32s`. The failures exactly match both the
 dispatch report and baseline:
 
 - `test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messages`
 - `test_phase33_live_projection_order_is_chair_led_even_when_ceo_is_fake`
 - `test_gateway_provider_error_falls_back_to_deterministic_live_projection`
 
+The identical command at untouched baseline
+`c7d52c7fc6c3bb19ef048e16acd659a717dd6218`, using the feature worktree
+interpreter, produced `99 passed, 3 failed in 10.78s` with the same test names and
+assertion causes. This is direct baseline evidence, not an inference from the
+prior review.
+
 Changed-wave Ruff and format:
 
 ```powershell
-$files = git diff --name-only --diff-filter=ACM -- '*.py'
-.\.venv\Scripts\ruff.exe format $files
+$files = git diff --name-only --diff-filter=ACM cef6846..HEAD -- '*.py'
 .\.venv\Scripts\ruff.exe check $files
 .\.venv\Scripts\ruff.exe format --check $files
 ```
 
-Result: `All checks passed!`; `14 files already formatted` after formatting.
+Result: `All checks passed!`; `15 files already formatted`.
 
 Secret and diff gates:
 
 ```powershell
-& 'C:\Program Files\Git\bin\bash.exe' scripts/pre-commit-secret-scan.sh --staged
-git diff --cached --check
-& 'C:\Program Files\Git\bin\bash.exe' scripts/pre-commit-secret-scan.sh --range 'c7d52c7fc6c3bb19ef048e16acd659a717dd6218..bb4ec9e'
-git diff --check c7d52c7fc6c3bb19ef048e16acd659a717dd6218..bb4ec9e
+& 'C:\Program Files\Git\bin\bash.exe' scripts/pre-commit-secret-scan.sh --range 'c7d52c7fc6c3bb19ef048e16acd659a717dd6218..c8e5f68bf137490822bcc199440da6934466a3e0'
+git diff --check cef68467fbdddf4eaea67a0d1bfa47fd39403261..c8e5f68bf137490822bcc199440da6934466a3e0
+git diff --check c7d52c7fc6c3bb19ef048e16acd659a717dd6218..c8e5f68bf137490822bcc199440da6934466a3e0
 ```
 
-Results: staged scan passed with `17 file(s) inspected`; committed range scan
-passed with `27 file(s) inspected`; both diff checks passed.
+Results: committed range scan passed with `28 file(s) inspected`; both diff
+checks passed. The operational suite separately proves empty/default staged,
+explicit staged, tree, secret-blocking range, and vacuous-range behavior.
 
 ## Remaining Concerns
 
