@@ -597,6 +597,95 @@ def test_retry_adopts_complete_raw_snapshot_after_later_write_failure(
     assert (tmp_path / "runtime" / "discord_save" / "200.json").exists()
 
 
+def test_same_latest_retry_after_thread_rename_reuses_existing_orphan(
+    tmp_path, monkeypatch
+):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    original_atomic_write = module._atomic_write_text
+    failed = False
+
+    def fail_first_canonical(path, text):
+        nonlocal failed
+        if not failed and path.parent.name == "conversations":
+            failed = True
+            raise OSError("canonical write failed")
+        return original_atomic_write(path, text)
+
+    monkeypatch.setattr(module, "_atomic_write_text", fail_first_canonical)
+    original_conversation = replace(_conversation(), thread_name="Original name")
+    with pytest.raises(OSError, match="canonical write failed"):
+        store.save(
+            conversation=original_conversation,
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+    original_raw = next((vault / "raw" / "chat-logs").glob("*.md"))
+    original_bytes = original_raw.read_bytes()
+    original_relative = original_raw.relative_to(vault).as_posix()
+
+    renamed_conversation = replace(_conversation(), thread_name="Renamed thread")
+    recovered = store.save(
+        conversation=renamed_conversation,
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+
+    raw_paths = list((vault / "raw" / "chat-logs").glob("*.md"))
+    checkpoint = json.loads(
+        (tmp_path / "runtime" / "discord_save" / "200.json").read_text(encoding="utf-8")
+    )
+    assert recovered.status == "created"
+    assert recovered.snapshot_path == original_relative
+    assert raw_paths == [original_raw]
+    assert original_raw.read_bytes() == original_bytes
+    assert checkpoint["snapshot_paths"] == [original_relative]
+
+    unchanged = store.save(
+        conversation=renamed_conversation,
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+    )
+    assert unchanged.status == "unchanged"
+    assert list((vault / "raw" / "chat-logs").glob("*.md")) == [original_raw]
+
+
+def test_genuinely_ambiguous_existing_snapshot_paths_still_fail_closed(
+    tmp_path, monkeypatch
+):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    original_atomic_write = module._atomic_write_text
+
+    def fail_canonical(path, text):
+        if path.parent.name == "conversations":
+            raise OSError("canonical write failed")
+        return original_atomic_write(path, text)
+
+    monkeypatch.setattr(module, "_atomic_write_text", fail_canonical)
+    with pytest.raises(OSError, match="canonical write failed"):
+        store.save(
+            conversation=replace(_conversation(), thread_name="Original name"),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+    original_raw = next((vault / "raw" / "chat-logs").glob("*.md"))
+    duplicate_raw = original_raw.with_name(
+        original_raw.name.replace("Original-name", "Conflicting-name")
+    )
+    duplicate_raw.write_bytes(original_raw.read_bytes())
+
+    with pytest.raises(ValueError, match="ambiguous_immutable_snapshot"):
+        store.save(
+            conversation=replace(_conversation(), thread_name="Renamed thread"),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+        )
+    assert sorted((vault / "raw" / "chat-logs").glob("*.md")) == sorted(
+        [original_raw, duplicate_raw]
+    )
+
+
 @pytest.mark.parametrize("damage", ["missing", "corrupt"])
 def test_unchanged_save_fails_safely_when_checkpoint_evidence_is_invalid(
     tmp_path, damage

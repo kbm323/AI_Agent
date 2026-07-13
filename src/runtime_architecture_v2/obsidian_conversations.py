@@ -167,11 +167,11 @@ class ObsidianConversationStore:
             canonical_relative = str(checkpoint["canonical_path"])
             snapshot_paths = [str(path) for path in checkpoint["snapshot_paths"]]
             self._validate_checkpoint_evidence(
-                conversation.thread_id,
+                conversation,
                 snapshot_paths,
-                expected_latest_hash=(
-                    evidence_hash if previous_latest == latest_message_id else None
-                ),
+                classification=classification,
+                meeting_run=meeting_run,
+                validate_latest=previous_latest == latest_message_id,
             )
             if int(latest_message_id) < int(previous_latest):
                 return ObsidianSaveResult(
@@ -233,31 +233,47 @@ class ObsidianConversationStore:
                 else self._canonical_relative_path(conversation)
             )
 
-        snapshot_relative = self._snapshot_relative_path(
-            conversation, latest_message_id
+        snapshot_relative = next(
+            (
+                relative
+                for relative in snapshot_paths
+                if _snapshot_id_from_relative(relative, conversation.thread_id)
+                == latest_message_id
+            ),
+            None,
         )
+        if snapshot_relative is None:
+            snapshot_relative = self._snapshot_relative_path(
+                conversation, latest_message_id
+            )
         snapshot_path = _contained_path(self.vault_root, snapshot_relative)
 
         participants = _resolve_participants(conversation, participant_resolver)
         saved_at = _now_iso()
-        raw_markdown = _render_raw_snapshot(
-            conversation=conversation,
-            participants=participants,
-            classification=classification,
-            meeting_run=meeting_run,
-            saved_at=saved_at,
-            first_message_id=first_message_id,
-            latest_message_id=latest_message_id,
-            evidence_hash=evidence_hash,
-        )
         if snapshot_path.exists():
+            expected_evidence_hash = _snapshot_evidence_hash_for_conversation(
+                snapshot_path,
+                conversation=conversation,
+                classification=classification,
+                meeting_run=meeting_run,
+            )
             _validate_snapshot(
                 snapshot_path,
                 thread_id=conversation.thread_id,
                 latest_message_id=latest_message_id,
-                expected_evidence_hash=evidence_hash,
+                expected_evidence_hash=expected_evidence_hash,
             )
         else:
+            raw_markdown = _render_raw_snapshot(
+                conversation=conversation,
+                participants=participants,
+                classification=classification,
+                meeting_run=meeting_run,
+                saved_at=saved_at,
+                first_message_id=first_message_id,
+                latest_message_id=latest_message_id,
+                evidence_hash=evidence_hash,
+            )
             self._write_raw_exclusive(snapshot_path, raw_markdown)
 
         all_snapshot_paths = self._merge_snapshot_paths(
@@ -382,20 +398,33 @@ class ObsidianConversationStore:
 
     def _validate_checkpoint_evidence(
         self,
-        thread_id: str,
+        conversation: DiscordConversation,
         snapshot_paths: list[str],
         *,
-        expected_latest_hash: str | None,
+        classification: str,
+        meeting_run: MeetingRun | None,
+        validate_latest: bool,
     ) -> None:
         for index, relative in enumerate(snapshot_paths):
-            latest_id = _snapshot_id_from_relative(relative, thread_id)
+            latest_id = _snapshot_id_from_relative(relative, conversation.thread_id)
+            snapshot_path = _contained_path(self.vault_root, relative)
+            expected_evidence_hash = None
+            if (
+                validate_latest
+                and index == len(snapshot_paths) - 1
+                and snapshot_path.exists()
+            ):
+                expected_evidence_hash = _snapshot_evidence_hash_for_conversation(
+                    snapshot_path,
+                    conversation=conversation,
+                    classification=classification,
+                    meeting_run=meeting_run,
+                )
             _validate_snapshot(
-                _contained_path(self.vault_root, relative),
-                thread_id=thread_id,
+                snapshot_path,
+                thread_id=conversation.thread_id,
                 latest_message_id=latest_id,
-                expected_evidence_hash=(
-                    expected_latest_hash if index == len(snapshot_paths) - 1 else None
-                ),
+                expected_evidence_hash=expected_evidence_hash,
             )
 
     def _canonical_relative_path(self, conversation: DiscordConversation) -> str:
@@ -681,6 +710,8 @@ def _evidence_hash(
     conversation: DiscordConversation,
     classification: str,
     meeting_run: MeetingRun | None,
+    *,
+    thread_name: str | None = None,
 ) -> str:
     payload = {
         "classification": classification,
@@ -689,7 +720,9 @@ def _evidence_hash(
             "guild_id": conversation.guild_id,
             "parent_channel_id": conversation.parent_channel_id,
             "thread_id": conversation.thread_id,
-            "thread_name": conversation.thread_name,
+            "thread_name": (
+                conversation.thread_name if thread_name is None else thread_name
+            ),
             "visibility": conversation.visibility,
             "messages": [
                 {
@@ -723,6 +756,34 @@ def _evidence_hash(
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _snapshot_evidence_hash_for_conversation(
+    path: Path,
+    *,
+    conversation: DiscordConversation,
+    classification: str,
+    meeting_run: MeetingRun | None,
+) -> str:
+    try:
+        stored_thread_name = _read_frontmatter(path)["discord_thread_name"]
+        if not isinstance(stored_thread_name, str):
+            raise TypeError
+    except (
+        KeyError,
+        OSError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ValueError("invalid_immutable_snapshot") from exc
+    return _evidence_hash(
+        conversation,
+        classification,
+        meeting_run,
+        thread_name=stored_thread_name,
+    )
 
 
 def _validate_snapshot(
