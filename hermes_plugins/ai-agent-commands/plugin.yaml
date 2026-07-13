@@ -2,3 +2,5 @@ name: ai-agent-commands
 version: 0.1.0
 description: "Runtime Architecture v2 Discord commands for meetings and Obsidian knowledge capture."
 author: "kbm323"
+provides_tools:
+  - save_discord_thread_to_obsidian
