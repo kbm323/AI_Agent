@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,189 @@ from src.runtime_architecture_v2.discord_conversation import (
     ParticipantResolver,
     load_bot_identities,
 )
+from src.runtime_architecture_v2.discord_history import (
+    DiscordHistoryClient,
+    DiscordHistoryError,
+)
+
+
+def _message(message_id: str, *, attachments=None):
+    return {
+        "id": message_id,
+        "timestamp": "2026-07-13T00:00:00.000000+00:00",
+        "content": f"message {message_id}",
+        "author": {"id": "42", "username": "KBM", "bot": False},
+        "attachments": attachments or [],
+    }
+
+
+def _thread(thread_type: int = 11):
+    return {
+        "id": "200",
+        "type": thread_type,
+        "name": "idea",
+        "parent_id": "100",
+        "guild_id": "1",
+    }
+
+
+def test_fetch_conversation_paginates_deduplicates_and_sorts_oldest_first():
+    calls = []
+
+    def request(method, path, query):
+        calls.append((method, path, query))
+        if path == "/channels/200":
+            return _thread()
+        if "before" not in query:
+            return [_message(str(i)) for i in range(200, 100, -1)]
+        if query["before"] == "101":
+            return [_message(str(i)) for i in range(100, 0, -1)]
+        return []
+
+    result = DiscordHistoryClient(
+        token="secret", request_json=request
+    ).fetch_conversation("200")
+
+    assert len(result.messages) == 200
+    assert result.messages[0].message_id == "1"
+    assert result.messages[-1].message_id == "200"
+    assert calls[2][2] == {"limit": "100", "before": "101"}
+
+
+@pytest.mark.parametrize("thread_type", [10, 11, 12])
+def test_fetch_conversation_accepts_each_guild_thread_type(thread_type):
+    client = DiscordHistoryClient(
+        token="secret",
+        request_json=lambda _method, path, _query: _thread(thread_type)
+        if path == "/channels/200"
+        else [],
+    )
+
+    assert client.fetch_conversation("200").thread_id == "200"
+
+
+def test_fetch_conversation_rejects_non_thread_guild_channel():
+    client = DiscordHistoryClient(
+        token="secret",
+        request_json=lambda *_: {"id": "100", "type": 0, "name": "general"},
+    )
+
+    with pytest.raises(DiscordHistoryError, match="thread_required"):
+        client.fetch_conversation("100")
+
+
+def test_fetch_conversation_rejects_malformed_message_page():
+    client = DiscordHistoryClient(
+        token="secret",
+        request_json=lambda _method, path, _query: _thread()
+        if path == "/channels/200"
+        else {"message": "not a list"},
+    )
+
+    with pytest.raises(DiscordHistoryError, match="invalid_message_page"):
+        client.fetch_conversation("200")
+
+
+def test_fetch_conversation_preserves_empty_thread_metadata():
+    result = DiscordHistoryClient(
+        token="secret",
+        request_json=lambda _method, path, _query: _thread(12)
+        if path == "/channels/200"
+        else [],
+    ).fetch_conversation("200")
+
+    assert result == DiscordConversation(
+        guild_id="1",
+        parent_channel_id="100",
+        thread_id="200",
+        thread_name="idea",
+        visibility="private_thread",
+        messages=(),
+    )
+
+
+def test_fetch_conversation_preserves_attachment_metadata_and_urls():
+    attachment = {
+        "id": "attachment-1",
+        "filename": "brief.pdf",
+        "content_type": "application/pdf",
+        "size": 42,
+        "url": "https://cdn.discordapp.com/attachments/brief.pdf?signature=kept",
+    }
+    result = DiscordHistoryClient(
+        token="secret",
+        request_json=lambda _method, path, _query: _thread()
+        if path == "/channels/200"
+        else [_message("1", attachments=[attachment])],
+    ).fetch_conversation("200")
+
+    assert result.messages[0].attachments == (
+        DiscordAttachment(
+            attachment_id="attachment-1",
+            filename="brief.pdf",
+            content_type="application/pdf",
+            size=42,
+            url="https://cdn.discordapp.com/attachments/brief.pdf?signature=kept",
+        ),
+    )
+
+
+def test_fetch_conversation_stops_at_configured_message_cap():
+    calls = []
+
+    def request(_method, path, query):
+        calls.append((path, query))
+        if path == "/channels/200":
+            return _thread()
+        return [_message(str(i)) for i in range(10, 0, -1)]
+
+    result = DiscordHistoryClient(
+        token="secret", request_json=request, max_messages=3
+    ).fetch_conversation("200")
+
+    assert [message.message_id for message in result.messages] == ["8", "9", "10"]
+    assert calls == [
+        ("/channels/200", {}),
+        ("/channels/200/messages", {"limit": "100"}),
+    ]
+
+
+def test_transport_error_does_not_include_token(monkeypatch):
+    client = DiscordHistoryClient(token="secret-token")
+
+    def fail(*_args, **_kwargs):
+        raise OSError("secret-token")
+
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.discord_history.urllib.request.urlopen", fail
+    )
+
+    with pytest.raises(DiscordHistoryError) as error:
+        client.fetch_conversation("200")
+
+    assert "secret-token" not in str(error.value)
+
+
+def test_http_error_includes_only_sanitized_status(monkeypatch):
+    client = DiscordHistoryClient(token="secret-token")
+
+    def fail(request, *_args, **_kwargs):
+        raise urllib.error.HTTPError(
+            request.full_url,
+            403,
+            "secret-token",
+            {"Authorization": "secret-token"},
+            None,
+        )
+
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.discord_history.urllib.request.urlopen", fail
+    )
+
+    with pytest.raises(DiscordHistoryError) as error:
+        client.fetch_conversation("200")
+
+    assert str(error.value) == "discord_http_status_403"
 
 
 def test_participant_resolver_uses_discord_id_before_display_name(tmp_path):
