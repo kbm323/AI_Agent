@@ -67,6 +67,75 @@ def test_store_rejects_dot_and_hidden_meeting_run_ids(tmp_path: Path):
             store.meeting_run_dir(meeting_run_id)
 
 
+def test_find_by_discord_thread_id_returns_matching_meeting(tmp_path: Path):
+    store = MeetingRunStore(tmp_path)
+    run = _meeting_run("mr-1")
+
+    store.save_meeting_run(run)
+
+    assert store.find_by_discord_thread_id("thread-1") == run
+
+
+def test_find_by_discord_thread_id_returns_none_for_unknown_thread(tmp_path: Path):
+    assert MeetingRunStore(tmp_path).find_by_discord_thread_id("missing") is None
+
+
+def test_find_by_discord_thread_id_reads_metadata_link(tmp_path: Path):
+    store = MeetingRunStore(tmp_path)
+    run = MeetingRun(
+        meeting_run_id="mr_metadata",
+        trigger={},
+        metadata={"discord_thread_id": "metadata-thread"},
+    )
+    store.save_meeting_run(run)
+
+    assert store.find_by_discord_thread_id("metadata-thread") == run
+
+
+def test_find_by_discord_thread_id_prefers_metadata_link(tmp_path: Path):
+    store = MeetingRunStore(tmp_path)
+    run = MeetingRun(
+        meeting_run_id="mr_metadata_preferred",
+        trigger={"discord": {"thread_id": "trigger-thread"}},
+        metadata={"discord_thread_id": "metadata-thread"},
+    )
+    store.save_meeting_run(run)
+
+    assert store.find_by_discord_thread_id("metadata-thread") == run
+    assert store.find_by_discord_thread_id("trigger-thread") is None
+
+
+def test_find_by_discord_thread_id_chooses_highest_matching_run_id(
+    tmp_path: Path,
+):
+    store = MeetingRunStore(tmp_path)
+    older = _meeting_run("mr-1")
+    newer = _meeting_run("mr-2")
+    store.save_meeting_run(older)
+    store.save_meeting_run(newer)
+
+    assert store.find_by_discord_thread_id("thread-1") == newer
+
+
+def test_find_by_discord_thread_id_ignores_corrupt_unrelated_run(
+    tmp_path: Path,
+):
+    store = MeetingRunStore(tmp_path)
+    store.save_meeting_run(_meeting_run("mr-valid"))
+    corrupt_dir = tmp_path / "runtime" / "meeting_runs" / "mr-corrupt"
+    corrupt_dir.mkdir(parents=True)
+    (corrupt_dir / "meeting_run.json").write_text("{not json", encoding="utf-8")
+
+    assert store.find_by_discord_thread_id("thread-1") == _meeting_run("mr-valid")
+
+
+def test_find_by_discord_thread_id_rejects_unsafe_thread_id(tmp_path: Path):
+    store = MeetingRunStore(tmp_path)
+
+    with pytest.raises(StoreError, match="invalid discord_thread_id"):
+        store.find_by_discord_thread_id("../escape")
+
+
 def test_store_rejects_dot_checkpoint_ids(tmp_path: Path):
     store = MeetingRunStore(tmp_path)
     for checkpoint_id in (".", "..", ".hidden"):

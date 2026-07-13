@@ -82,6 +82,30 @@ class MeetingRunStore:
                 path=str(path),
             ) from exc
 
+    def find_by_discord_thread_id(self, thread_id: str) -> MeetingRun | None:
+        self._validate_id(thread_id, "discord_thread_id")
+        if not self.runtime_root.exists():
+            return None
+
+        matches: list[MeetingRun] = []
+        for path in sorted(self.runtime_root.glob("*/meeting_run.json")):
+            try:
+                run = MeetingRun.from_dict(self._read_json(path))
+                discord = dict(run.trigger.get("discord") or {})
+                linked = str(
+                    run.metadata.get("discord_thread_id")
+                    or discord.get("thread_id")
+                    or ""
+                )
+            except (StoreError, KeyError, TypeError, ValueError):
+                continue
+            if linked == thread_id:
+                matches.append(run)
+
+        if not matches:
+            return None
+        return sorted(matches, key=lambda run: run.meeting_run_id)[-1]
+
     def save_checkpoint(self, checkpoint: RecoveryCheckpoint) -> Path:
         self._validate_id(checkpoint.checkpoint_id, "checkpoint_id")
         run_dir = self._ensure_run_layout(checkpoint.meeting_run_id)
