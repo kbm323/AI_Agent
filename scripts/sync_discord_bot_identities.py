@@ -24,9 +24,26 @@ HttpGet = Callable[..., Mapping[str, str]]
 
 def _load_discord_bot_token(env_path: Path) -> str:
     for raw_line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-        key, separator, value = raw_line.partition("=")
+        line = raw_line.strip()
+        if line.startswith("export "):
+            line = line.removeprefix("export ").lstrip()
+        key, separator, value = line.partition("=")
         if separator and key.strip() == "DISCORD_BOT_TOKEN":
-            return value.strip()
+            value = value.strip()
+            if value[:1] in {"\"", "'"}:
+                quote = value[0]
+                closing_quote = value.find(quote, 1)
+                if closing_quote >= 0:
+                    return value[1:closing_quote]
+            comment_start = next(
+                (
+                    index
+                    for index, character in enumerate(value)
+                    if character == "#" and index > 0 and value[index - 1].isspace()
+                ),
+                len(value),
+            )
+            return value[:comment_start].rstrip()
     return ""
 
 
@@ -38,13 +55,19 @@ def _default_http_get(url: str, *, headers: Mapping[str, str]) -> Mapping[str, s
 
 def _atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=path.parent, delete=False
-    ) as temporary_file:
-        json.dump(payload, temporary_file, ensure_ascii=False, indent=2)
-        temporary_file.write("\n")
-        temporary_path = Path(temporary_file.name)
-    os.replace(temporary_path, path)
+    temporary_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, delete=False
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            json.dump(payload, temporary_file, ensure_ascii=False, indent=2)
+            temporary_file.write("\n")
+            temporary_file.flush()
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
 
 
 def sync_bot_identities(
