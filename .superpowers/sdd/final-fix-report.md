@@ -478,3 +478,124 @@ this report was appended.
   smoke, six-profile reload, native picker/tool checks, and live rollback smoke
   remain deployment gates. The executable rollback state machine is tested but
   no deployment was performed in this wave.
+
+---
+
+## Fourth Final-Review Fix Wave
+
+### Status
+
+`DONE_WITH_CONCERNS`
+
+All three blocking Important findings in the independent fourth rereview are
+fixed. The product/tests commit is
+`4400eda551540695485a09b2a5c2dce83f075a7e` (`fix: close discord save fourth
+rereview findings`). The report commit is the commit containing this section;
+its resolved hash is returned in the final status because a commit cannot
+contain its own hash. No Hermes Core file or standalone Discord adapter was
+added or modified.
+
+### Changed Files
+
+- `src/runtime_architecture_v2/discord_history.py`
+- `src/runtime_architecture_v2/knowledge.py`
+- `src/runtime_architecture_v2/save_command.py`
+- `tests/test_runtime_architecture_v2_conversation_summary.py`
+- `tests/test_runtime_architecture_v2_discord_history.py`
+- `tests/test_runtime_architecture_v2_obsidian_conversations.py`
+- `tests/test_runtime_architecture_v2_phase15_knowledge_loop.py`
+- `tests/test_runtime_architecture_v2_save_command.py`
+- `.superpowers/sdd/final-fix-report.md` (this report commit only)
+
+### Root Causes And Solutions
+
+| Finding | Root cause | Implemented solution |
+| --- | --- | --- |
+| Version-3 partial adoption restart | Loader cursor validation compared an active newer-interval cursor with the minimum across both active and inherited messages. A later cutoff also flattened an unfinished active adoption into a new generation, losing the state needed to bridge the middle interval. | Validate active and inherited intervals against their own cursors, with complete-generation cursors treated as historical. A later cutoff first resumes and durably finishes the persisted active generation under its stored cutoff, then adopts that complete generation into the requested cutoff. Same-cutoff, later-cutoff, chained restart, near-cap, and full-cap tests assert exact contiguous ranges with no middle gap. |
+| Quoted and credential-style secrets | The shared assignment regex required an unquoted value and omitted `credential`/`auth` keys. Escaped JSON newlines also made a following secret key look embedded in a word. | Expanded only the central sanitizer to cover quoted keys and values, JSON-style assignments, credential/authentication/authorization keys, and secret keys after escaped whitespace while preserving existing URL sanitization and non-secret fields. Exact host-LLM input, failure checkpoint, immutable raw snapshot, and canonical page tests cover the new forms. |
+| Cancellation while acquiring lifecycle lock | Cancelling `await asyncio.to_thread(lock.acquire)` stopped the coroutine but not the worker; the worker could later acquire local and interprocess ownership with no remaining release path. | Added an acquisition ownership handoff guarded by a thread mutex. Cancellation marks ownership abandoned before a late worker can hand it off; the worker then releases immediately. If acquisition wins the race, cancellation schedules release. Deterministic tests prove late-acquired release and successful same-source reuse; existing threaded and spawned-process serialization tests remain green. |
+
+### TDD Evidence
+
+- Initial blocker RED: `8 failed in 4.14s`. The failures were the exact quoted
+  sanitizer/LLM/checkpoint/raw/canonical leaks, both
+  `invalid_collection_checkpoint` restart paths, and both abandoned-lock
+  cancellation assertions.
+- First blocker GREEN: `8 passed in 0.47s` after the three minimal product
+  changes.
+- Directly affected module run then exposed two compatibility issues:
+  `151 passed, 3 failed in 42.67s`; one was escaped-JSON assignment handling,
+  one was the expected acquisition-wrapper assertion update, and one was a
+  Windows subprocess code-page failure. The two actionable cases plus the CLI
+  rerun with `PYTHONUTF8=1` passed `4 passed in 0.64s`.
+- Directly affected modules then passed `154 passed in 43.06s`.
+- Final review strengthened the later-cutoff test with a second failure after
+  finishing the inherited generation. It failed `1 failed in 0.58s` at the
+  inherited complete-cursor check, then passed `1 passed in 0.51s` after the
+  completion-aware validation fix.
+- Final blocker selection: `8 passed in 0.69s`.
+
+### Verification
+
+All final Python commands used `PYTHONUTF8=1` and the worktree `.venv`
+interpreter.
+
+Final updated aggregate, including all directly affected modules and
+operational guards:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_hermes_command_context.py tests\test_runtime_architecture_v2_discord_history.py tests\test_runtime_architecture_v2_conversation_summary.py tests\test_runtime_architecture_v2_obsidian_conversations.py tests\test_runtime_architecture_v2_save_command.py tests\test_runtime_architecture_v2_ai_agent_plugin.py tests\test_runtime_architecture_v2_store.py tests\test_runtime_architecture_v2_phase15_knowledge_loop.py tests\test_runtime_architecture_v2_phase25_command_surface.py tests\test_runtime_architecture_v2_save_skill.py tests\test_discord_save_operational_guards.py -q
+```
+
+Result: `222 passed in 38.60s`.
+
+Required regression selection:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_phase14_multi_bot.py tests\test_runtime_architecture_v2_phase21_discord_webhook.py tests\test_runtime_architecture_v2_phase30_meeting_e2e.py tests\test_runtime_architecture_v2_phase32_live_audit.py tests\test_runtime_architecture_v2_on_demand_exports.py tests\test_runtime_smoke_packet.py -q
+```
+
+Result: `99 passed, 3 failed in 10.25s`. The failures exactly match the
+untouched-baseline evidence already recorded in this report:
+
+- `test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messages`
+  returns `live_discord_publish_blocked`.
+- `test_phase33_live_projection_order_is_chair_led_even_when_ceo_is_fake`
+  returns `live_discord_publish_blocked`.
+- `test_gateway_provider_error_falls_back_to_deterministic_live_projection`
+  reports the missing `aicompanyceo` profile Discord token.
+
+Whole-wave Ruff and format:
+
+```powershell
+.\.venv\Scripts\ruff.exe check <the 8 changed Python files>
+.\.venv\Scripts\ruff.exe format --check <the 8 changed Python files>
+```
+
+Results: `All checks passed!`; `8 files already formatted`. No shell file was
+changed in this wave, so no shell syntax command applied.
+
+Secret and diff gates:
+
+```powershell
+& 'C:\Program Files\Git\bin\bash.exe' scripts/pre-commit-secret-scan.sh --staged
+& 'C:\Program Files\Git\bin\bash.exe' scripts/pre-commit-secret-scan.sh --range 'f2ec8b294c5158ef6bf005a0dc42b3539fc6f3fd..4400eda551540695485a09b2a5c2dce83f075a7e'
+git diff --check f2ec8b294c5158ef6bf005a0dc42b3539fc6f3fd..4400eda551540695485a09b2a5c2dce83f075a7e
+git diff --check c7d52c7fc6c3bb19ef048e16acd659a717dd6218..4400eda551540695485a09b2a5c2dce83f075a7e
+```
+
+Results: staged scan passed with `8 file(s) inspected`; the non-vacuous
+committed-range scan passed with `8 file(s) inspected`; both diff checks passed
+with no output. The worktree was clean at the product commit before this report
+section was appended.
+
+### Remaining Concerns
+
+- The three required-regression failures remain baseline-identical profile
+  token/fixture issues and require the documented Ubuntu profile environment.
+- Pinned Hermes still has no reliable Discord DM session-start message
+  boundary, so production DM `/save` intentionally remains fail closed with no
+  collection, summarization, or persistence side effect.
+- Ubuntu static checks, real seven-profile install/hash proof, assistant-first
+  smoke, six-profile reload, native picker/tool checks, and live rollback smoke
+  remain deployment gates. No deployment was performed in this wave.
