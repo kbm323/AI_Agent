@@ -21,12 +21,18 @@ from .schemas import MeetingRun
 from .store import MeetingRunStore
 
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+_SECRET_ASSIGNMENT_KEY = (
+    r"api[_-]?key|secret|password|passwd|token|credentials?|auth|"
+    r"authentication|authorization"
+)
 _TOKEN_PATTERNS = (
-    re.compile(
-        r"(?i)(api[_-]?key|secret|password|passwd|token)\s*[:=]\s*"
-        r"[^\s\\`'\"]+"
-    ),
     re.compile(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]{6,}"),
+    re.compile(
+        rf"(?ix)(?:(?<![A-Za-z0-9_-])|(?<=\\n)|(?<=\\r)|(?<=\\t))"
+        rf"(?:[\"'](?:{_SECRET_ASSIGNMENT_KEY})[\"']|"
+        rf"(?:{_SECRET_ASSIGNMENT_KEY}))\s*[:=]\s*"
+        r"""(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s\\`'",}\]]+)"""
+    ),
 )
 _MENTION_RE = re.compile(r"@(everyone|here)\b", re.IGNORECASE)
 _WORD_RE = re.compile(r"[A-Za-z0-9가-힣_:-]+")

@@ -141,6 +141,32 @@ class _ConcurrentObsidianStore:
         )
 
 
+class _BoundedLifecycleLock:
+    def __init__(self, shared_lock: threading.Lock) -> None:
+        self._shared_lock = shared_lock
+        self._state_lock = threading.Lock()
+        self._acquired = False
+        self.acquire_started = threading.Event()
+        self.acquired = threading.Event()
+        self.released = threading.Event()
+
+    def acquire(self) -> None:
+        self.acquire_started.set()
+        if not self._shared_lock.acquire(timeout=0.75):
+            raise TimeoutError("bounded test lifecycle lock timeout")
+        with self._state_lock:
+            self._acquired = True
+        self.acquired.set()
+
+    def release(self) -> None:
+        with self._state_lock:
+            if not self._acquired:
+                return
+            self._acquired = False
+        self._shared_lock.release()
+        self.released.set()
+
+
 def _concurrent_save_worker(
     *,
     runtime_root,
@@ -423,14 +449,16 @@ async def test_sync_history_lookup_and_save_run_through_to_thread(monkeypatch) -
     )
 
     lifecycle_lock = history.collection_lifecycle_lock.return_value
-    assert [call.args[0] for call in to_thread.await_args_list] == [
-        lifecycle_lock.acquire,
+    threaded_calls = [call.args[0] for call in to_thread.await_args_list]
+    assert threaded_calls[0].__name__ == "acquire_or_release"
+    assert threaded_calls[1:] == [
         history.fetch_conversation,
         meetings.find_by_discord_thread_id,
         obsidian.save,
         history.discard_collection_checkpoint,
         lifecycle_lock.release,
     ]
+    lifecycle_lock.acquire.assert_called_once_with()
 
 
 @pytest.mark.asyncio
@@ -933,6 +961,119 @@ async def test_explicit_private_dm_boundary_persists_through_real_store(tmp_path
     assert 'discord_source_kind: "dm"' in written
     assert 'discord_source_id: "900"' in written
     assert 'visibility: "private"' in written
+
+
+def _cancellation_test_dependencies():
+    history, meetings, resolver, summarizer, obsidian = _dependencies(
+        _save_conversation()
+    )
+    shared_lock = threading.Lock()
+    generated_locks = []
+
+    def create_lock(_source_id, **_kwargs):
+        lifecycle_lock = _BoundedLifecycleLock(shared_lock)
+        generated_locks.append(lifecycle_lock)
+        return lifecycle_lock
+
+    history.collection_lifecycle_lock.side_effect = create_lock
+    owner = _BoundedLifecycleLock(shared_lock)
+    owner.acquire()
+    return (
+        history,
+        meetings,
+        resolver,
+        summarizer,
+        obsidian,
+        owner,
+        generated_locks,
+    )
+
+
+async def _cancel_waiting_save(
+    history,
+    meetings,
+    resolver,
+    summarizer,
+    obsidian,
+    generated_locks,
+):
+    waiting = asyncio.create_task(
+        run_save_command(
+            context=_thread_context(),
+            history_client=history,
+            meeting_store=meetings,
+            participant_resolver=resolver,
+            summarizer=summarizer,
+            obsidian_store=obsidian,
+        )
+    )
+    while not generated_locks:
+        await asyncio.sleep(0)
+    lifecycle_lock = generated_locks[0]
+    assert await asyncio.to_thread(lifecycle_lock.acquire_started.wait, 2)
+    waiting.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+    return lifecycle_lock
+
+
+@pytest.mark.asyncio
+async def test_cancelling_waiting_save_releases_late_acquired_lifecycle_lock():
+    dependencies = _cancellation_test_dependencies()
+    history, meetings, resolver, summarizer, obsidian, owner, generated_locks = (
+        dependencies
+    )
+    try:
+        cancelled_lock = await _cancel_waiting_save(
+            history,
+            meetings,
+            resolver,
+            summarizer,
+            obsidian,
+            generated_locks,
+        )
+        owner.release()
+
+        assert await asyncio.to_thread(cancelled_lock.acquired.wait, 2)
+        assert await asyncio.to_thread(cancelled_lock.released.wait, 2)
+    finally:
+        owner.release()
+        for lifecycle_lock in generated_locks:
+            lifecycle_lock.release()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_waiter_does_not_block_later_save_for_same_source():
+    dependencies = _cancellation_test_dependencies()
+    history, meetings, resolver, summarizer, obsidian, owner, generated_locks = (
+        dependencies
+    )
+    try:
+        cancelled_lock = await _cancel_waiting_save(
+            history,
+            meetings,
+            resolver,
+            summarizer,
+            obsidian,
+            generated_locks,
+        )
+        owner.release()
+        assert await asyncio.to_thread(cancelled_lock.acquired.wait, 2)
+
+        reused = await run_save_command(
+            context=_thread_context(),
+            history_client=history,
+            meeting_store=meetings,
+            participant_resolver=resolver,
+            summarizer=summarizer,
+            obsidian_store=obsidian,
+        )
+
+        assert reused.ok is True
+    finally:
+        owner.release()
+        for lifecycle_lock in generated_locks:
+            lifecycle_lock.release()
 
 
 def test_same_source_threaded_lifecycle_preserves_failed_later_generation(tmp_path):

@@ -124,6 +124,27 @@ async def test_hermes_summarizer_removes_url_userinfo_from_exact_llm_input():
 
 
 @pytest.mark.asyncio
+async def test_hermes_summarizer_redacts_quoted_assignments_from_exact_llm_input():
+    llm = FakeLlm(parsed=_parsed_summary())
+    transcript = (
+        'Keep {"password":"LLM_PASSWORD","name":"Oracle"} '
+        'credential="LLM_CREDENTIAL" auth: "LLM AUTH"'
+    )
+
+    await HermesConversationSummarizer(llm).summarize(transcript)
+
+    assert llm.calls[0]["input"] == [
+        {
+            "type": "text",
+            "text": (
+                'Keep {[REDACTED_SECRET],"name":"Oracle"} '
+                "[REDACTED_SECRET] [REDACTED_SECRET]"
+            ),
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_hermes_summarizer_sanitizes_every_returned_string():
     llm = FakeLlm(
         parsed={

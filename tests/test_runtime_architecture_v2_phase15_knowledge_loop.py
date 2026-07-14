@@ -46,6 +46,20 @@ def test_public_sanitizer_redacts_secret_and_everyone():
     )
 
 
+def test_public_sanitizer_redacts_quoted_and_credential_assignments():
+    text = (
+        'Keep {"password":"hunter2","token":"abcdefgh","name":"Oracle"} '
+        "password: \"two words\" credential='cred-value' auth=auth-value "
+        "https://alice:pass@example.test/path?token=url-secret&view=full"
+    )
+
+    assert sanitize_knowledge_text(text) == (
+        'Keep {[REDACTED_SECRET],[REDACTED_SECRET],"name":"Oracle"} '
+        "[REDACTED_SECRET] [REDACTED_SECRET] [REDACTED_SECRET] "
+        "https://example.test/path?token=[REDACTED_SECRET]&view=full"
+    )
+
+
 def test_public_sanitizer_removes_plain_encoded_and_nested_url_userinfo():
     text = (
         "plain https://alice:p4ssw0rd@example.test/private "

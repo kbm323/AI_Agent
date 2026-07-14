@@ -353,6 +353,43 @@ def test_secret_and_uncontrolled_mentions_never_reach_any_written_value(tmp_path
     assert "[REDACTED_SECRET]" in combined
 
 
+def test_quoted_and_credential_assignments_are_redacted_in_raw_and_canonical(
+    tmp_path,
+):
+    raw_secret = 'Keep {"password":"RAW_PASSWORD","name":"Oracle"} auth: "RAW AUTH"'
+    canonical_secret = (
+        'Canonical {"token":"CANONICAL_TOKEN","topic":"launch"} '
+        'credential="CANONICAL_CREDENTIAL"'
+    )
+
+    result = ObsidianConversationStore(
+        vault_root=tmp_path / "vault", runtime_root=tmp_path
+    ).save(
+        conversation=_conversation(content=raw_secret),
+        participant_resolver=ParticipantResolver({}),
+        summary=replace(_summary(), summary=canonical_secret),
+    )
+
+    raw = (tmp_path / "vault" / result.snapshot_path).read_text(encoding="utf-8")
+    canonical = (tmp_path / "vault" / result.canonical_path).read_text(encoding="utf-8")
+    assert (
+        "- 2026-07-13T01:05:00+00:00 Content Lead: Keep "
+        '\\{[REDACTED_SECRET],"name":"Oracle"\\} [REDACTED_SECRET] '
+        "(message ID: `2`)"
+    ) in raw
+    assert (
+        'Canonical \\{[REDACTED_SECRET],"topic":"launch"\\} [REDACTED_SECRET]'
+    ) in canonical
+    for secret in (
+        "RAW_PASSWORD",
+        "RAW AUTH",
+        "CANONICAL_TOKEN",
+        "CANONICAL_CREDENTIAL",
+    ):
+        assert secret not in raw
+        assert secret not in canonical
+
+
 def test_participants_resolve_by_id_and_keep_discord_metadata(tmp_path):
     resolver = ParticipantResolver(
         {"400": BotIdentity(role="Content Lead", hermes_profile="content")}

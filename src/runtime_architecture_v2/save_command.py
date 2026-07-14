@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass
 
 from .conversation_summary import HermesConversationSummarizer
 from .discord_conversation import DiscordConversation, ParticipantResolver
-from .discord_history import DiscordHistoryClient, DiscordHistoryError
+from .discord_history import (
+    DiscordCollectionLifecycleLock,
+    DiscordHistoryClient,
+    DiscordHistoryError,
+)
 from .hermes_command_context import HermesCommandContext
 from .knowledge import sanitize_knowledge_text
 from .obsidian_conversations import ObsidianConversationStore
@@ -108,7 +113,7 @@ async def run_save_command(
         ),
     )
     try:
-        await asyncio.to_thread(lifecycle_lock.acquire)
+        await _acquire_lifecycle_lock(lifecycle_lock)
     except (OSError, RuntimeError, TimeoutError):
         return SaveCommandResult(ok=False, error="history_unavailable")
     try:
@@ -124,6 +129,43 @@ async def run_save_command(
         )
     finally:
         await asyncio.to_thread(lifecycle_lock.release)
+
+
+async def _acquire_lifecycle_lock(
+    lifecycle_lock: DiscordCollectionLifecycleLock,
+) -> None:
+    state_lock = threading.Lock()
+    cancelled = False
+    acquired = False
+
+    def acquire_or_release() -> None:
+        nonlocal acquired
+        lifecycle_lock.acquire()
+        with state_lock:
+            release_after_acquire = cancelled
+            acquired = not release_after_acquire
+        if release_after_acquire:
+            lifecycle_lock.release()
+
+    acquisition = asyncio.create_task(asyncio.to_thread(acquire_or_release))
+    acquisition.add_done_callback(_consume_background_task_exception)
+    try:
+        await asyncio.shield(acquisition)
+    except asyncio.CancelledError:
+        with state_lock:
+            cancelled = True
+            release_acquired = acquired
+            acquired = False
+        if release_acquired:
+            release = asyncio.create_task(asyncio.to_thread(lifecycle_lock.release))
+            release.add_done_callback(_consume_background_task_exception)
+            await asyncio.shield(release)
+        raise
+
+
+def _consume_background_task_exception(task: asyncio.Task[object]) -> None:
+    if not task.cancelled():
+        task.exception()
 
 
 async def _run_save_lifecycle(

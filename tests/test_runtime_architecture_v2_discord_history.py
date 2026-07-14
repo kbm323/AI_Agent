@@ -520,6 +520,40 @@ def test_later_cutoff_adopts_paginated_progress_without_duplicates_or_secrets(
     assert len(list(checkpoint_root.glob("*.json"))) == 1
 
 
+def test_failed_page_checkpoint_redacts_quoted_and_credential_assignments(tmp_path):
+    checkpoint_root = tmp_path / "collection"
+    first_page = [_message(str(i)) for i in range(249, 149, -1)]
+    first_page[0]["content"] = (
+        'Keep {"password":"CHECKPOINT_PASSWORD","name":"Oracle"} '
+        'credential="CHECKPOINT_CREDENTIAL" auth=CHECKPOINT_AUTH'
+    )
+
+    def request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        if query["before"] == "250":
+            return first_page
+        raise DiscordHistoryError("discord_http_status_503")
+
+    with pytest.raises(DiscordHistoryError, match="discord_http_status_503"):
+        _fetch(
+            DiscordHistoryClient(
+                token="secret",
+                request_json=request,
+                checkpoint_root=checkpoint_root,
+                max_retries=0,
+            ),
+            cutoff_message_id="250",
+        )
+
+    checkpoint = json.loads(
+        next(checkpoint_root.glob("*.json")).read_text(encoding="utf-8")
+    )
+    assert checkpoint["messages"][-1]["content"] == (
+        'Keep {[REDACTED_SECRET],"name":"Oracle"} [REDACTED_SECRET] [REDACTED_SECRET]'
+    )
+
+
 def test_later_cutoff_migrates_first_wave_cutoff_named_checkpoint(tmp_path):
     checkpoint_root = tmp_path / "collection"
     checkpoint_root.mkdir()
@@ -654,6 +688,165 @@ def test_full_checkpoint_is_discarded_after_newer_interval_reaches_cap(tmp_path)
     assert queries[-1]["before"] == "10101"
     ids = [int(message.message_id) for message in result.messages]
     assert ids == list(range(10001, 20001))
+
+
+def test_same_cutoff_resumes_partial_near_cap_adoption_without_middle_gap(tmp_path):
+    checkpoint_root = tmp_path / "collection"
+    checkpoint_root.mkdir()
+    (checkpoint_root / "200__start.json").write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "source_id": "200",
+                "cutoff_message_id": "1000",
+                "after_message_id": None,
+                "before": "50",
+                "complete": True,
+                "messages": [_message(str(i)) for i in range(50, 1000)],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def failing_request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        if query["before"] == "1200":
+            return [_message(str(i)) for i in range(1199, 1099, -1)]
+        raise DiscordHistoryError("discord_http_status_503")
+
+    with pytest.raises(DiscordHistoryError, match="discord_http_status_503"):
+        _fetch(
+            DiscordHistoryClient(
+                token="secret",
+                request_json=failing_request,
+                checkpoint_root=checkpoint_root,
+                max_messages=1000,
+                max_retries=0,
+            ),
+            cutoff_message_id="1200",
+        )
+
+    checkpoint = json.loads(
+        (checkpoint_root / "200__start.json").read_text(encoding="utf-8")
+    )
+    assert checkpoint["version"] == 3
+    assert checkpoint["before"] == "1100"
+    assert checkpoint["adopted_cutoff_message_id"] == "1000"
+
+    resumed_queries = []
+
+    def resumed_request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        resumed_queries.append(query["before"])
+        if query["before"] == "1100":
+            return [_message(str(i)) for i in range(1099, 999, -1)]
+        raise AssertionError(f"unexpected query: {query}")
+
+    result = _fetch(
+        DiscordHistoryClient(
+            token="secret",
+            request_json=resumed_request,
+            checkpoint_root=checkpoint_root,
+            max_messages=1000,
+        ),
+        cutoff_message_id="1200",
+    )
+
+    assert resumed_queries == ["1100"]
+    assert [int(message.message_id) for message in result.messages] == list(
+        range(200, 1200)
+    )
+
+
+def test_later_cutoff_finishes_partial_full_cap_adoption_without_middle_gap(tmp_path):
+    checkpoint_root = tmp_path / "collection"
+    checkpoint_root.mkdir()
+    (checkpoint_root / "200__start.json").write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "source_id": "200",
+                "cutoff_message_id": "1001",
+                "after_message_id": None,
+                "before": "1",
+                "complete": True,
+                "messages": [_message(str(i)) for i in range(1, 1001)],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def failing_request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        if query["before"] == "1201":
+            return [_message(str(i)) for i in range(1200, 1100, -1)]
+        raise DiscordHistoryError("discord_http_status_503")
+
+    with pytest.raises(DiscordHistoryError, match="discord_http_status_503"):
+        _fetch(
+            DiscordHistoryClient(
+                token="secret",
+                request_json=failing_request,
+                checkpoint_root=checkpoint_root,
+                max_messages=1000,
+                max_retries=0,
+            ),
+            cutoff_message_id="1201",
+        )
+
+    later_queries = []
+
+    def later_request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        later_queries.append(query["before"])
+        if query["before"] == "1101":
+            return [_message(str(i)) for i in range(1100, 1000, -1)]
+        if query["before"] == "1401":
+            return [_message(str(i)) for i in range(1400, 1300, -1)]
+        raise DiscordHistoryError("discord_http_status_503")
+
+    with pytest.raises(DiscordHistoryError, match="discord_http_status_503"):
+        _fetch(
+            DiscordHistoryClient(
+                token="secret",
+                request_json=later_request,
+                checkpoint_root=checkpoint_root,
+                max_messages=1000,
+                max_retries=0,
+            ),
+            cutoff_message_id="1401",
+        )
+
+    assert later_queries == ["1101", "1401", "1301"]
+
+    restarted_queries = []
+
+    def restarted_request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        restarted_queries.append(query["before"])
+        if query["before"] == "1301":
+            return [_message(str(i)) for i in range(1300, 1200, -1)]
+        raise AssertionError(f"unexpected query: {query}")
+
+    result = _fetch(
+        DiscordHistoryClient(
+            token="secret",
+            request_json=restarted_request,
+            checkpoint_root=checkpoint_root,
+            max_messages=1000,
+        ),
+        cutoff_message_id="1401",
+    )
+
+    assert restarted_queries == ["1301"]
+    assert [int(message.message_id) for message in result.messages] == list(
+        range(401, 1401)
+    )
 
 
 def test_participant_resolver_uses_discord_id_before_display_name(tmp_path):

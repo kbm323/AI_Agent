@@ -240,127 +240,139 @@ class DiscordHistoryClient:
             cutoff_message_id,
             after_message_id=after_message_id,
         )
-        messages_by_id = {
-            message.message_id: message for message in checkpoint["messages"]
-        }
-        before = checkpoint["before"]
-        complete = checkpoint["complete"]
-        adopted_cutoff = checkpoint["adopted_cutoff"]
-        adopted_before = checkpoint["adopted_before"]
-        adopted_complete = checkpoint["adopted_complete"]
+        while True:
+            collection_cutoff = checkpoint["collection_cutoff"]
+            messages_by_id = {
+                message.message_id: message for message in checkpoint["messages"]
+            }
+            before = checkpoint["before"]
+            complete = checkpoint["complete"]
+            adopted_cutoff = checkpoint["adopted_cutoff"]
+            adopted_before = checkpoint["adopted_before"]
+            adopted_complete = checkpoint["adopted_complete"]
 
-        while not complete and (
-            len(messages_by_id) < self._max_messages or adopted_cutoff is not None
-        ):
-            query = {"limit": "100", "before": before}
-            page = self._request_with_retry(
-                "GET",
-                f"/channels/{source_id}/messages",
-                query,
-            )
-            if not isinstance(page, list):
-                raise DiscordHistoryError("invalid_message_page")
-            if not page:
-                if adopted_cutoff is not None:
-                    complete = (
-                        adopted_complete or len(messages_by_id) == self._max_messages
+            while not complete and (
+                len(messages_by_id) < self._max_messages or adopted_cutoff is not None
+            ):
+                query = {"limit": "100", "before": before}
+                page = self._request_with_retry(
+                    "GET",
+                    f"/channels/{source_id}/messages",
+                    query,
+                )
+                if not isinstance(page, list):
+                    raise DiscordHistoryError("invalid_message_page")
+                if not page:
+                    if adopted_cutoff is not None:
+                        complete = (
+                            adopted_complete
+                            or len(messages_by_id) == self._max_messages
+                        )
+                        if not complete:
+                            before = adopted_before
+                        adopted_cutoff = None
+                        adopted_before = ""
+                        adopted_complete = False
+                        if not complete:
+                            continue
+                    else:
+                        complete = True
+                    self._write_collection_checkpoint(
+                        source_id,
+                        collection_cutoff,
+                        after_message_id=after_message_id,
+                        before=before,
+                        complete=True,
+                        messages=messages_by_id.values(),
+                        adopted_cutoff=None,
+                        adopted_before="",
+                        adopted_complete=False,
                     )
-                    if not complete:
+                    break
+
+                page_ids: list[str] = []
+                crossed_after_boundary = False
+                for raw_message in page:
+                    message = self._to_message(raw_message)
+                    page_ids.append(message.message_id)
+                    if int(message.message_id) >= int(collection_cutoff):
+                        continue
+                    if after_message_id is not None and int(message.message_id) <= int(
+                        after_message_id
+                    ):
+                        crossed_after_boundary = True
+                        continue
+                    messages_by_id.setdefault(message.message_id, message)
+                    if len(messages_by_id) > self._max_messages:
+                        oldest_id = min(messages_by_id, key=int)
+                        del messages_by_id[oldest_id]
+
+                if not page_ids:
+                    raise DiscordHistoryError("invalid_message_page")
+                next_before = min(page_ids, key=int)
+                if int(next_before) >= int(before):
+                    raise DiscordHistoryError("invalid_pagination_cursor")
+                newer_count = (
+                    sum(
+                        int(message_id) >= int(adopted_cutoff)
+                        for message_id in messages_by_id
+                    )
+                    if adopted_cutoff is not None
+                    else 0
+                )
+                reached_adopted_interval = adopted_cutoff is not None and (
+                    len(page) < 100 or int(next_before) <= int(adopted_cutoff)
+                )
+                if adopted_cutoff is not None and newer_count >= self._max_messages:
+                    complete = True
+                    before = next_before
+                    adopted_cutoff = None
+                    adopted_before = ""
+                    adopted_complete = False
+                elif reached_adopted_interval:
+                    if adopted_complete or len(messages_by_id) == self._max_messages:
+                        complete = True
+                        before = next_before
+                    else:
                         before = adopted_before
                     adopted_cutoff = None
                     adopted_before = ""
                     adopted_complete = False
-                    if not complete:
-                        continue
                 else:
-                    complete = True
+                    before = next_before
+                    complete = (
+                        (
+                            len(page) < 100
+                            or len(messages_by_id) == self._max_messages
+                            or crossed_after_boundary
+                        )
+                        if adopted_cutoff is None
+                        else False
+                    )
                 self._write_collection_checkpoint(
                     source_id,
-                    cutoff_message_id,
+                    collection_cutoff,
                     after_message_id=after_message_id,
                     before=before,
-                    complete=True,
+                    complete=complete,
                     messages=messages_by_id.values(),
-                    adopted_cutoff=None,
-                    adopted_before="",
-                    adopted_complete=False,
+                    adopted_cutoff=adopted_cutoff,
+                    adopted_before=adopted_before,
+                    adopted_complete=adopted_complete,
                 )
-                break
 
-            page_ids: list[str] = []
-            crossed_after_boundary = False
-            for raw_message in page:
-                message = self._to_message(raw_message)
-                page_ids.append(message.message_id)
-                if int(message.message_id) >= int(cutoff_message_id):
-                    continue
-                if after_message_id is not None and int(message.message_id) <= int(
-                    after_message_id
-                ):
-                    crossed_after_boundary = True
-                    continue
-                messages_by_id.setdefault(message.message_id, message)
-                if len(messages_by_id) > self._max_messages:
-                    oldest_id = min(messages_by_id, key=int)
-                    del messages_by_id[oldest_id]
-
-            if not page_ids:
-                raise DiscordHistoryError("invalid_message_page")
-            next_before = min(page_ids, key=int)
-            if int(next_before) >= int(before):
-                raise DiscordHistoryError("invalid_pagination_cursor")
-            newer_count = (
-                sum(
-                    int(message_id) >= int(adopted_cutoff)
-                    for message_id in messages_by_id
-                )
-                if adopted_cutoff is not None
-                else 0
-            )
-            reached_adopted_interval = adopted_cutoff is not None and (
-                len(page) < 100 or int(next_before) <= int(adopted_cutoff)
-            )
-            if adopted_cutoff is not None and newer_count >= self._max_messages:
-                complete = True
-                before = next_before
-                adopted_cutoff = None
-                adopted_before = ""
-                adopted_complete = False
-            elif reached_adopted_interval:
-                if adopted_complete or len(messages_by_id) == self._max_messages:
-                    complete = True
-                    before = next_before
-                else:
-                    before = adopted_before
-                adopted_cutoff = None
-                adopted_before = ""
-                adopted_complete = False
-            else:
-                before = next_before
-                complete = (
-                    (
-                        len(page) < 100
-                        or len(messages_by_id) == self._max_messages
-                        or crossed_after_boundary
+            if collection_cutoff == cutoff_message_id:
+                return tuple(
+                    sorted(
+                        messages_by_id.values(),
+                        key=lambda message: int(message.message_id),
                     )
-                    if adopted_cutoff is None
-                    else False
                 )
-            self._write_collection_checkpoint(
+            checkpoint = self._load_collection_checkpoint(
                 source_id,
                 cutoff_message_id,
                 after_message_id=after_message_id,
-                before=before,
-                complete=complete,
-                messages=messages_by_id.values(),
-                adopted_cutoff=adopted_cutoff,
-                adopted_before=adopted_before,
-                adopted_complete=adopted_complete,
             )
-
-        return tuple(
-            sorted(messages_by_id.values(), key=lambda message: int(message.message_id))
-        )
 
     def _request_with_retry(
         self,
@@ -468,6 +480,7 @@ class DiscordHistoryClient:
         after_message_id: str | None,
     ) -> dict[str, Any]:
         empty = {
+            "collection_cutoff": cutoff_message_id,
             "before": cutoff_message_id,
             "complete": False,
             "messages": (),
@@ -576,8 +589,38 @@ class DiscordHistoryClient:
                 for message_id in message_ids
             ):
                 raise ValueError
-            if messages and int(payload["before"]) > min(map(int, message_ids)):
-                raise ValueError
+            if persisted_adopted_cutoff is None:
+                if (
+                    messages
+                    and not payload["complete"]
+                    and int(payload["before"]) > min(map(int, message_ids))
+                ):
+                    raise ValueError
+            else:
+                active_ids = [
+                    int(message_id)
+                    for message_id in message_ids
+                    if int(message_id) >= int(persisted_adopted_cutoff)
+                ]
+                inherited_ids = [
+                    int(message_id)
+                    for message_id in message_ids
+                    if int(message_id) < int(persisted_adopted_cutoff)
+                ]
+                if not (
+                    int(persisted_adopted_cutoff)
+                    < int(payload["before"])
+                    < int(stored_cutoff)
+                ):
+                    raise ValueError
+                if active_ids and int(payload["before"]) > min(active_ids):
+                    raise ValueError
+                if (
+                    inherited_ids
+                    and not persisted_adopted_complete
+                    and int(persisted_adopted_before) > min(inherited_ids)
+                ):
+                    raise ValueError
             if path != target_path:
                 migrated_payload = dict(payload)
                 migrated_payload["version"] = _CHECKPOINT_VERSION
@@ -591,29 +634,38 @@ class DiscordHistoryClient:
                 _atomic_write_json(target_path, migrated_payload)
                 for legacy_path in legacy_paths:
                     legacy_path.unlink(missing_ok=True)
+            resume_active_adoption = (
+                stored_cutoff != cutoff_message_id
+                and persisted_adopted_cutoff is not None
+            )
             return {
+                "collection_cutoff": (
+                    stored_cutoff if resume_active_adoption else cutoff_message_id
+                ),
                 "before": (
                     payload["before"]
-                    if stored_cutoff == cutoff_message_id
+                    if stored_cutoff == cutoff_message_id or resume_active_adoption
                     else cutoff_message_id
                 ),
                 "complete": (
-                    payload["complete"] if stored_cutoff == cutoff_message_id else False
+                    payload["complete"]
+                    if stored_cutoff == cutoff_message_id or resume_active_adoption
+                    else False
                 ),
                 "messages": messages,
                 "adopted_cutoff": (
                     persisted_adopted_cutoff
-                    if stored_cutoff == cutoff_message_id
+                    if stored_cutoff == cutoff_message_id or resume_active_adoption
                     else stored_cutoff
                 ),
                 "adopted_before": (
                     persisted_adopted_before
-                    if stored_cutoff == cutoff_message_id
+                    if stored_cutoff == cutoff_message_id or resume_active_adoption
                     else payload["before"]
                 ),
                 "adopted_complete": (
                     persisted_adopted_complete
-                    if stored_cutoff == cutoff_message_id
+                    if stored_cutoff == cutoff_message_id or resume_active_adoption
                     else payload["complete"]
                 ),
             }
