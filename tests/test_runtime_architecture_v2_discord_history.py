@@ -640,6 +640,41 @@ def test_failed_page_checkpoint_redacts_namespaced_and_flow_yaml_secrets(tmp_pat
     )
 
 
+def test_failed_page_checkpoint_redacts_complete_camel_case_equals_value(tmp_path):
+    checkpoint_root = tmp_path / "collection"
+    first_page = [_message(str(i)) for i in range(249, 149, -1)]
+    first_page[0]["content"] = (
+        "accessToken=checkpoint access token mode=safe "
+        "authorization_url=https://accounts.example.test/oauth2/auth?mode=safe"
+    )
+
+    def request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        if query["before"] == "250":
+            return first_page
+        raise DiscordHistoryError("discord_http_status_503")
+
+    with pytest.raises(DiscordHistoryError, match="discord_http_status_503"):
+        _fetch(
+            DiscordHistoryClient(
+                token="secret",
+                request_json=request,
+                checkpoint_root=checkpoint_root,
+                max_retries=0,
+            ),
+            cutoff_message_id="250",
+        )
+
+    checkpoint = json.loads(
+        next(checkpoint_root.glob("*.json")).read_text(encoding="utf-8")
+    )
+    assert checkpoint["messages"][-1]["content"] == (
+        "[REDACTED_SECRET] mode=safe "
+        "authorization_url=https://accounts.example.test/oauth2/auth?mode=safe"
+    )
+
+
 def test_later_cutoff_migrates_first_wave_cutoff_named_checkpoint(tmp_path):
     checkpoint_root = tmp_path / "collection"
     checkpoint_root.mkdir()

@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from src.runtime_architecture_v2.knowledge import (
     KnowledgeEntry,
     retrieve_knowledge_context,
@@ -119,6 +121,57 @@ def test_public_sanitizer_redacts_namespaced_quoted_and_flow_yaml_secrets():
         "  [REDACTED_SECRET]\n"
         "settings: {[REDACTED_SECRET], region: ap-northeast-2}\n"
         "note: keep adjacent context"
+    )
+
+
+@pytest.mark.parametrize(
+    ("secret_assignment", "expected_secret", "safe_assignment"),
+    [
+        (
+            "clientSecret: camel client secret",
+            "[REDACTED_SECRET]",
+            "token_count: 1800",
+        ),
+        (
+            "accessToken=camel access token retries=3",
+            "[REDACTED_SECRET] retries=3",
+            "authorization_url: https://accounts.example.test/oauth2/auth?mode=safe",
+        ),
+        (
+            "secretAccessKey: camel aws secret",
+            "[REDACTED_SECRET]",
+            "auth_method: oauth2",
+        ),
+        (
+            "private_key: -----BEGIN PRIVATE KEY----- fake material",
+            "[REDACTED_SECRET]",
+            "private_key_id: fake-key-id",
+        ),
+        (
+            "privateKey=private key material project_id=safe-project",
+            "[REDACTED_SECRET] project_id=safe-project",
+            "password_policy: rotate every 90 days",
+        ),
+        (
+            "GOOGLE_APPLICATION_CREDENTIALS=service account file mode=safe",
+            "[REDACTED_SECRET] mode=safe",
+            "client_x509_cert_url: https://certs.example.test/fake.pem",
+        ),
+        (
+            "apiKey=multi word api key timeout=30",
+            "[REDACTED_SECRET] timeout=30",
+            "access_token_url: https://oauth.example.test/token",
+        ),
+    ],
+)
+def test_public_sanitizer_pairs_secret_keys_with_safe_metadata(
+    secret_assignment,
+    expected_secret,
+    safe_assignment,
+):
+    assert (
+        sanitize_knowledge_text(f"{secret_assignment}\n{safe_assignment}")
+        == f"{expected_secret}\n{safe_assignment}"
     )
 
 

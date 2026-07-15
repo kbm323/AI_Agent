@@ -44,6 +44,22 @@ def _parsed_summary() -> dict[str, object]:
     }
 
 
+_FAKE_PRIVATE_KEY = (
+    "-----BEGIN PRIVATE KEY-----\\n"
+    "RkFLRSBQUklWQVRFIEtFWSBNQVRFUklBTA==\\n"
+    "-----END PRIVATE KEY-----\\n"
+)
+_FAKE_GOOGLE_SERVICE_ACCOUNT_JSON = (
+    '{"type":"service_account","project_id":"safe-project",'
+    '"private_key_id":"fake-key-id",'
+    f'"private_key":"{_FAKE_PRIVATE_KEY}",'
+    '"client_email":"fake-service@safe-project.iam.gserviceaccount.com",'
+    '"client_id":"1234567890",'
+    '"auth_uri":"https://accounts.example.test/o/oauth2/auth",'
+    '"token_uri":"https://oauth2.example.test/token"}'
+)
+
+
 @pytest.mark.asyncio
 async def test_hermes_summarizer_maps_structured_result():
     llm = FakeLlm(parsed=_parsed_summary())
@@ -202,6 +218,20 @@ async def test_hermes_summarizer_redacts_namespaced_and_flow_yaml_from_exact_inp
             ),
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_hermes_summarizer_redacts_google_private_key_from_exact_input():
+    llm = FakeLlm(parsed=_parsed_summary())
+
+    await HermesConversationSummarizer(llm).summarize(_FAKE_GOOGLE_SERVICE_ACCOUNT_JSON)
+
+    expected = _FAKE_GOOGLE_SERVICE_ACCOUNT_JSON.replace(
+        f'"private_key":"{_FAKE_PRIVATE_KEY}"',
+        "[REDACTED_SECRET]",
+    )
+    assert llm.calls[0]["input"] == [{"type": "text", "text": expected}]
+    assert _FAKE_PRIVATE_KEY not in str(llm.calls[0]["input"])
 
 
 @pytest.mark.asyncio

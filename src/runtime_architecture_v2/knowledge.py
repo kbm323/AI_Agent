@@ -37,7 +37,15 @@ _ASSIGNMENT_START_RE = re.compile(
     rf"(?P<key>{_ASSIGNMENT_KEY_PATTERN})[ \t]*"
     rf"(?P<separator>[:=])[ \t]*"
 )
-_SECRET_ASSIGNMENT_COMPONENTS = {
+_FOLLOWING_ASSIGNMENT_RE = re.compile(
+    rf"[ \t]+(?={_ASSIGNMENT_KEY_PATTERN}[ \t]*[:=])",
+    re.IGNORECASE,
+)
+_FOLLOWING_MENTION_RE = re.compile(r"[ \t]+(?=@(?:everyone|here)\b)", re.IGNORECASE)
+_FOLLOWING_URL_PLACEHOLDER_RE = re.compile(r"[ \t]+(?=ORACLEURLPLACEHOLDER[0-9]+END)")
+_SECRET_ASSIGNMENT_KEYS = {
+    "api_key",
+    "apikey",
     "auth",
     "authentication",
     "authorization",
@@ -45,10 +53,15 @@ _SECRET_ASSIGNMENT_COMPONENTS = {
     "credentials",
     "passwd",
     "password",
+    "private_key",
     "secret",
+    "secret_access_key",
     "signature",
     "token",
 }
+_SECRET_ASSIGNMENT_SUFFIXES = tuple(
+    f"_{key}" for key in _SECRET_ASSIGNMENT_KEYS if key not in {"apikey", "secret"}
+) + ("_secret",)
 _TOKEN_PATTERNS = (re.compile(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]{6,}"),)
 _MENTION_RE = re.compile(r"@(everyone|here)\b", re.IGNORECASE)
 _WORD_RE = re.compile(r"[A-Za-z0-9가-힣_:-]+")
@@ -597,20 +610,30 @@ def _assignment_value_end(text: str, *, value_start: int, separator: str) -> int
             index += 1
         return len(text)
 
-    terminators = "\r\n,;}]" if separator == ":" else "\r\n\t \\`'\",}]"
+    terminators = "\r\n,;}]"
     index = value_start
     while index < len(text) and text[index] not in terminators:
         index += 1
-    return index
+    boundaries = [index]
+    if separator == "=":
+        for pattern in (
+            _FOLLOWING_ASSIGNMENT_RE,
+            _FOLLOWING_MENTION_RE,
+            _FOLLOWING_URL_PLACEHOLDER_RE,
+        ):
+            if match := pattern.search(text, value_start, index):
+                boundaries.append(match.start())
+    return min(boundaries)
 
 
 def _is_secret_assignment_key(key: str) -> bool:
     if len(key) >= 2 and key[0] == key[-1] and key[0] in {'"', "'"}:
         key = key[1:-1]
+    key = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", "_", key)
+    key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
     normalized = re.sub(r"[^a-z0-9]+", "_", key.casefold()).strip("_")
-    components = set(normalized.split("_"))
-    return normalized in {"api_key", "apikey"} or bool(
-        components.intersection(_SECRET_ASSIGNMENT_COMPONENTS)
+    return normalized in _SECRET_ASSIGNMENT_KEYS or normalized.endswith(
+        _SECRET_ASSIGNMENT_SUFFIXES
     )
 
 

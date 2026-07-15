@@ -550,6 +550,40 @@ def test_namespaced_quoted_and_flow_yaml_secrets_are_redacted_in_all_pages(tmp_p
     assert "note: keep canonical context" in canonical
 
 
+def test_camel_case_secrets_are_redacted_without_losing_safe_page_fields(tmp_path):
+    raw_secret = (
+        "secretAccessKey=raw aws secret region=ap-northeast-2 "
+        "authorization_url=https://accounts.example.test/oauth2/auth?mode=safe"
+    )
+    canonical_secret = (
+        "{clientSecret: canonical secret, auth_method: oauth2, "
+        "password_policy: rotate every 90 days}"
+    )
+
+    result = ObsidianConversationStore(
+        vault_root=tmp_path / "vault", runtime_root=tmp_path
+    ).save(
+        conversation=_conversation(content=raw_secret),
+        participant_resolver=ParticipantResolver({}),
+        summary=replace(_summary(), summary=canonical_secret),
+    )
+
+    raw = (tmp_path / "vault" / result.snapshot_path).read_text(encoding="utf-8")
+    canonical = (tmp_path / "vault" / result.canonical_path).read_text(encoding="utf-8")
+    assert (
+        "Content Lead: [REDACTED_SECRET] region=ap-northeast-2 "
+        "authorization\\_url=https://accounts.example.test/oauth2/auth?mode=safe "
+        "(message ID: `2`)"
+    ) in raw
+    assert (
+        "\\{[REDACTED_SECRET], auth\\_method: oauth2, "
+        "password\\_policy: rotate every 90 days\\}"
+    ) in canonical
+    for secret in ("raw aws secret", "canonical secret"):
+        assert secret not in raw
+        assert secret not in canonical
+
+
 def test_participants_resolve_by_id_and_keep_discord_metadata(tmp_path):
     resolver = ParticipantResolver(
         {"400": BotIdentity(role="Content Lead", hermes_profile="content")}
