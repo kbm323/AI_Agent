@@ -599,3 +599,44 @@ section was appended.
 - Ubuntu static checks, real seven-profile install/hash proof, assistant-first
   smoke, six-profile reload, native picker/tool checks, and live rollback smoke
   remain deployment gates. No deployment was performed in this wave.
+
+---
+
+## Fifth Final-Review Fix Wave
+
+### Status
+
+`DONE_WITH_CONCERNS`
+
+The final two Important findings are fixed in commit `5f891c6` (`fix: settle
+save workers and redact yaml secrets`). No Hermes Core file or standalone
+Discord adapter was added or modified.
+
+### Root Causes And Solutions
+
+| Finding | Root cause | Implemented solution |
+| --- | --- | --- |
+| Cancellation after lifecycle-lock acquisition | Cancelling a coroutine awaiting `asyncio.to_thread` released the source lifecycle lock while the synchronous worker could continue, allowing a later same-source save to overlap. | Added `_settled_to_thread`, which shields each started worker, waits for it to settle after cancellation, then propagates cancellation before the lifecycle lock is released. Collection, lookup, persistence, checkpoint cleanup, and lock release use the helper. |
+| YAML secret scalar suffix leaks | The central sanitizer did not consume complete valid YAML scalars such as doubled single quotes, multiword plain values, or block scalars with chomping/indent indicators. | Added a bounded line-oriented YAML secret-assignment sanitizer that replaces complete scalar assignments and indented block-scalar bodies before the existing token and mention passes. |
+
+### Verification
+
+- Directly affected modules: `160 passed in 27.72s` with `PYTHONUTF8=1`.
+- Updated aggregate: `228 passed in 42.20s`.
+- Required regression selection: `99 passed, 3 failed in 10.28s`; the three
+  failures exactly match the previously recorded local profile-token fixture
+  failures.
+- Ruff: `All checks passed!`.
+- Format: `7 files already formatted`.
+- Staged secret scan: `Secret scan passed: 7 file(s) inspected in staged mode`.
+- `git diff --check`: passed with no output.
+
+### Remaining Concerns
+
+- The three required-regression failures still require the documented Ubuntu
+  profile environment.
+- Production DM `/save` remains intentionally fail closed because pinned Hermes
+  does not expose a reliable Discord DM session-start boundary.
+- Final independent review, branch integration, GitHub push, Ubuntu gates,
+  seven-profile install, assistant-first smoke, remaining profile reload, and
+  live deployment verification remain pending.
