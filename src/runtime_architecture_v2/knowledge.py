@@ -25,6 +25,14 @@ _SECRET_ASSIGNMENT_KEY = (
     r"api[_-]?key|secret|password|passwd|token|credentials?|auth|"
     r"authentication|authorization"
 )
+_YAML_SECRET_ASSIGNMENT_RE = re.compile(
+    rf"^(?P<indent> *)(?P<sequence>-\s+)?"
+    rf"(?:{_SECRET_ASSIGNMENT_KEY})\s*:\s*(?P<value>.*)$",
+    re.IGNORECASE,
+)
+_YAML_BLOCK_SCALAR_HEADER_RE = re.compile(
+    r"^[|>](?:(?:[+-][1-9]?)|(?:[1-9][+-]?))?[ \t]*(?:#.*)?$"
+)
 _TOKEN_PATTERNS = (
     re.compile(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]{6,}"),
     re.compile(
@@ -493,10 +501,57 @@ def sanitize_url(value: str) -> str:
 
 
 def _sanitize_non_url_text(text: str) -> str:
-    safe = text
+    safe = _sanitize_yaml_secret_assignments(text)
     for pattern in _TOKEN_PATTERNS:
         safe = pattern.sub("[REDACTED_SECRET]", safe)
     return _MENTION_RE.sub("@[redacted-mention]", safe)
+
+
+def _sanitize_yaml_secret_assignments(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return text
+
+    sanitized: list[str] = []
+    index = 0
+    while index < len(lines):
+        body, newline = _split_line_ending(lines[index])
+        match = _YAML_SECRET_ASSIGNMENT_RE.fullmatch(body)
+        if match is None:
+            sanitized.append(lines[index])
+            index += 1
+            continue
+
+        prefix = match.group("indent") + (match.group("sequence") or "")
+        sanitized.append(f"{prefix}[REDACTED_SECRET]{newline}")
+        index += 1
+        if _YAML_BLOCK_SCALAR_HEADER_RE.fullmatch(match.group("value").strip()) is None:
+            continue
+
+        assignment_indent = len(match.group("indent")) + len(
+            match.group("sequence") or ""
+        )
+        while index < len(lines):
+            continuation, continuation_newline = _split_line_ending(lines[index])
+            if not continuation.strip():
+                sanitized.append(lines[index])
+                index += 1
+                continue
+            continuation_indent = len(continuation) - len(continuation.lstrip(" "))
+            if continuation_indent <= assignment_indent:
+                break
+            sanitized.append(
+                f"{continuation[:continuation_indent]}"
+                f"[REDACTED_SECRET]{continuation_newline}"
+            )
+            index += 1
+
+    return "".join(sanitized)
+
+
+def _split_line_ending(line: str) -> tuple[str, str]:
+    body = line.rstrip("\r\n")
+    return body, line[len(body) :]
 
 
 def _remove_url_userinfo(value: str) -> str:

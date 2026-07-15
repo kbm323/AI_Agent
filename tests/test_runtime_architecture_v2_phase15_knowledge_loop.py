@@ -60,6 +60,44 @@ def test_public_sanitizer_redacts_quoted_and_credential_assignments():
     )
 
 
+def test_public_sanitizer_redacts_complete_yaml_credential_scalars():
+    text = (
+        "name: Oracle\n"
+        "password: 'hunter''s secret'\n"
+        "token: plain multiword secret\n"
+        "credential: |2-\n"
+        "  literal secret line\n"
+        "  second literal secret\n"
+        "auth: >+2\n"
+        "  folded secret line\n"
+        "  second folded secret\n"
+        "note: keep this text\n"
+        "url: https://alice:pass@example.test/path?view=full\n"
+        "items:\n"
+        "  - auth: |-\n"
+        "      sequence secret line\n"
+        "    note: keep sequence note"
+    )
+
+    assert sanitize_knowledge_text(text) == (
+        "name: Oracle\n"
+        "[REDACTED_SECRET]\n"
+        "[REDACTED_SECRET]\n"
+        "[REDACTED_SECRET]\n"
+        "  [REDACTED_SECRET]\n"
+        "  [REDACTED_SECRET]\n"
+        "[REDACTED_SECRET]\n"
+        "  [REDACTED_SECRET]\n"
+        "  [REDACTED_SECRET]\n"
+        "note: keep this text\n"
+        "url: https://example.test/path?view=full\n"
+        "items:\n"
+        "  - [REDACTED_SECRET]\n"
+        "      [REDACTED_SECRET]\n"
+        "    note: keep sequence note"
+    )
+
+
 def test_public_sanitizer_removes_plain_encoded_and_nested_url_userinfo():
     text = (
         "plain https://alice:p4ssw0rd@example.test/private "

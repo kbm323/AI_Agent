@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any, TypeVar
 
 from .conversation_summary import HermesConversationSummarizer
 from .discord_conversation import DiscordConversation, ParticipantResolver
@@ -54,6 +56,7 @@ _SUCCESS_STATUS_RESPONSES = {
     "unchanged": "새로 저장할 메시지가 없습니다.",
 }
 _SUMMARY_ERRORS = (OSError, RuntimeError, ValueError)
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True)
@@ -128,7 +131,7 @@ async def run_save_command(
             obsidian_store=obsidian_store,
         )
     finally:
-        await asyncio.to_thread(lifecycle_lock.release)
+        await _settled_to_thread(lifecycle_lock.release)
 
 
 async def _acquire_lifecycle_lock(
@@ -157,15 +160,38 @@ async def _acquire_lifecycle_lock(
             release_acquired = acquired
             acquired = False
         if release_acquired:
-            release = asyncio.create_task(asyncio.to_thread(lifecycle_lock.release))
-            release.add_done_callback(_consume_background_task_exception)
-            await asyncio.shield(release)
+            await _settled_to_thread(lifecycle_lock.release)
         raise
 
 
 def _consume_background_task_exception(task: asyncio.Task[object]) -> None:
     if not task.cancelled():
         task.exception()
+
+
+async def _settled_to_thread(
+    function: Callable[..., _T],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> _T:
+    worker = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
+    cancellation_requested = False
+    while True:
+        try:
+            result = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            if worker.cancelled():
+                raise
+            cancellation_requested = True
+            continue
+        except BaseException:
+            if cancellation_requested:
+                raise asyncio.CancelledError from None
+            raise
+        if cancellation_requested:
+            raise asyncio.CancelledError
+        return result
 
 
 async def _run_save_lifecycle(
@@ -180,7 +206,7 @@ async def _run_save_lifecycle(
     obsidian_store: ObsidianConversationStore,
 ) -> SaveCommandResult:
     try:
-        conversation = await asyncio.to_thread(
+        conversation = await _settled_to_thread(
             history_client.fetch_conversation,
             source_id,
             cutoff_message_id=context.invocation_message_id,
@@ -202,7 +228,7 @@ async def _run_save_lifecycle(
     meeting_run = None
     if source_kind == "thread":
         try:
-            meeting_run = await asyncio.to_thread(
+            meeting_run = await _settled_to_thread(
                 meeting_store.find_by_discord_thread_id, source_id
             )
         except (OSError, StoreError):
@@ -215,7 +241,7 @@ async def _run_save_lifecycle(
         return SaveCommandResult(ok=False, error="save_failed")
 
     try:
-        saved = await asyncio.to_thread(
+        saved = await _settled_to_thread(
             obsidian_store.save,
             conversation=conversation,
             participant_resolver=participant_resolver,
@@ -228,7 +254,7 @@ async def _run_save_lifecycle(
         return SaveCommandResult(ok=False, error="save_failed")
 
     try:
-        await asyncio.to_thread(
+        await _settled_to_thread(
             history_client.discard_collection_checkpoint,
             source_id,
             **(

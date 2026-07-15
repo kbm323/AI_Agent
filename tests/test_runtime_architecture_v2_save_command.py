@@ -1076,6 +1076,205 @@ async def test_cancelled_waiter_does_not_block_later_save_for_same_source():
             lifecycle_lock.release()
 
 
+@pytest.mark.asyncio
+async def test_cancellation_during_collection_settles_before_same_source_release(
+    tmp_path,
+):
+    conversation = _save_conversation()
+    _, meetings, resolver, summarizer, obsidian = _dependencies(conversation)
+    collection_started = threading.Event()
+    collection_release = threading.Event()
+    second_same_source_started = threading.Event()
+    unrelated_source_started = threading.Event()
+    call_guard = threading.Lock()
+    same_source_calls = 0
+
+    def fetch_conversation(source_id, **_kwargs):
+        nonlocal same_source_calls
+        if source_id == "200":
+            with call_guard:
+                same_source_calls += 1
+                call_number = same_source_calls
+            if call_number == 1:
+                collection_started.set()
+                if not collection_release.wait(timeout=5):
+                    raise TimeoutError("collection release timeout")
+            else:
+                second_same_source_started.set()
+        else:
+            unrelated_source_started.set()
+        return conversation
+
+    history = DiscordHistoryClient(
+        token="secret",
+        checkpoint_root=tmp_path / "runtime" / "discord_save" / "collection",
+    )
+    history.fetch_conversation = Mock(side_effect=fetch_conversation)
+    first = asyncio.create_task(
+        run_save_command(
+            context=_thread_context(),
+            history_client=history,
+            meeting_store=meetings,
+            participant_resolver=resolver,
+            summarizer=summarizer,
+            obsidian_store=obsidian,
+        )
+    )
+    unrelated = None
+    second = None
+    try:
+        assert await asyncio.to_thread(collection_started.wait, 2)
+        first.cancel()
+
+        unrelated = asyncio.create_task(
+            run_save_command(
+                context=HermesCommandContext(
+                    platform="discord",
+                    chat_id="201",
+                    thread_id="201",
+                    session_id="unrelated-session",
+                    invocation_message_id="250",
+                ),
+                history_client=history,
+                meeting_store=meetings,
+                participant_resolver=resolver,
+                summarizer=summarizer,
+                obsidian_store=obsidian,
+            )
+        )
+        unrelated_result = await asyncio.wait_for(unrelated, timeout=2)
+        second = asyncio.create_task(
+            run_save_command(
+                context=HermesCommandContext(
+                    platform="discord",
+                    chat_id="200",
+                    thread_id="200",
+                    session_id="later-same-source",
+                    invocation_message_id="300",
+                ),
+                history_client=history,
+                meeting_store=meetings,
+                participant_resolver=resolver,
+                summarizer=summarizer,
+                obsidian_store=obsidian,
+            )
+        )
+        overlapped = await asyncio.to_thread(second_same_source_started.wait, 0.75)
+        cancelled_before_settlement = first.done()
+
+        collection_release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        second_result = await asyncio.wait_for(second, timeout=2)
+
+        assert unrelated_result.ok is True
+        assert unrelated_source_started.is_set()
+        assert overlapped is False
+        assert cancelled_before_settlement is False
+        assert second_result.ok is True
+    finally:
+        collection_release.set()
+        pending = [
+            task
+            for task in (first, unrelated, second)
+            if task is not None and not task.done()
+        ]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_cancellation_during_cleanup_settles_before_same_source_release(
+    tmp_path,
+):
+    conversation = _save_conversation()
+    _, meetings, resolver, summarizer, obsidian = _dependencies(conversation)
+    cleanup_started = threading.Event()
+    cleanup_release = threading.Event()
+    second_collection_started = threading.Event()
+    call_guard = threading.Lock()
+    collection_calls = 0
+    cleanup_calls = 0
+
+    def fetch_conversation(_source_id, **_kwargs):
+        nonlocal collection_calls
+        with call_guard:
+            collection_calls += 1
+            call_number = collection_calls
+        if call_number > 1:
+            second_collection_started.set()
+        return conversation
+
+    def discard_checkpoint(_source_id, **_kwargs):
+        nonlocal cleanup_calls
+        with call_guard:
+            cleanup_calls += 1
+            call_number = cleanup_calls
+        if call_number == 1:
+            cleanup_started.set()
+            if not cleanup_release.wait(timeout=5):
+                raise TimeoutError("cleanup release timeout")
+
+    history = DiscordHistoryClient(
+        token="secret",
+        checkpoint_root=tmp_path / "runtime" / "discord_save" / "collection",
+    )
+    history.fetch_conversation = Mock(side_effect=fetch_conversation)
+    history.discard_collection_checkpoint = Mock(side_effect=discard_checkpoint)
+    first = asyncio.create_task(
+        run_save_command(
+            context=_thread_context(),
+            history_client=history,
+            meeting_store=meetings,
+            participant_resolver=resolver,
+            summarizer=summarizer,
+            obsidian_store=obsidian,
+        )
+    )
+    second = None
+    try:
+        assert await asyncio.to_thread(cleanup_started.wait, 2)
+        first.cancel()
+        second = asyncio.create_task(
+            run_save_command(
+                context=HermesCommandContext(
+                    platform="discord",
+                    chat_id="200",
+                    thread_id="200",
+                    session_id="after-cancelled-cleanup",
+                    invocation_message_id="300",
+                ),
+                history_client=history,
+                meeting_store=meetings,
+                participant_resolver=resolver,
+                summarizer=summarizer,
+                obsidian_store=obsidian,
+            )
+        )
+        overlapped = await asyncio.to_thread(second_collection_started.wait, 0.75)
+        cancelled_before_settlement = first.done()
+
+        cleanup_release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        second_result = await asyncio.wait_for(second, timeout=2)
+
+        assert overlapped is False
+        assert cancelled_before_settlement is False
+        assert second_result.ok is True
+    finally:
+        cleanup_release.set()
+        pending = [
+            task for task in (first, second) if task is not None and not task.done()
+        ]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+
 def test_same_source_threaded_lifecycle_preserves_failed_later_generation(tmp_path):
     first_collected = threading.Event()
     second_collected = threading.Event()

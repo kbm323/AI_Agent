@@ -390,6 +390,63 @@ def test_quoted_and_credential_assignments_are_redacted_in_raw_and_canonical(
         assert secret not in canonical
 
 
+def test_yaml_credential_scalars_are_redacted_in_raw_and_canonical(tmp_path):
+    raw_secret = (
+        "password: 'raw''s secret'\n"
+        "token: plain raw secret\n"
+        "credential: |-\n"
+        " literal raw secret\n"
+        "auth: >+1\n"
+        " folded raw secret\n"
+        "note: keep raw context"
+    )
+    canonical_secret = (
+        "password: 'canonical''s secret'\n"
+        "token: plain canonical secret\n"
+        "credential: |-\n"
+        " literal canonical secret\n"
+        "auth: >+1\n"
+        " folded canonical secret\n"
+        "note: keep canonical context"
+    )
+
+    result = ObsidianConversationStore(
+        vault_root=tmp_path / "vault", runtime_root=tmp_path
+    ).save(
+        conversation=_conversation(content=raw_secret),
+        participant_resolver=ParticipantResolver({}),
+        summary=replace(_summary(), summary=canonical_secret),
+    )
+
+    raw = (tmp_path / "vault" / result.snapshot_path).read_text(encoding="utf-8")
+    canonical = (tmp_path / "vault" / result.canonical_path).read_text(encoding="utf-8")
+    assert (
+        "- 2026-07-13T01:05:00+00:00 Content Lead: "
+        "[REDACTED_SECRET] <br> [REDACTED_SECRET] <br> "
+        "[REDACTED_SECRET] <br>  [REDACTED_SECRET] <br> "
+        "[REDACTED_SECRET] <br>  [REDACTED_SECRET] <br> "
+        "note: keep raw context (message ID: `2`)"
+    ) in raw
+    assert (
+        "[REDACTED_SECRET] <br> [REDACTED_SECRET] <br> "
+        "[REDACTED_SECRET] <br>  [REDACTED_SECRET] <br> "
+        "[REDACTED_SECRET] <br>  [REDACTED_SECRET] <br> "
+        "note: keep canonical context"
+    ) in canonical
+    for secret in (
+        "raw's secret",
+        "plain raw secret",
+        "literal raw secret",
+        "folded raw secret",
+        "canonical's secret",
+        "plain canonical secret",
+        "literal canonical secret",
+        "folded canonical secret",
+    ):
+        assert secret not in raw
+        assert secret not in canonical
+
+
 def test_participants_resolve_by_id_and_keep_discord_metadata(tmp_path):
     resolver = ParticipantResolver(
         {"400": BotIdentity(role="Content Lead", hermes_profile="content")}

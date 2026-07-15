@@ -145,6 +145,39 @@ async def test_hermes_summarizer_redacts_quoted_assignments_from_exact_llm_input
 
 
 @pytest.mark.asyncio
+async def test_hermes_summarizer_redacts_complete_yaml_scalars_from_exact_input():
+    llm = FakeLlm(parsed=_parsed_summary())
+    transcript = (
+        "Config:\n"
+        "  password: 'llm''s secret'\n"
+        "  token: plain llm secret\n"
+        "  credential: |2-\n"
+        "    literal llm secret\n"
+        "  auth: >+2\n"
+        "    folded llm secret\n"
+        "  note: keep llm context"
+    )
+
+    await HermesConversationSummarizer(llm).summarize(transcript)
+
+    assert llm.calls[0]["input"] == [
+        {
+            "type": "text",
+            "text": (
+                "Config:\n"
+                "  [REDACTED_SECRET]\n"
+                "  [REDACTED_SECRET]\n"
+                "  [REDACTED_SECRET]\n"
+                "    [REDACTED_SECRET]\n"
+                "  [REDACTED_SECRET]\n"
+                "    [REDACTED_SECRET]\n"
+                "  note: keep llm context"
+            ),
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_hermes_summarizer_sanitizes_every_returned_string():
     llm = FakeLlm(
         parsed={
