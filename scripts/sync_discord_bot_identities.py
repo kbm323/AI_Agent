@@ -8,6 +8,7 @@ from tempfile import NamedTemporaryFile
 from urllib.request import Request, urlopen
 
 DISCORD_CURRENT_USER_URL = "https://discord.com/api/v10/users/@me"
+DISCORD_USER_AGENT = "DiscordBot (https://github.com/kbm323/AI_Agent, 1.0)"
 PROFILE_ROLES: dict[str, str] = {
     "aicompanyassistant": "비서",
     "aicompanyceo": "대표",
@@ -47,7 +48,9 @@ def _load_discord_bot_token(env_path: Path) -> str:
 
 
 def _default_http_get(url: str, *, headers: Mapping[str, str]) -> Mapping[str, str]:
-    request = Request(url, headers=dict(headers), method="GET")
+    request_headers = dict(headers)
+    request_headers.setdefault("User-Agent", DISCORD_USER_AGENT)
+    request = Request(url, headers=request_headers, method="GET")
     with urlopen(request, timeout=15) as response:  # noqa: S310
         return json.loads(response.read().decode("utf-8"))
 

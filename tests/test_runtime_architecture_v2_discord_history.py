@@ -1078,6 +1078,39 @@ def test_sync_bot_identities_writes_only_non_secret_identity_data(tmp_path):
     assert set(written["1001"]) == {"role", "hermes_profile"}
 
 
+def test_default_identity_http_get_sends_discord_user_agent(monkeypatch):
+    captured_request = None
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return b'{"id":"123"}'
+
+    def fake_urlopen(request, *, timeout):
+        nonlocal captured_request
+        captured_request = request
+        assert timeout == 15
+        return FakeResponse()
+
+    monkeypatch.setattr(identity_sync, "urlopen", fake_urlopen)
+
+    response = identity_sync._default_http_get(
+        identity_sync.DISCORD_CURRENT_USER_URL,
+        headers={"Authorization": "Bot test-token"},
+    )
+
+    assert response == {"id": "123"}
+    assert captured_request is not None
+    assert captured_request.get_header("User-agent") == (
+        "DiscordBot (https://github.com/kbm323/AI_Agent, 1.0)"
+    )
+
+
 @pytest.mark.parametrize(
     ("dotenv_line", "expected_token"),
     [
