@@ -148,7 +148,11 @@ class ObsidianConversationStore:
         ).message_id
         classification = "meeting" if meeting_run is not None else "conversation"
         one_line_summary = _safe(summary.summary)
-        evidence_hash = _evidence_hash(conversation, classification, meeting_run)
+        evidence_hash = _evidence_hash(
+            conversation,
+            classification,
+            meeting_run.meeting_run_id if meeting_run else "",
+        )
         checkpoint_relative = f"{conversation.thread_id}.json"
         checkpoint_path = self._runtime_path(checkpoint_relative)
         checkpoint = self._load_checkpoint(checkpoint_path, conversation.thread_id)
@@ -161,8 +165,6 @@ class ObsidianConversationStore:
             self._validate_checkpoint_evidence(
                 conversation,
                 snapshot_paths,
-                classification=classification,
-                meeting_run=meeting_run,
                 validate_latest=previous_latest == latest_message_id,
             )
             if int(latest_message_id) < int(previous_latest):
@@ -248,8 +250,6 @@ class ObsidianConversationStore:
             expected_evidence_hash = _snapshot_evidence_hash_for_conversation(
                 snapshot_path,
                 conversation=conversation,
-                classification=classification,
-                meeting_run=meeting_run,
             )
             _validate_snapshot(
                 snapshot_path,
@@ -396,8 +396,6 @@ class ObsidianConversationStore:
         conversation: DiscordConversation,
         snapshot_paths: list[str],
         *,
-        classification: str,
-        meeting_run: MeetingRun | None,
         validate_latest: bool,
     ) -> None:
         for index, relative in enumerate(snapshot_paths):
@@ -412,8 +410,6 @@ class ObsidianConversationStore:
                 expected_evidence_hash = _snapshot_evidence_hash_for_conversation(
                     snapshot_path,
                     conversation=conversation,
-                    classification=classification,
-                    meeting_run=meeting_run,
                 )
             _validate_snapshot(
                 snapshot_path,
@@ -704,14 +700,14 @@ def _canonical_relative_from_snapshot(snapshot_relative: str) -> str:
 def _evidence_hash(
     conversation: DiscordConversation,
     classification: str,
-    meeting_run: MeetingRun | None,
+    meeting_run_id: str,
     *,
     thread_name: str | None = None,
 ) -> str:
     source = _source_identity(conversation)
     payload = {
         "classification": classification,
-        "meeting_run_id": meeting_run.meeting_run_id if meeting_run else "",
+        "meeting_run_id": meeting_run_id,
         "conversation": {
             "source_kind": source.kind,
             "source_id": source.source_id,
@@ -760,12 +756,19 @@ def _snapshot_evidence_hash_for_conversation(
     path: Path,
     *,
     conversation: DiscordConversation,
-    classification: str,
-    meeting_run: MeetingRun | None,
 ) -> str:
     try:
-        stored_thread_name = _read_frontmatter(path)["discord_thread_name"]
-        if not isinstance(stored_thread_name, str):
+        frontmatter = _read_frontmatter(path)
+        stored_thread_name = frontmatter["discord_thread_name"]
+        stored_classification = frontmatter["type"]
+        stored_meeting_run_id = frontmatter["meeting_run_id"]
+        if (
+            not isinstance(stored_thread_name, str)
+            or stored_classification not in {"conversation", "meeting"}
+            or not isinstance(stored_meeting_run_id, str)
+            or (stored_classification == "conversation" and stored_meeting_run_id)
+            or (stored_classification == "meeting" and not stored_meeting_run_id)
+        ):
             raise TypeError
     except (
         KeyError,
@@ -778,8 +781,8 @@ def _snapshot_evidence_hash_for_conversation(
         raise ValueError("invalid_immutable_snapshot") from exc
     return _evidence_hash(
         conversation,
-        classification,
-        meeting_run,
+        stored_classification,
+        stored_meeting_run_id,
         thread_name=stored_thread_name,
     )
 

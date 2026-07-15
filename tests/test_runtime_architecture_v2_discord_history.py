@@ -599,6 +599,47 @@ def test_failed_page_checkpoint_redacts_complete_yaml_credential_scalars(tmp_pat
     )
 
 
+def test_failed_page_checkpoint_redacts_namespaced_and_flow_yaml_secrets(tmp_path):
+    checkpoint_root = tmp_path / "collection"
+    first_page = [_message(str(i)) for i in range(249, 149, -1)]
+    first_page[0]["content"] = (
+        "github_token=checkpoint-token\n"
+        "'db_password': |-\n"
+        "  checkpoint block secret\n"
+        "settings: {client_secret: plain checkpoint secret, retries: 3}\n"
+        "note: keep checkpoint context"
+    )
+
+    def request(_method, path, query):
+        if path == "/channels/200":
+            return _thread()
+        if query["before"] == "250":
+            return first_page
+        raise DiscordHistoryError("discord_http_status_503")
+
+    with pytest.raises(DiscordHistoryError, match="discord_http_status_503"):
+        _fetch(
+            DiscordHistoryClient(
+                token="secret",
+                request_json=request,
+                checkpoint_root=checkpoint_root,
+                max_retries=0,
+            ),
+            cutoff_message_id="250",
+        )
+
+    checkpoint = json.loads(
+        next(checkpoint_root.glob("*.json")).read_text(encoding="utf-8")
+    )
+    assert checkpoint["messages"][-1]["content"] == (
+        "[REDACTED_SECRET]\n"
+        "[REDACTED_SECRET]\n"
+        "  [REDACTED_SECRET]\n"
+        "settings: {[REDACTED_SECRET], retries: 3}\n"
+        "note: keep checkpoint context"
+    )
+
+
 def test_later_cutoff_migrates_first_wave_cutoff_named_checkpoint(tmp_path):
     checkpoint_root = tmp_path / "collection"
     checkpoint_root.mkdir()

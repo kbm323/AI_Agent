@@ -207,6 +207,67 @@ def test_same_latest_message_id_is_no_change_and_creates_no_second_snapshot(
     assert log.count("200:2") == 1
 
 
+def test_same_latest_conversation_can_acquire_meeting_linkage_without_new_snapshot(
+    tmp_path,
+):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    first = store.save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+        meeting_run=None,
+    )
+    snapshot = vault / first.snapshot_path
+    original_snapshot = snapshot.read_bytes()
+
+    linked = store.save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+        meeting_run=_meeting(),
+    )
+
+    raw_paths = list((vault / "raw" / "chat-logs").glob("*.md"))
+    canonical = (vault / linked.canonical_path).read_text(encoding="utf-8")
+    index = (vault / "wiki" / "index.md").read_text(encoding="utf-8")
+    assert linked.status == "unchanged"
+    assert linked.classification == "meeting"
+    assert raw_paths == [snapshot]
+    assert snapshot.read_bytes() == original_snapshot
+    assert 'type: "conversation"' in snapshot.read_text(encoding="utf-8")
+    assert 'meeting_run_id: ""' in snapshot.read_text(encoding="utf-8")
+    assert 'type: "meeting"' in canonical
+    assert 'meeting_run_id: "mr-1"' in canonical
+    assert "meeting=mr-1" in index
+
+
+def test_same_latest_meeting_transition_rejects_transcript_mutation(tmp_path):
+    vault = tmp_path / "vault"
+    store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
+    first = store.save(
+        conversation=_conversation(),
+        participant_resolver=ParticipantResolver({}),
+        summary=_summary(),
+        meeting_run=None,
+    )
+    snapshot = vault / first.snapshot_path
+    original_snapshot = snapshot.read_bytes()
+    original_canonical = (vault / first.canonical_path).read_bytes()
+
+    with pytest.raises(ValueError, match="invalid_immutable_snapshot"):
+        store.save(
+            conversation=_conversation(content="Mutated same-range transcript"),
+            participant_resolver=ParticipantResolver({}),
+            summary=_summary(),
+            meeting_run=_meeting(),
+        )
+
+    assert snapshot.read_bytes() == original_snapshot
+    assert (vault / first.canonical_path).read_bytes() == original_canonical
+    assert len(list((vault / "raw" / "chat-logs").glob("*.md"))) == 1
+
+
 def test_new_message_creates_new_snapshot_and_updates_same_canonical_page(tmp_path):
     vault = tmp_path / "vault"
     store = ObsidianConversationStore(vault_root=vault, runtime_root=tmp_path)
@@ -445,6 +506,48 @@ def test_yaml_credential_scalars_are_redacted_in_raw_and_canonical(tmp_path):
     ):
         assert secret not in raw
         assert secret not in canonical
+
+
+def test_namespaced_quoted_and_flow_yaml_secrets_are_redacted_in_all_pages(tmp_path):
+    raw_secret = (
+        "DISCORD_BOT_TOKEN=raw-token\n"
+        '"client_secret": |-\n'
+        "  raw block secret\n"
+        "settings: {aws_secret_access_key: plain raw flow secret, region: keep-raw}\n"
+        "note: keep raw context"
+    )
+    canonical_secret = (
+        "github_token=canonical-token\n"
+        "'db_password': >-\n"
+        "  canonical block secret\n"
+        "settings: {password: plain canonical flow secret, mode: keep-canonical}\n"
+        "note: keep canonical context"
+    )
+
+    result = ObsidianConversationStore(
+        vault_root=tmp_path / "vault", runtime_root=tmp_path
+    ).save(
+        conversation=_conversation(content=raw_secret),
+        participant_resolver=ParticipantResolver({}),
+        summary=replace(_summary(), summary=canonical_secret),
+    )
+
+    raw = (tmp_path / "vault" / result.snapshot_path).read_text(encoding="utf-8")
+    canonical = (tmp_path / "vault" / result.canonical_path).read_text(encoding="utf-8")
+    for secret in (
+        "raw-token",
+        "raw block secret",
+        "plain raw flow secret",
+        "canonical-token",
+        "canonical block secret",
+        "plain canonical flow secret",
+    ):
+        assert secret not in raw
+        assert secret not in canonical
+    assert "region: keep-raw" in raw
+    assert "note: keep raw context" in raw
+    assert "mode: keep-canonical" in canonical
+    assert "note: keep canonical context" in canonical
 
 
 def test_participants_resolve_by_id_and_keep_discord_metadata(tmp_path):

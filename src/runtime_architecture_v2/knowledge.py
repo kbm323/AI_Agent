@@ -21,27 +21,35 @@ from .schemas import MeetingRun
 from .store import MeetingRunStore
 
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
-_SECRET_ASSIGNMENT_KEY = (
-    r"api[_-]?key|secret|password|passwd|token|credentials?|auth|"
-    r"authentication|authorization"
+_ASSIGNMENT_KEY_PATTERN = (
+    r"""(?:"(?:\\.|[^"\\])*"|'(?:''|\\.|[^'\\])*'|[A-Za-z_][A-Za-z0-9_.-]*)"""
 )
-_YAML_SECRET_ASSIGNMENT_RE = re.compile(
+_YAML_ASSIGNMENT_RE = re.compile(
     rf"^(?P<indent> *)(?P<sequence>-\s+)?"
-    rf"(?:{_SECRET_ASSIGNMENT_KEY})\s*:\s*(?P<value>.*)$",
+    rf"(?P<key>{_ASSIGNMENT_KEY_PATTERN})[ \t]*:[ \t]*(?P<value>.*)$",
     re.IGNORECASE,
 )
 _YAML_BLOCK_SCALAR_HEADER_RE = re.compile(
     r"^[|>](?:(?:[+-][1-9]?)|(?:[1-9][+-]?))?[ \t]*(?:#.*)?$"
 )
-_TOKEN_PATTERNS = (
-    re.compile(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]{6,}"),
-    re.compile(
-        rf"(?ix)(?:(?<![A-Za-z0-9_-])|(?<=\\n)|(?<=\\r)|(?<=\\t))"
-        rf"(?:[\"'](?:{_SECRET_ASSIGNMENT_KEY})[\"']|"
-        rf"(?:{_SECRET_ASSIGNMENT_KEY}))\s*[:=]\s*"
-        r"""(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s\\`'",}\]]+)"""
-    ),
+_ASSIGNMENT_START_RE = re.compile(
+    rf"(?ix)(?:(?<![A-Za-z0-9_-])|(?<=\\n)|(?<=\\r)|(?<=\\t))"
+    rf"(?P<key>{_ASSIGNMENT_KEY_PATTERN})[ \t]*"
+    rf"(?P<separator>[:=])[ \t]*"
 )
+_SECRET_ASSIGNMENT_COMPONENTS = {
+    "auth",
+    "authentication",
+    "authorization",
+    "credential",
+    "credentials",
+    "passwd",
+    "password",
+    "secret",
+    "signature",
+    "token",
+}
+_TOKEN_PATTERNS = (re.compile(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]{6,}"),)
 _MENTION_RE = re.compile(r"@(everyone|here)\b", re.IGNORECASE)
 _WORD_RE = re.compile(r"[A-Za-z0-9가-힣_:-]+")
 _URL_RE = re.compile(
@@ -504,6 +512,7 @@ def _sanitize_non_url_text(text: str) -> str:
     safe = _sanitize_yaml_secret_assignments(text)
     for pattern in _TOKEN_PATTERNS:
         safe = pattern.sub("[REDACTED_SECRET]", safe)
+    safe = _sanitize_inline_secret_assignments(safe)
     return _MENTION_RE.sub("@[redacted-mention]", safe)
 
 
@@ -516,8 +525,8 @@ def _sanitize_yaml_secret_assignments(text: str) -> str:
     index = 0
     while index < len(lines):
         body, newline = _split_line_ending(lines[index])
-        match = _YAML_SECRET_ASSIGNMENT_RE.fullmatch(body)
-        if match is None:
+        match = _YAML_ASSIGNMENT_RE.fullmatch(body)
+        if match is None or not _is_secret_assignment_key(match.group("key")):
             sanitized.append(lines[index])
             index += 1
             continue
@@ -547,6 +556,62 @@ def _sanitize_yaml_secret_assignments(text: str) -> str:
             index += 1
 
     return "".join(sanitized)
+
+
+def _sanitize_inline_secret_assignments(text: str) -> str:
+    sanitized: list[str] = []
+    cursor = 0
+    search_start = 0
+    while match := _ASSIGNMENT_START_RE.search(text, search_start):
+        if not _is_secret_assignment_key(match.group("key")):
+            search_start = match.start() + 1
+            continue
+
+        value_end = _assignment_value_end(
+            text,
+            value_start=match.end(),
+            separator=match.group("separator"),
+        )
+        sanitized.extend((text[cursor : match.start()], "[REDACTED_SECRET]"))
+        cursor = value_end
+        search_start = value_end
+    sanitized.append(text[cursor:])
+    return "".join(sanitized)
+
+
+def _assignment_value_end(text: str, *, value_start: int, separator: str) -> int:
+    if value_start >= len(text):
+        return value_start
+    quote = text[value_start] if text[value_start] in {'"', "'"} else ""
+    if quote:
+        index = value_start + 1
+        while index < len(text):
+            if text[index] == "\\":
+                index += 2
+                continue
+            if text[index] == quote:
+                if quote == "'" and index + 1 < len(text) and text[index + 1] == quote:
+                    index += 2
+                    continue
+                return index + 1
+            index += 1
+        return len(text)
+
+    terminators = "\r\n,;}]" if separator == ":" else "\r\n\t \\`'\",}]"
+    index = value_start
+    while index < len(text) and text[index] not in terminators:
+        index += 1
+    return index
+
+
+def _is_secret_assignment_key(key: str) -> bool:
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in {'"', "'"}:
+        key = key[1:-1]
+    normalized = re.sub(r"[^a-z0-9]+", "_", key.casefold()).strip("_")
+    components = set(normalized.split("_"))
+    return normalized in {"api_key", "apikey"} or bool(
+        components.intersection(_SECRET_ASSIGNMENT_COMPONENTS)
+    )
 
 
 def _split_line_ending(line: str) -> tuple[str, str]:

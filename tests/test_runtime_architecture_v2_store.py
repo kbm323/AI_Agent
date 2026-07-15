@@ -283,4 +283,3 @@ def test_append_jsonl_decision_and_audit_events_include_meeting_run_id(tmp_path:
     assert audit_event["meeting_run_id"] == "mr_001"
     assert audit_event["action"] == "validator_passed"
     assert "logged_at" in audit_event
-

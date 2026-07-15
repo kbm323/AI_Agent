@@ -98,6 +98,30 @@ def test_public_sanitizer_redacts_complete_yaml_credential_scalars():
     )
 
 
+def test_public_sanitizer_redacts_namespaced_quoted_and_flow_yaml_secrets():
+    text = (
+        "name: Oracle\n"
+        "DISCORD_BOT_TOKEN=discord-secret\n"
+        "github_token: plain github secret\n"
+        '"client_secret": |-\n'
+        "  client secret line one\n"
+        "  client secret line two\n"
+        "settings: {aws_secret_access_key: plain aws secret, region: ap-northeast-2}\n"
+        "note: keep adjacent context"
+    )
+
+    assert sanitize_knowledge_text(text) == (
+        "name: Oracle\n"
+        "[REDACTED_SECRET]\n"
+        "[REDACTED_SECRET]\n"
+        "[REDACTED_SECRET]\n"
+        "  [REDACTED_SECRET]\n"
+        "  [REDACTED_SECRET]\n"
+        "settings: {[REDACTED_SECRET], region: ap-northeast-2}\n"
+        "note: keep adjacent context"
+    )
+
+
 def test_public_sanitizer_removes_plain_encoded_and_nested_url_userinfo():
     text = (
         "plain https://alice:p4ssw0rd@example.test/private "

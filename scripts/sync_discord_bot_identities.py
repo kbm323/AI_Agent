@@ -29,7 +29,7 @@ def _load_discord_bot_token(env_path: Path) -> str:
         key, separator, value = line.partition("=")
         if separator and key.strip() == "DISCORD_BOT_TOKEN":
             value = value.strip()
-            if value[:1] in {"\"", "'"}:
+            if value[:1] in {'"', "'"}:
                 quote = value[0]
                 closing_quote = value.find(quote, 1)
                 if closing_quote >= 0:

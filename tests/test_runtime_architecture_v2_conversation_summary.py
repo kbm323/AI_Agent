@@ -178,6 +178,33 @@ async def test_hermes_summarizer_redacts_complete_yaml_scalars_from_exact_input(
 
 
 @pytest.mark.asyncio
+async def test_hermes_summarizer_redacts_namespaced_and_flow_yaml_from_exact_input():
+    llm = FakeLlm(parsed=_parsed_summary())
+    transcript = (
+        "DISCORD_BOT_TOKEN=llm-token\n"
+        '"client_secret": >-\n'
+        "  llm block secret\n"
+        "settings: {password: plain llm secret, mode: safe}\n"
+        "note: keep llm context"
+    )
+
+    await HermesConversationSummarizer(llm).summarize(transcript)
+
+    assert llm.calls[0]["input"] == [
+        {
+            "type": "text",
+            "text": (
+                "[REDACTED_SECRET]\n"
+                "[REDACTED_SECRET]\n"
+                "  [REDACTED_SECRET]\n"
+                "settings: {[REDACTED_SECRET], mode: safe}\n"
+                "note: keep llm context"
+            ),
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_hermes_summarizer_sanitizes_every_returned_string():
     llm = FakeLlm(
         parsed={
