@@ -10,4 +10,3 @@ Task 6: complete (commits 4aae3c2..7d67150, review clean; 48 tests; Ruff clean)
 Task 7: complete (commits 7d67150..721584e, review clean; 67 tests; Ruff clean)
 Task 8: complete (commits 721584e..27d1ba4, review clean; 100 tests; Ruff clean; official skill-command/plugin-tool path)
 Task 9: complete (commits 27d1ba4..1f0e2d6, final review clean; 244 focused tests; whole-range Ruff, format, diff, and secret gates clean)
-
