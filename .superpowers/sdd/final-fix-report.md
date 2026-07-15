@@ -640,3 +640,128 @@ Discord adapter was added or modified.
 - Final independent review, branch integration, GitHub push, Ubuntu gates,
   seven-profile install, assistant-first smoke, remaining profile reload, and
   live deployment verification remain pending.
+
+---
+
+## Sixth Final-Review Fix Wave
+
+### Status
+
+`DONE_WITH_CONCERNS`
+
+Both Important findings and the whole-range formatting finding in
+`final-rereview-after-fifth.md` are closed. The product/tests/format commit is
+`8ad8941fbd32246569f97570af0ecbd549c2fbe5` (`fix: close discord save sixth
+rereview findings`). The report commit is the commit containing this section;
+its resolved hash is returned in the final status because a commit cannot
+contain its own hash. No Hermes Core file or standalone Discord adapter was
+added or modified.
+
+### Changed Files
+
+- `scripts/sync_discord_bot_identities.py`
+- `src/runtime_architecture_v2/knowledge.py`
+- `src/runtime_architecture_v2/obsidian_conversations.py`
+- `tests/test_runtime_architecture_v2_conversation_summary.py`
+- `tests/test_runtime_architecture_v2_discord_history.py`
+- `tests/test_runtime_architecture_v2_obsidian_conversations.py`
+- `tests/test_runtime_architecture_v2_phase15_knowledge_loop.py`
+- `tests/test_runtime_architecture_v2_store.py`
+- `.superpowers/sdd/final-fix-report.md` (this report commit only)
+
+Ruff was also run directly on `src/runtime_architecture_v2/store.py`, the third
+reported formatter offender. Its working-tree line endings normalized and the
+format check passed, but Git produced no content delta for that file. The other
+two reported offenders have the expected minimal formatter-only diffs.
+
+### Root Causes And Solutions
+
+| Finding | Root cause | Implemented solution |
+| --- | --- | --- |
+| Namespaced, quoted-key, and flow/plain secret leaks | The central assignment patterns encoded only complete bare secret key names. The YAML line scanner did not parse quoted keys, and the fallback token regex stopped unquoted values at the first space. | Added one central key parser/normalizer that classifies exact secret components in namespaced keys, a quoted-or-bare YAML assignment scanner that consumes complete block bodies, and a bounded inline scanner that consumes complete plain flow scalars up to structural delimiters while preserving adjacent safe fields. |
+| Same-range conversation-to-meeting transition | Immutable evidence validation recomputed the snapshot hash with the current mutable classification and `MeetingRun`, even though the raw snapshot correctly retained the classification and meeting identity recorded when it was created. | Reconstruct immutable evidence hashes from the snapshot's own validated `type`, `meeting_run_id`, and stored thread name. The unchanged path can now rewrite canonical/index meeting linkage without creating or rewriting raw evidence, while same-range transcript mutation still mismatches the immutable evidence hash and fails closed. |
+| Whole-range Ruff format | Three branch files were not accepted by the current Ruff formatter, primarily because of mixed working-tree line endings plus one quote normalization. | Ran the repository Ruff formatter only on the three reported files and the two newly edited files that required formatting; the final whole-range check reports all 22 changed Python files formatted. |
+
+### TDD Evidence
+
+The focused RED command was:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_phase15_knowledge_loop.py::test_public_sanitizer_redacts_namespaced_quoted_and_flow_yaml_secrets tests\test_runtime_architecture_v2_conversation_summary.py::test_hermes_summarizer_redacts_namespaced_and_flow_yaml_from_exact_input tests\test_runtime_architecture_v2_discord_history.py::test_failed_page_checkpoint_redacts_namespaced_and_flow_yaml_secrets tests\test_runtime_architecture_v2_obsidian_conversations.py::test_namespaced_quoted_and_flow_yaml_secrets_are_redacted_in_all_pages tests\test_runtime_architecture_v2_obsidian_conversations.py::test_same_latest_conversation_can_acquire_meeting_linkage_without_new_snapshot tests\test_runtime_architecture_v2_obsidian_conversations.py::test_same_latest_meeting_transition_rejects_transcript_mutation -q
+```
+
+Result: `5 failed, 1 passed in 0.73s`. The five failures were the central
+sanitizer, exact host-LLM input, failed checkpoint, raw/canonical pages, and
+positive meeting-link transition. The negative transcript-mutation case already
+failed closed, as required.
+
+After the minimal product changes, the same selection passed
+`6 passed in 0.61s`. Its fresh final rerun after formatting passed
+`6 passed in 0.37s`. The four directly affected sanitizer/persistence modules
+then passed `127 passed in 23.83s`.
+
+### Verification
+
+All Python commands used `PYTHONUTF8=1` and the worktree `.venv` interpreter.
+
+Updated aggregate command from this report:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_hermes_command_context.py tests\test_runtime_architecture_v2_discord_history.py tests\test_runtime_architecture_v2_conversation_summary.py tests\test_runtime_architecture_v2_obsidian_conversations.py tests\test_runtime_architecture_v2_save_command.py tests\test_runtime_architecture_v2_ai_agent_plugin.py tests\test_runtime_architecture_v2_store.py tests\test_runtime_architecture_v2_phase15_knowledge_loop.py tests\test_runtime_architecture_v2_phase25_command_surface.py tests\test_runtime_architecture_v2_save_skill.py tests\test_discord_save_operational_guards.py -q
+```
+
+Result: `234 passed in 41.22s`.
+
+Required regression selection:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_phase14_multi_bot.py tests\test_runtime_architecture_v2_phase21_discord_webhook.py tests\test_runtime_architecture_v2_phase30_meeting_e2e.py tests\test_runtime_architecture_v2_phase32_live_audit.py tests\test_runtime_architecture_v2_on_demand_exports.py tests\test_runtime_smoke_packet.py -q
+```
+
+Result: `99 passed, 3 failed in 10.85s`. The failures exactly match the known
+local profile-token baseline:
+
+- `test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messages`
+  returns `live_discord_publish_blocked`.
+- `test_phase33_live_projection_order_is_chair_led_even_when_ceo_is_fake`
+  returns `live_discord_publish_blocked`.
+- `test_gateway_provider_error_falls_back_to_deterministic_live_projection`
+  reports the missing `aicompanyceo` profile Discord token.
+
+Whole-range Ruff lint and format after the product commit:
+
+```powershell
+$files = @(git diff --name-only --diff-filter=ACMR c7d52c7fc6c3bb19ef048e16acd659a717dd6218..HEAD -- '*.py')
+.\.venv\Scripts\ruff.exe check $files
+.\.venv\Scripts\ruff.exe format --check $files
+```
+
+Results: `Python files: 22`; `All checks passed!`; `22 files already formatted`.
+
+Staged secret and diff gates before the product commit:
+
+```powershell
+& 'C:\Program Files\Git\bin\bash.exe' scripts/pre-commit-secret-scan.sh --staged
+git diff --cached --check
+```
+
+Results: `Secret scan passed: 8 file(s) inspected in staged mode`; the staged
+diff check passed with no output. The post-commit whole-branch command
+`git diff --check c7d52c7fc6c3bb19ef048e16acd659a717dd6218..HEAD`
+also passed with no output, and the worktree was clean before this report was
+appended.
+
+### Remaining Concerns
+
+- The three required-regression failures remain baseline-identical profile
+  token/fixture issues and require the documented Ubuntu profile environment.
+- Pinned Hermes still has no reliable Discord DM session-start boundary, so
+  production DM `/save` intentionally remains fail closed without collection,
+  summarization, or persistence side effects.
+- Ubuntu static checks, real seven-profile install/hash proof, assistant-first
+  smoke, remaining profile reloads, native picker/tool checks, rollback smoke,
+  branch integration, and live deployment verification remain pending. No
+  deployment was performed in this wave.
