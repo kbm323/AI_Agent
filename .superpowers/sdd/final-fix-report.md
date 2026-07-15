@@ -765,3 +765,135 @@ appended.
   smoke, remaining profile reloads, native picker/tool checks, rollback smoke,
   branch integration, and live deployment verification remain pending. No
   deployment was performed in this wave.
+
+---
+
+## Seventh Final-Review Fix Wave
+
+### Status
+
+`DONE_WITH_CONCERNS`
+
+The remaining Important classifier defect and Minor over-redaction finding in
+`final-rereview-after-sixth.md` are fixed in product/tests commit
+`972651d8320bbb73e7a7fdcd92447b43ea5eed40` (`fix: harden discord save
+credential classification`). The report commit is the commit containing this
+section; its resolved hash is returned in the final status because a commit
+cannot contain its own hash. No Hermes Core file, adapter, or downstream sink
+implementation was changed.
+
+### Changed Files
+
+- `src/runtime_architecture_v2/knowledge.py`
+- `tests/test_runtime_architecture_v2_conversation_summary.py`
+- `tests/test_runtime_architecture_v2_discord_history.py`
+- `tests/test_runtime_architecture_v2_obsidian_conversations.py`
+- `tests/test_runtime_architecture_v2_phase15_knowledge_loop.py`
+- `.superpowers/sdd/final-fix-report.md` (this report commit only)
+
+### Root Cause And Solution
+
+The sixth-wave classifier split keys only on non-alphanumeric separators and
+treated any matching component as secret. CamelCase credentials therefore had
+no recognized component, `private_key` was absent from the credential corpus,
+and safe names such as `token_count`, `authorization_url`, `auth_method`, and
+`password_policy` were removed because one component happened to be sensitive.
+The unquoted `=` parser also treated whitespace as the end of the value, leaking
+the remaining words.
+
+The central sanitizer now inserts camelCase boundaries before normalization and
+uses exact credential names plus directional credential suffixes. It recognizes
+`private_key`/`privateKey`, `secret_access_key`/`secretAccessKey`,
+`access_token`/`accessToken`, `client_secret`/`clientSecret`, API keys,
+namespaced credentials, and the earlier snake/dotted/hyphenated forms without
+classifying metadata/url suffixes as secrets. Unquoted `=` values consume all
+words until a structural delimiter or a following assignment, mention, or
+protected URL boundary. Adjacent safe assignments and URLs remain verbatim.
+
+### TDD Evidence
+
+The focused RED command was:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_phase15_knowledge_loop.py::test_public_sanitizer_pairs_secret_keys_with_safe_metadata tests\test_runtime_architecture_v2_conversation_summary.py::test_hermes_summarizer_redacts_google_private_key_from_exact_input tests\test_runtime_architecture_v2_discord_history.py::test_failed_page_checkpoint_redacts_complete_camel_case_equals_value tests\test_runtime_architecture_v2_obsidian_conversations.py::test_camel_case_secrets_are_redacted_without_losing_safe_page_fields -q
+```
+
+Result: `10 failed in 0.66s`. All seven paired positive/negative classifier rows
+failed, as did the exact host-LLM Google service-account fixture, failed
+checkpoint, and raw/canonical page regressions. The fixture uses a realistic but
+fake service-account JSON document with a fake PEM-shaped `private_key`, safe
+project/key IDs, service email, and OAuth URLs.
+
+After the minimal central revision, the same selection passed
+`10 passed in 0.58s`. The first four-module compatibility run then produced
+`136 passed, 1 failed in 26.36s`: the existing bare-URL test showed that a URL
+following the final unquoted secret assignment was being consumed as part of
+the multiword value. Adding the already-protected internal URL placeholder as a
+value boundary made the strengthened compatibility selection pass
+`11 passed in 0.27s`. The final directly affected module run passed
+`137 passed in 25.04s`.
+
+### Verification
+
+All Python commands used `PYTHONUTF8=1` and the worktree `.venv` interpreter.
+
+Updated aggregate:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_hermes_command_context.py tests\test_runtime_architecture_v2_discord_history.py tests\test_runtime_architecture_v2_conversation_summary.py tests\test_runtime_architecture_v2_obsidian_conversations.py tests\test_runtime_architecture_v2_save_command.py tests\test_runtime_architecture_v2_ai_agent_plugin.py tests\test_runtime_architecture_v2_store.py tests\test_runtime_architecture_v2_phase15_knowledge_loop.py tests\test_runtime_architecture_v2_phase25_command_surface.py tests\test_runtime_architecture_v2_save_skill.py tests\test_discord_save_operational_guards.py -q
+```
+
+Result: `244 passed in 43.80s`.
+
+Required regression selection:
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests\test_runtime_architecture_v2_phase14_multi_bot.py tests\test_runtime_architecture_v2_phase21_discord_webhook.py tests\test_runtime_architecture_v2_phase30_meeting_e2e.py tests\test_runtime_architecture_v2_phase32_live_audit.py tests\test_runtime_architecture_v2_on_demand_exports.py tests\test_runtime_smoke_packet.py -q
+```
+
+Result: `99 passed, 3 failed in 11.24s`. The failures exactly match the known
+local profile-token baseline:
+
+- `test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messages`
+  returns `live_discord_publish_blocked`.
+- `test_phase33_live_projection_order_is_chair_led_even_when_ceo_is_fake`
+  returns `live_discord_publish_blocked`.
+- `test_gateway_provider_error_falls_back_to_deterministic_live_projection`
+  reports the missing `aicompanyceo` profile Discord token.
+
+Whole-range Ruff lint and format after the product commit:
+
+```powershell
+$files = @(git diff --name-only --diff-filter=ACMR c7d52c7fc6c3bb19ef048e16acd659a717dd6218..HEAD -- '*.py')
+.\.venv\Scripts\ruff.exe check $files
+.\.venv\Scripts\ruff.exe format --check $files
+```
+
+Results: `Python files: 22`; `All checks passed!`; `22 files already formatted`.
+
+Staged secret and range diff gates:
+
+```powershell
+& 'C:\Program Files\Git\bin\bash.exe' scripts/pre-commit-secret-scan.sh --staged
+git diff --cached --check
+git diff --check c7d52c7fc6c3bb19ef048e16acd659a717dd6218..HEAD
+```
+
+Results: `Secret scan passed: 5 file(s) inspected in staged mode`; both diff
+checks passed with no output. The worktree was clean before this report was
+appended.
+
+### Remaining Concerns
+
+- The three required-regression failures remain baseline-identical profile
+  token/fixture issues and require the documented Ubuntu profile environment.
+- Pinned Hermes still has no reliable Discord DM session-start boundary, so
+  production DM `/save` intentionally remains fail closed without collection,
+  summarization, or persistence side effects.
+- Ubuntu static checks, real seven-profile install/hash proof, assistant-first
+  smoke, remaining profile reloads, native picker/tool checks, rollback smoke,
+  branch integration, and live deployment verification remain pending. No
+  deployment was performed in this wave.
