@@ -4,6 +4,12 @@ Status: APPROVED DESIGN BASELINE
 Date: 2026-07-13 KST  
 Canonical architecture: `docs/runtime-architecture-v2.md`
 
+> Command-surface update: the grouped `/meeting` and `/llmwiki` shapes in this
+> document are superseded by
+> `2026-07-16-discord-natural-language-commands-design.md`. The `/save` design
+> below remains authoritative for retention behavior and is deployed as
+> `/archive` because `/save` conflicts with a Hermes built-in command.
+
 ## 1. Decision
 
 The live user-facing command surface is intentionally small:
@@ -344,4 +350,3 @@ The design is complete when all of the following are true:
 10. Secrets and unsafe mentions cannot be written to the vault.
 11. The live command path respects Hermes-first and Phase 25 safety policy.
 12. Existing Runtime v2 behavior remains regression-clean.
-
