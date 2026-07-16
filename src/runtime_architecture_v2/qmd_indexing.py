@@ -9,9 +9,10 @@ import tempfile
 import threading
 import time
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from weakref import WeakValueDictionary
 
 from .qmd_search import QmdClient, QmdCommandResult
 
@@ -28,6 +29,17 @@ class QmdReconcileResult:
     updated: bool = False
     embedded: bool = False
     error: str = ""
+
+
+@dataclass
+class _WorkerState:
+    guard: threading.Lock = field(default_factory=threading.Lock)
+    worker: threading.Thread | None = None
+
+
+_RUNTIME_WORKER_STATES: WeakValueDictionary[str, _WorkerState] = (
+    WeakValueDictionary()
+)
 
 
 class _InterProcessFileLock:
@@ -76,8 +88,12 @@ class QmdIndexScheduler:
         self.runtime_root = Path(runtime_root) / "runtime" / "qmd"
         self.client = client
         self._local_lock = _runtime_lock(self.runtime_root)
-        self._worker_guard = threading.Lock()
-        self._worker: threading.Thread | None = None
+        self._worker_state = _runtime_worker_state(self.runtime_root)
+
+    @property
+    def _worker(self) -> threading.Thread | None:
+        with self._worker_state.guard:
+            return self._worker_state.worker
 
     @property
     def dirty(self) -> bool:
@@ -98,16 +114,22 @@ class QmdIndexScheduler:
     def schedule(self) -> bool:
         """Start one debounced daemon worker, coalescing repeat requests."""
 
-        with self._worker_guard:
-            if self._worker is not None and self._worker.is_alive():
+        state = self._worker_state
+        with state.guard:
+            if state.worker is not None and state.worker.is_alive():
                 return False
             worker = threading.Thread(
                 target=self._run_scheduled_reconcile,
+                args=(state,),
                 name="qmd-index-reconcile",
                 daemon=True,
             )
-            self._worker = worker
-            worker.start()
+            state.worker = worker
+            try:
+                worker.start()
+            except BaseException:
+                state.worker = None
+                raise
             return True
 
     def refresh_for_search(self) -> QmdCommandResult:
@@ -137,20 +159,30 @@ class QmdIndexScheduler:
         except (OSError, TimeoutError):
             return QmdReconcileResult(ok=False, error="command_failed")
 
-    def _run_scheduled_reconcile(self) -> None:
+    def _run_scheduled_reconcile(self, state: _WorkerState) -> None:
         try:
             time.sleep(_DEBOUNCE_SECONDS)
             self.reconcile()
         finally:
-            with self._worker_guard:
-                if self._worker is threading.current_thread():
-                    self._worker = None
+            with state.guard:
+                if state.worker is threading.current_thread():
+                    state.worker = None
 
 
 def _runtime_lock(runtime_root: Path) -> threading.RLock:
     key = _resolved_path_key(runtime_root)
     with _LOCKS_GUARD:
         return _RUNTIME_LOCKS.setdefault(key, threading.RLock())
+
+
+def _runtime_worker_state(runtime_root: Path) -> _WorkerState:
+    key = _resolved_path_key(runtime_root)
+    with _LOCKS_GUARD:
+        state = _RUNTIME_WORKER_STATES.get(key)
+        if state is None:
+            state = _WorkerState()
+            _RUNTIME_WORKER_STATES[key] = state
+        return state
 
 
 def _lock_file_nonblocking(handle: Any) -> None:

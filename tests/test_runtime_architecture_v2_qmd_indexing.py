@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import threading
+from pathlib import Path
 
 from src.runtime_architecture_v2 import qmd_indexing
 from src.runtime_architecture_v2.qmd_indexing import (
@@ -28,6 +30,12 @@ class FakeQmdClient:
     def embed(self) -> QmdCommandResult:
         self.calls.append("embed")
         return self.embed_result
+
+
+def _hold_index_lock(lock_path, acquired, release) -> None:
+    with qmd_indexing._InterProcessFileLock(Path(lock_path)):
+        acquired.set()
+        release.wait(timeout=5)
 
 
 def test_mark_dirty_persists_state_under_runtime_qmd(tmp_path):
@@ -127,6 +135,40 @@ def test_two_scheduler_instances_serialize_index_operations(tmp_path):
     assert second_client.calls == ["update"]
 
 
+def test_refresh_waits_for_index_lock_held_by_subprocess(tmp_path):
+    scheduler = QmdIndexScheduler(runtime_root=tmp_path, client=FakeQmdClient())
+    context = multiprocessing.get_context("spawn")
+    acquired = context.Event()
+    release = context.Event()
+    process = context.Process(
+        target=_hold_index_lock,
+        args=(str(scheduler._lock_path), acquired, release),
+    )
+    completed = threading.Event()
+    refresh_thread = threading.Thread(
+        target=lambda: (scheduler.refresh_for_search(), completed.set())
+    )
+
+    process.start()
+    try:
+        assert acquired.wait(timeout=3)
+        refresh_thread.start()
+        assert not completed.wait(timeout=0.1)
+        assert scheduler.client.calls == []
+        release.set()
+        assert completed.wait(timeout=3)
+    finally:
+        release.set()
+        refresh_thread.join(timeout=3)
+        process.join(timeout=3)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=3)
+
+    assert process.exitcode == 0
+    assert scheduler.client.calls == ["update"]
+
+
 def test_schedule_coalesces_calls_into_one_daemon_worker(tmp_path, monkeypatch):
     debounce_started = threading.Event()
     allow_reconcile = threading.Event()
@@ -152,3 +194,60 @@ def test_schedule_coalesces_calls_into_one_daemon_worker(tmp_path, monkeypatch):
     assert not worker.is_alive()
     assert scheduler.client.calls == ["update", "embed"]
     assert scheduler.dirty is False
+
+
+def test_schedule_coalesces_scheduler_instances_for_same_runtime(tmp_path, monkeypatch):
+    debounce_started = threading.Event()
+    allow_reconcile = threading.Event()
+
+    def debounce(_delay: float) -> None:
+        debounce_started.set()
+        assert allow_reconcile.wait(timeout=1)
+
+    monkeypatch.setattr(qmd_indexing.time, "sleep", debounce)
+    first_client = FakeQmdClient()
+    second_client = FakeQmdClient()
+    first = QmdIndexScheduler(runtime_root=tmp_path, client=first_client)
+    second = QmdIndexScheduler(runtime_root=tmp_path, client=second_client)
+    first.mark_dirty()
+
+    assert first.schedule() is True
+    assert debounce_started.wait(timeout=1)
+    worker = first._worker
+    assert worker is not None
+    assert second.schedule() is False
+
+    allow_reconcile.set()
+    worker.join(timeout=1)
+    assert not worker.is_alive()
+    assert first_client.calls == ["update", "embed"]
+    assert second_client.calls == []
+    assert first._worker is None
+    assert second._worker is None
+
+
+def test_schedule_allows_workers_for_different_runtime_roots(tmp_path, monkeypatch):
+    barrier = threading.Barrier(2)
+
+    def debounce(_delay: float) -> None:
+        barrier.wait(timeout=1)
+
+    monkeypatch.setattr(qmd_indexing.time, "sleep", debounce)
+    first_client = FakeQmdClient()
+    second_client = FakeQmdClient()
+    first = QmdIndexScheduler(runtime_root=tmp_path / "first", client=first_client)
+    second = QmdIndexScheduler(runtime_root=tmp_path / "second", client=second_client)
+    first.mark_dirty()
+    second.mark_dirty()
+
+    assert first.schedule() is True
+    first_worker = first._worker
+    assert first_worker is not None
+    assert second.schedule() is True
+    second_worker = second._worker
+    assert second_worker is not None
+
+    first_worker.join(timeout=1)
+    second_worker.join(timeout=1)
+    assert first_client.calls == ["update", "embed"]
+    assert second_client.calls == ["update", "embed"]
