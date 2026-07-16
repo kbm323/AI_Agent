@@ -38,6 +38,7 @@ _VAULT_UNAVAILABLE_RESPONSE = (
 _SAVE_FAILED_RESPONSE = "대화를 저장하지 못했습니다. 잠시 후 /save를 다시 시도해주세요."
 _SAVE_IN_PROGRESS_RESPONSE = "대화를 저장하고 있습니다."
 _MAX_INVOCATIONS = 1024
+_SAVE_USAGE_RESPONSE = "\uc0ac\uc6a9\ubc95: /save"
 _DISCORD_EPOCH_MS = 1_420_070_400_000
 _SNOWFLAKE_RE = re.compile(r"^[0-9]{1,24}$")
 _InvocationKey = tuple[str, str, str]
@@ -256,6 +257,11 @@ def register(ctx: Any) -> None:
             _complete_invocation(key, result)
         return result
 
+    async def handle_save_command(raw_args: str) -> str:
+        if raw_args.strip():
+            return _SAVE_USAGE_RESPONSE
+        return json.loads(await execute_save())["message"]
+
     ctx.register_tool(
         name=_TOOL_NAME,
         toolset=_TOOLSET,
@@ -263,5 +269,11 @@ def register(ctx: Any) -> None:
         handler=handle_save,
         is_async=True,
         description=_TOOL_DESCRIPTION,
+    )
+    ctx.register_command(
+        "save",
+        handler=handle_save_command,
+        description=_TOOL_DESCRIPTION,
+        args_hint="",
     )
     ctx.register_hook("pre_gateway_dispatch", _capture_gateway_boundary)

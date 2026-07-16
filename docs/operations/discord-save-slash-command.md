@@ -2,11 +2,11 @@
 
 ## 목적과 경계
 
-이 문서는 Hermes의 공식 **skill-command + plugin-tool** 경로로 Discord
-`/save`를 배포하고 되돌리는 절차다. 설치된 `save` skill이 Discord native
-`/save` picker 항목을 제공하고, `ai-agent-commands` plugin은 모델이 호출하는
-비동기 `save_discord_thread_to_obsidian` tool만 제공한다. plugin은 command를
-등록하지 않는다.
+이 문서는 Hermes의 공식 **plugin-command + plugin-tool** 경로로 Discord
+`/save`를 배포하고 되돌리는 절차다. `ai-agent-commands` plugin이
+`PluginContext.register_command()`로 Discord native `/save` picker 항목을 제공하고,
+같은 plugin의 비동기 `save_discord_thread_to_obsidian` tool이 모델 기반 호출 경로를
+제공한다. 설치된 `save` skill은 `/skill save`와 CLI 대화 경로의 호환성을 유지한다.
 
 Hermes Core 수정, standalone Discord interaction/webhook adapter, 수동 slash
 command 등록, tool override grant는 사용하지 않는다. 특히 `--allow-tool`,
@@ -340,8 +340,8 @@ tmux new-session -d -s hermes-aicompanyassistant -x 120 -y 40 \
 
 assistant bot의 지정된 일반 test thread에서 아래를 순서대로 수행한다.
 
-1. Discord native command picker에 `/save`가 보이는지 확인한다. skill이
-   picker entry를 제공하며 plugin은 command를 등록하지 않는다.
+1. Discord native command picker에 `/save`가 보이는지 확인한다. plugin command가
+   picker entry를 제공하며 `save` skill은 `/skill save` 보조 경로로 유지된다.
 2. `/save`를 한 번 실행한다. `conversation` snapshot과 canonical page가
    생성되어야 한다.
 3. 새 메시지 없이 `/save`를 다시 실행한다. 결과는 `unchanged`이고 새

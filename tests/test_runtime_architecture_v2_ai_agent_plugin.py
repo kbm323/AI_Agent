@@ -135,10 +135,14 @@ def test_manifest_declares_tool_without_secret_or_provider_dependencies() -> Non
     assert "provider" not in manifest.lower()
 
 
-def test_plugin_registers_one_async_parameterless_tool_and_no_command() -> None:
+def test_plugin_registers_save_command_and_async_parameterless_tool() -> None:
     ctx, tool = _registered_tool()
 
-    assert ctx.commands == {}
+    assert list(ctx.commands) == ["save"]
+    command = ctx.commands["save"]
+    assert command["description"] == "Save the current Discord thread to Obsidian."
+    assert command["args_hint"] == ""
+    assert inspect.iscoroutinefunction(command["handler"])
     assert list(ctx.tools) == [TOOL_NAME]
     assert tool["toolset"] == "ai_agent_commands"
     assert tool["is_async"] is True
@@ -155,6 +159,38 @@ def test_plugin_registers_one_async_parameterless_tool_and_no_command() -> None:
     }
     assert tool["description"] == "Save the current Discord thread to Obsidian."
     assert list(ctx.hooks) == ["pre_gateway_dispatch"]
+
+
+@pytest.mark.asyncio
+async def test_save_command_runs_existing_save_pipeline_and_returns_message(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    plugin = _load_plugin()
+    ctx = FakePluginContext()
+    plugin.register(ctx)
+    run_save = _stub_successful_save(monkeypatch, tmp_path)
+
+    response = await ctx.commands["save"]["handler"]("")
+
+    assert response == "rendered response"
+    run_save.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_save_command_rejects_trailing_arguments_without_saving(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = _load_plugin()
+    ctx = FakePluginContext()
+    plugin.register(ctx)
+    env_get = Mock(side_effect=AssertionError("configuration must not be read"))
+    monkeypatch.setattr(plugin.os.environ, "get", env_get)
+
+    response = await ctx.commands["save"]["handler"]("unexpected")
+
+    assert response == "\uc0ac\uc6a9\ubc95: /save"
+    env_get.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -547,7 +583,7 @@ async def test_save_tool_fails_closed_when_required_profile_env_is_missing(
     )
 
     assert _message(response) == expected_message
-    assert ctx.commands == {}
+    assert list(ctx.commands) == ["save"]
 
 
 @pytest.mark.asyncio
