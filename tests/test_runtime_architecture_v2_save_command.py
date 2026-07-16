@@ -634,18 +634,18 @@ def test_thread_required_response_is_concise_korean_guidance() -> None:
     result = SaveCommandResult(ok=False, error="thread_required")
 
     assert render_save_response(result) == (
-        "대화를 저장하려면 Discord 스레드 안에서 /save를 다시 실행해주세요."
+        "대화를 저장하려면 Discord 스레드 안에서 /archive를 다시 실행해주세요."
     )
 
 
 @pytest.mark.parametrize(
     ("error", "retry_guidance"),
     [
-        ("discord_only", "Discord에서 /save를 다시 실행"),
-        ("missing_discord_token", "토큰을 설정한 뒤 /save를 다시 실행"),
-        ("history_unavailable", "잠시 후 /save를 다시 시도"),
+        ("discord_only", "Discord에서 /archive를 다시 실행"),
+        ("missing_discord_token", "토큰을 설정한 뒤 /archive를 다시 실행"),
+        ("history_unavailable", "잠시 후 /archive를 다시 시도"),
         ("vault_unavailable", "보관함 경로와 쓰기 권한을 확인한 뒤 다시 시도"),
-        ("save_failed", "잠시 후 /save를 다시 시도"),
+        ("save_failed", "잠시 후 /archive를 다시 시도"),
         ("invocation_boundary_unavailable", "gateway를 재시작한 뒤 다시 시도"),
     ],
 )
@@ -663,7 +663,9 @@ def test_unknown_error_text_is_never_rendered() -> None:
         SaveCommandResult(ok=False, error="secret-token raw exception")
     )
 
-    assert rendered == "대화를 저장하지 못했습니다. 잠시 후 /save를 다시 시도해주세요."
+    assert rendered == (
+        "대화를 저장하지 못했습니다. 잠시 후 /archive를 다시 시도해주세요."
+    )
     assert "secret-token" not in rendered
 
 

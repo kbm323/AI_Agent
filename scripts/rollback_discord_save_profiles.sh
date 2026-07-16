@@ -81,7 +81,7 @@ finalize_rollback() {
     evidence="$DEPLOY_RECORD_DIR/$profile.rollback-absence.txt"
     test -s "$evidence"
     grep -F "tool absent: save_discord_thread_to_obsidian" "$evidence"
-    grep -F "picker absent: /save" "$evidence"
+    grep -F "picker absent: /archive" "$evidence"
 
     if [ -f "$state_root/was-running" ]; then
       if ! tmux has-session -t "$session" 2>/dev/null; then

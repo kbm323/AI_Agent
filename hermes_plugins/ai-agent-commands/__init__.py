@@ -18,6 +18,7 @@ _DEFAULT_AI_AGENT_ROOT = "/home/ubuntu/hermes-workspace/AI_Agent"
 _TOOL_NAME = "save_discord_thread_to_obsidian"
 _TOOLSET = "ai_agent_commands"
 _TOOL_DESCRIPTION = "Save the current Discord thread to Obsidian."
+_COMMAND_DESCRIPTION = "Archive the current Discord thread to Obsidian."
 _TOOL_SCHEMA = {
     "name": _TOOL_NAME,
     "description": _TOOL_DESCRIPTION,
@@ -29,16 +30,19 @@ _TOOL_SCHEMA = {
     },
 }
 _MISSING_TOKEN_RESPONSE = (
-    "Discord 봇 토큰이 설정되지 않았습니다. 토큰을 설정한 뒤 /save를 다시 실행해주세요."
+    "Discord 봇 토큰이 설정되지 않았습니다. 토큰을 설정한 뒤 "
+    "/archive를 다시 실행해주세요."
 )
 _VAULT_UNAVAILABLE_RESPONSE = (
     "Obsidian 보관함을 사용할 수 없습니다. 보관함 경로와 쓰기 권한을 확인한 뒤 "
-    "/save를 다시 시도해주세요."
+    "/archive를 다시 시도해주세요."
 )
-_SAVE_FAILED_RESPONSE = "대화를 저장하지 못했습니다. 잠시 후 /save를 다시 시도해주세요."
+_SAVE_FAILED_RESPONSE = (
+    "대화를 저장하지 못했습니다. 잠시 후 /archive를 다시 시도해주세요."
+)
 _SAVE_IN_PROGRESS_RESPONSE = "대화를 저장하고 있습니다."
 _MAX_INVOCATIONS = 1024
-_SAVE_USAGE_RESPONSE = "\uc0ac\uc6a9\ubc95: /save"
+_SAVE_USAGE_RESPONSE = "\uc0ac\uc6a9\ubc95: /archive"
 _DISCORD_EPOCH_MS = 1_420_070_400_000
 _SNOWFLAKE_RE = re.compile(r"^[0-9]{1,24}$")
 _InvocationKey = tuple[str, str, str]
@@ -271,9 +275,9 @@ def register(ctx: Any) -> None:
         description=_TOOL_DESCRIPTION,
     )
     ctx.register_command(
-        "save",
+        "archive",
         handler=handle_save_command,
-        description=_TOOL_DESCRIPTION,
+        description=_COMMAND_DESCRIPTION,
         args_hint="",
     )
     ctx.register_hook("pre_gateway_dispatch", _capture_gateway_boundary)

@@ -22,11 +22,11 @@ from .store import MeetingRunStore, StoreError
 
 _ERROR_RESPONSES = {
     "discord_only": (
-        "/save는 Discord에서만 사용할 수 있습니다. Discord에서 /save를 다시 "
+        "/archive는 Discord에서만 사용할 수 있습니다. Discord에서 /archive를 다시 "
         "실행해주세요."
     ),
     "thread_required": (
-        "대화를 저장하려면 Discord 스레드 안에서 /save를 다시 실행해주세요."
+        "대화를 저장하려면 Discord 스레드 안에서 /archive를 다시 실행해주세요."
     ),
     "dm_boundary_unavailable": (
         "현재 Hermes는 DM 세션 시작 경계를 제공하지 않아 저장하지 않았습니다. "
@@ -37,18 +37,20 @@ _ERROR_RESPONSES = {
         "재시작한 뒤 다시 시도해주세요."
     ),
     "missing_discord_token": (
-        "Discord 봇 토큰이 설정되지 않았습니다. 토큰을 설정한 뒤 /save를 다시 "
+        "Discord 봇 토큰이 설정되지 않았습니다. 토큰을 설정한 뒤 /archive를 다시 "
         "실행해주세요."
     ),
     "history_unavailable": (
-        "Discord 대화 기록을 불러오지 못했습니다. 잠시 후 /save를 다시 시도하고, "
+        "Discord 대화 기록을 불러오지 못했습니다. 잠시 후 /archive를 다시 시도하고, "
         "계속 실패하면 봇의 기록 읽기 권한을 확인해주세요."
     ),
     "vault_unavailable": (
         "Obsidian 보관함을 사용할 수 없습니다. 보관함 경로와 쓰기 권한을 확인한 뒤 "
         "다시 시도해주세요."
     ),
-    "save_failed": ("대화를 저장하지 못했습니다. 잠시 후 /save를 다시 시도해주세요."),
+    "save_failed": (
+        "대화를 저장하지 못했습니다. 잠시 후 /archive를 다시 시도해주세요."
+    ),
 }
 _SUCCESS_STATUS_RESPONSES = {
     "created": "저장 완료",

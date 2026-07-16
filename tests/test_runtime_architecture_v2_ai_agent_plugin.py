@@ -14,7 +14,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = PROJECT_ROOT / "hermes_plugins" / "ai-agent-commands"
 TOOL_NAME = "save_discord_thread_to_obsidian"
-SAVE_FAILED = "대화를 저장하지 못했습니다. 잠시 후 /save를 다시 시도해주세요."
+SAVE_FAILED = "대화를 저장하지 못했습니다. 잠시 후 /archive를 다시 시도해주세요."
 SAVE_IN_PROGRESS = "대화를 저장하고 있습니다."
 
 
@@ -135,12 +135,12 @@ def test_manifest_declares_tool_without_secret_or_provider_dependencies() -> Non
     assert "provider" not in manifest.lower()
 
 
-def test_plugin_registers_save_command_and_async_parameterless_tool() -> None:
+def test_plugin_registers_archive_command_and_async_parameterless_tool() -> None:
     ctx, tool = _registered_tool()
 
-    assert list(ctx.commands) == ["save"]
-    command = ctx.commands["save"]
-    assert command["description"] == "Save the current Discord thread to Obsidian."
+    assert list(ctx.commands) == ["archive"]
+    command = ctx.commands["archive"]
+    assert command["description"] == "Archive the current Discord thread to Obsidian."
     assert command["args_hint"] == ""
     assert inspect.iscoroutinefunction(command["handler"])
     assert list(ctx.tools) == [TOOL_NAME]
@@ -171,7 +171,7 @@ async def test_save_command_runs_existing_save_pipeline_and_returns_message(
     plugin.register(ctx)
     run_save = _stub_successful_save(monkeypatch, tmp_path)
 
-    response = await ctx.commands["save"]["handler"]("")
+    response = await ctx.commands["archive"]["handler"]("")
 
     assert response == "rendered response"
     run_save.assert_awaited_once()
@@ -187,9 +187,9 @@ async def test_save_command_rejects_trailing_arguments_without_saving(
     env_get = Mock(side_effect=AssertionError("configuration must not be read"))
     monkeypatch.setattr(plugin.os.environ, "get", env_get)
 
-    response = await ctx.commands["save"]["handler"]("unexpected")
+    response = await ctx.commands["archive"]["handler"]("unexpected")
 
-    assert response == "\uc0ac\uc6a9\ubc95: /save"
+    assert response == "\uc0ac\uc6a9\ubc95: /archive"
     env_get.assert_not_called()
 
 
@@ -553,12 +553,12 @@ async def test_save_tool_reads_late_bound_context_and_constructs_reviewed_depend
         (
             "DISCORD_BOT_TOKEN",
             "Discord 봇 토큰이 설정되지 않았습니다. 토큰을 설정한 뒤 "
-            "/save를 다시 실행해주세요.",
+            "/archive를 다시 실행해주세요.",
         ),
         (
             "OBSIDIAN_VAULT_PATH",
             "Obsidian 보관함을 사용할 수 없습니다. 보관함 경로와 쓰기 권한을 "
-            "확인한 뒤 /save를 다시 시도해주세요.",
+            "확인한 뒤 /archive를 다시 시도해주세요.",
         ),
     ],
 )
@@ -583,7 +583,7 @@ async def test_save_tool_fails_closed_when_required_profile_env_is_missing(
     )
 
     assert _message(response) == expected_message
-    assert list(ctx.commands) == ["save"]
+    assert list(ctx.commands) == ["archive"]
 
 
 @pytest.mark.asyncio

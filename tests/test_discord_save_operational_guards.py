@@ -200,7 +200,7 @@ def test_rollback_script_resyncs_all_profiles_without_session_collisions(
 
     for profile in PROFILES:
         (deploy_record / f"{profile}.rollback-absence.txt").write_text(
-            "tool absent: save_discord_thread_to_obsidian\npicker absent: /save\n",
+            "tool absent: save_discord_thread_to_obsidian\npicker absent: /archive\n",
             encoding="utf-8",
         )
 
@@ -340,7 +340,7 @@ def test_rollback_stops_resyncs_restores_and_verifies_absence():
     assert "skills uninstall save" in script
     assert "gateway run" in script
     assert "save_discord_thread_to_obsidian" in rollback
-    assert "/save" in rollback
+    assert "/archive" in rollback
     assert "picker" in rollback
 
 
@@ -373,5 +373,5 @@ def test_rollback_tracks_stops_restores_resyncs_and_verifies_all_profiles():
     assert 'if [ -f "$state_root/was-running" ]; then' in script
     assert 'tmux new-session -d -s "$session"' in script
     assert "save_discord_thread_to_obsidian" in rollback
-    assert "/save" in rollback
+    assert "/archive" in rollback
     assert "picker" in rollback
