@@ -1,5 +1,10 @@
 # Discord `/save` Slash Command Implementation Plan
 
+> Historical completed plan. The feature was deployed as `/archive` because
+> `/save` conflicts with a Hermes built-in command. Current behavior and future
+> changes are governed by
+> `docs/superpowers/specs/2026-07-13-discord-slash-commands-obsidian-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a real Hermes-native Discord `/save` command that saves the current thread as immutable Obsidian transcript snapshots plus one updated canonical conversation or meeting page.
