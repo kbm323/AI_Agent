@@ -70,6 +70,8 @@ class LlmWikiStore:
     def __init__(self, *, vault_root: str | Path, runtime_root: str | Path) -> None:
         self.vault_root = Path(vault_root)
         self.workspace_root = Path(runtime_root)
+        if _is_inside(self.workspace_root, self.vault_root):
+            raise ValueError("runtime_root_inside_vault")
         self._lock = _vault_lock(self.vault_root)
 
     def save_note(self, text: str, *, author: str) -> LlmWikiWriteResult:
@@ -85,21 +87,29 @@ class LlmWikiStore:
             with self._lock, _InterProcessFileLock(self._lock_path()):
                 raw = _contained_path(self.vault_root, raw_path)
                 canonical = _contained_path(self.vault_root, canonical_path)
-                if raw.exists():
-                    return _result("unchanged", record_id, raw_path, canonical_path)
-                _write_raw_exclusive(
-                    raw, _render_note_raw(record_id, safe_author, safe_text)
+                log = _contained_path(self.vault_root, "wiki/log.md")
+                raw_exists = raw.exists()
+                canonical_text = _render_note_canonical(
+                    record_id, raw_path, safe_author, safe_text
                 )
-                _atomic_write_text(
-                    canonical,
-                    _render_note_canonical(record_id, raw_path, safe_author, safe_text),
-                )
-                _append_once(
-                    _contained_path(self.vault_root, "wiki/log.md"),
-                    _render_log_entry("note", raw_path, canonical_path),
-                    _log_marker(record_id),
-                )
-                return _result("created", record_id, raw_path, canonical_path)
+                needs_canonical = not _text_matches(canonical, canonical_text)
+                needs_log = not _has_marker(log, _log_marker(record_id))
+                if not raw_exists:
+                    _write_raw_exclusive(
+                        raw, _render_note_raw(record_id, safe_author, safe_text)
+                    )
+                if needs_canonical:
+                    _atomic_write_text(canonical, canonical_text)
+                if needs_log:
+                    _append_once(
+                        log,
+                        _render_log_entry("note", raw_path, canonical_path),
+                        _log_marker(record_id),
+                    )
+                status = "created" if not raw_exists else "updated"
+                if raw_exists and not needs_canonical and not needs_log:
+                    status = "unchanged"
+                return _result(status, record_id, raw_path, canonical_path)
         except (OSError, TimeoutError):
             return _failure("write_failed")
         except ValueError:
@@ -121,40 +131,52 @@ class LlmWikiStore:
             with self._lock, _InterProcessFileLock(self._lock_path()):
                 raw = _contained_path(self.vault_root, raw_path)
                 canonical = _contained_path(self.vault_root, canonical_path)
-                if raw.exists():
-                    return _result("unchanged", record_id, raw_path, canonical_path)
-                status = (
-                    "updated" if self._has_source_snapshot(source_id) else "created"
-                )
-                _write_raw_exclusive(
-                    raw,
-                    _render_source_raw(
-                        record_id=record_id,
-                        source=source,
-                        safe_url=safe_url,
-                        safe_content=safe_content,
-                    ),
-                )
+                log = _contained_path(self.vault_root, "wiki/log.md")
+                index = _contained_path(self.vault_root, "wiki/index.md")
+                raw_exists = raw.exists()
+                has_prior_snapshot = self._has_source_snapshot(source_id)
+                if not raw_exists:
+                    _write_raw_exclusive(
+                        raw,
+                        _render_source_raw(
+                            record_id=record_id,
+                            source=source,
+                            safe_url=safe_url,
+                            safe_content=safe_content,
+                        ),
+                    )
                 snapshots = self._source_snapshot_paths(source_id)
-                _atomic_write_text(
-                    canonical,
-                    _render_source_canonical(
-                        source=source,
-                        summary=summary,
-                        safe_url=safe_url,
-                        snapshots=snapshots,
-                    ),
+                canonical_text = _render_source_canonical(
+                    source=source,
+                    summary=summary,
+                    safe_url=safe_url,
+                    snapshots=snapshots,
                 )
-                _append_once(
-                    _contained_path(self.vault_root, "wiki/log.md"),
-                    _render_log_entry("source", raw_path, canonical_path),
-                    _log_marker(record_id),
-                )
-                _append_once(
-                    _contained_path(self.vault_root, "wiki/index.md"),
-                    _render_index_entry(summary, source.title, canonical_path),
-                    _index_marker(record_id),
-                )
+                needs_canonical = not raw_exists or not canonical.exists()
+                needs_log = not _has_marker(log, _log_marker(record_id))
+                needs_index = not _has_marker(index, _index_marker(record_id))
+                if needs_canonical:
+                    _atomic_write_text(canonical, canonical_text)
+                if needs_log:
+                    _append_once(
+                        log,
+                        _render_log_entry("source", raw_path, canonical_path),
+                        _log_marker(record_id),
+                    )
+                if needs_index:
+                    _append_once(
+                        index,
+                        _render_index_entry(summary, source.title, canonical_path),
+                        _index_marker(record_id),
+                    )
+                status = "created" if not has_prior_snapshot else "updated"
+                if (
+                    raw_exists
+                    and not needs_canonical
+                    and not needs_log
+                    and not needs_index
+                ):
+                    status = "unchanged"
                 return _result(status, record_id, raw_path, canonical_path)
         except (OSError, TimeoutError):
             return _failure("write_failed")
@@ -292,6 +314,19 @@ def _append_once(path: Path, entry: str, marker: str) -> None:
     _atomic_write_text(path, f"{updated}{entry}\n{marker}\n")
 
 
+def _has_marker(path: Path, marker: str) -> bool:
+    if not path.exists():
+        return False
+    return any(
+        line.strip() == marker
+        for line in path.read_text(encoding="utf-8").splitlines()
+    )
+
+
+def _text_matches(path: Path, expected: str) -> bool:
+    return path.exists() and path.read_text(encoding="utf-8") == expected
+
+
 def _log_marker(record_id: str) -> str:
     return f"<!-- oracle-llmwiki-log:{record_id} -->"
 
@@ -386,6 +421,15 @@ def _contained_path(root: Path, relative: str) -> Path:
     except (OSError, ValueError) as exc:
         raise ValueError("path escapes root") from exc
     return candidate
+
+
+def _is_inside(candidate: Path, root: Path) -> bool:
+    try:
+        candidate_key = _resolved_path_key(candidate)
+        root_key = _resolved_path_key(root)
+        return os.path.commonpath((candidate_key, root_key)) == root_key
+    except (OSError, ValueError):
+        return False
 
 
 def _vault_lock(vault_root: Path) -> threading.RLock:
