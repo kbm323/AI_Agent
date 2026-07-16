@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 
 import pytest
@@ -9,6 +10,7 @@ from src.runtime_architecture_v2.qmd_search import (
     QmdClient,
     QmdMatch,
     QmdRawResult,
+    QmdSearchResult,
 )
 
 
@@ -31,6 +33,19 @@ class SequenceRunner:
     def __call__(self, argv: list[str], timeout_seconds: float) -> QmdRawResult:
         self.calls.append(argv)
         return self.results.pop(0)
+
+
+class RetryRunner:
+    def __init__(self, outcomes: list[QmdRawResult | BaseException]) -> None:
+        self.calls: list[list[str]] = []
+        self.outcomes = outcomes
+
+    def __call__(self, argv: list[str], timeout_seconds: float) -> QmdRawResult:
+        self.calls.append(argv)
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
 
 
 def succeeded(stdout: str) -> QmdRawResult:
@@ -66,6 +81,40 @@ def test_query_falls_back_to_bm25_when_hybrid_query_fails():
     assert result.ok is True
 
 
+@pytest.mark.parametrize(
+    "primary",
+    [
+        subprocess.TimeoutExpired("qmd", 120),
+        FileNotFoundError(),
+        OSError(),
+        failed(),
+        succeeded("not json"),
+    ],
+    ids=["timeout", "executable", "runner", "nonzero", "malformed"],
+)
+def test_query_retries_every_safe_primary_failure_with_bm25(primary):
+    runner = RetryRunner(
+        [primary, succeeded('[{"file":"wiki/a.md","score":0.9,"snippet":"alpha"}]')]
+    )
+
+    result = QmdClient(runner=runner).query("query")
+
+    assert [call[1] for call in runner.calls] == ["query", "search"]
+    assert result == QmdSearchResult(
+        ok=True,
+        matches=(QmdMatch(path="wiki/a.md", snippet="alpha", score=0.9),),
+        fallback="bm25",
+    )
+
+
+def test_query_returns_sanitized_fallback_error_when_bm25_also_fails():
+    runner = RetryRunner([subprocess.TimeoutExpired("qmd", 120), succeeded("not json")])
+
+    result = QmdClient(runner=runner).query("query")
+
+    assert result.error == "malformed_result"
+
+
 def test_query_rejects_blank_input_and_unsafe_result_paths():
     with pytest.raises(ValueError, match="blank_query"):
         QmdClient(runner=FakeRunner()).query("  ")
@@ -85,6 +134,18 @@ def test_query_rejects_blank_input_and_unsafe_result_paths():
     assert QmdClient(runner=uri_absolute).query("x").error == "unsafe_result"
 
 
+@pytest.mark.parametrize("control", ["\x00", "\x1f", "\x7f", "\x9f"])
+@pytest.mark.parametrize("path", ["wiki/control.md", "qmd://obsidian/wiki/control.md"])
+def test_query_rejects_control_characters_in_result_paths(control, path):
+    payload = json.dumps(
+        [{"file": path.replace("control", f"a{control}"), "score": 0.9, "snippet": "a"}]
+    )
+
+    result = QmdClient(runner=FakeRunner(payload)).query("query")
+
+    assert result.error == "unsafe_result"
+
+
 def test_query_normalizes_obsidian_uri_and_caps_documented_results_envelope():
     # QMD's documented JSON envelope is supported narrowly through its results list.
     runner = FakeRunner(
@@ -101,6 +162,19 @@ def test_query_returns_sanitized_malformed_result_error():
     result = QmdClient(runner=FakeRunner("not json")).query("query")
 
     assert result.error == "malformed_result"
+
+
+@pytest.mark.parametrize(
+    "score",
+    [True, "0.9", float("nan"), float("inf"), float("-inf")],
+    ids=["bool", "string", "nan", "infinity", "negative_infinity"],
+)
+def test_query_rejects_non_finite_or_non_numeric_scores(score):
+    payload = json.dumps([{"file": "wiki/a.md", "score": score, "snippet": "a"}])
+
+    result = QmdClient(runner=FakeRunner(payload)).query("query")
+
+    assert result.error == "unsafe_result"
 
 
 def test_default_runner_uses_non_shell_argument_array_and_maps_os_errors(monkeypatch):

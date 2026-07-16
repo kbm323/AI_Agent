@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 from dataclasses import dataclass
+from numbers import Real
 from pathlib import PurePosixPath
 from typing import Any, Protocol
 from urllib.parse import unquote, urlsplit
@@ -62,22 +64,26 @@ class QmdClient:
         if limit < 1:
             raise ValueError("invalid_limit")
 
-        primary = self._run(
-            ["qmd", "query", normalized, "--json", "-c", _COLLECTION, "-n", str(limit)]
+        primary = self._query_command(
+            ["qmd", "query", normalized, "--json", "-c", _COLLECTION, "-n", str(limit)],
+            limit=limit,
         )
-        if isinstance(primary, QmdSearchResult):
+        if primary.ok:
             return primary
-        if primary.exit_code == 0:
-            return self._parse_raw(primary, limit=limit)
-
-        fallback = self._run(
-            ["qmd", "search", normalized, "--json", "-c", _COLLECTION, "-n", str(limit)]
+        return self._query_command(
+            [
+                "qmd",
+                "search",
+                normalized,
+                "--json",
+                "-c",
+                _COLLECTION,
+                "-n",
+                str(limit),
+            ],
+            fallback="bm25",
+            limit=limit,
         )
-        if isinstance(fallback, QmdSearchResult):
-            return fallback
-        if fallback.exit_code != 0:
-            return QmdSearchResult(ok=False, error="command_failed")
-        return self._parse_raw(fallback, fallback="bm25", limit=limit)
 
     def _run_command(self, argv: list[str]) -> QmdCommandResult:
         result = self._run(argv)
@@ -86,6 +92,14 @@ class QmdClient:
         if result.exit_code != 0:
             return QmdCommandResult(ok=False, error="command_failed")
         return QmdCommandResult(ok=True)
+
+    def _query_command(
+        self, argv: list[str], *, fallback: str = "", limit: int
+    ) -> QmdSearchResult:
+        result = self._run(argv)
+        if isinstance(result, QmdSearchResult):
+            return result
+        return self._parse_raw(result, fallback=fallback, limit=limit)
 
     def _run(self, argv: list[str]) -> QmdRawResult | QmdSearchResult:
         try:
@@ -126,7 +140,7 @@ def _parse_search_result(
 ) -> QmdSearchResult:
     try:
         payload = json.loads(stdout)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, ValueError):
         return QmdSearchResult(ok=False, error="malformed_result")
 
     records = _records_from_payload(payload)
@@ -140,11 +154,16 @@ def _parse_search_result(
                 raise ValueError
             path = _normalize_path(record.get("file"))
             snippet = record.get("snippet", "")
-            score = record.get("score")
-            if not isinstance(snippet, str) or isinstance(score, bool):
+            if not isinstance(snippet, str):
                 raise ValueError
-            matches.append(QmdMatch(path=path, snippet=snippet, score=float(score)))
-    except (TypeError, ValueError):
+            matches.append(
+                QmdMatch(
+                    path=path,
+                    snippet=snippet,
+                    score=_parse_score(record.get("score")),
+                )
+            )
+    except (OverflowError, TypeError, ValueError):
         return QmdSearchResult(ok=False, error="unsafe_result")
     return QmdSearchResult(ok=True, matches=tuple(matches), fallback=fallback)
 
@@ -171,7 +190,7 @@ def _normalize_path(value: object) -> str:
         ):
             raise ValueError
         value = unquote(parsed.path[1:])
-    if "\\" in value:
+    if "\\" in value or any(_is_control_character(character) for character in value):
         raise ValueError
     path = PurePosixPath(value)
     parts = path.parts
@@ -183,3 +202,17 @@ def _normalize_path(value: object) -> str:
     ):
         raise ValueError
     return path.as_posix()
+
+
+def _parse_score(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError
+    score = float(value)
+    if not math.isfinite(score):
+        raise ValueError
+    return score
+
+
+def _is_control_character(character: str) -> bool:
+    codepoint = ord(character)
+    return codepoint <= 0x1F or 0x7F <= codepoint <= 0x9F
