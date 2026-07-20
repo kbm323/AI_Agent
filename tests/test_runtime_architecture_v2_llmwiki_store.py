@@ -245,6 +245,52 @@ def test_source_retry_repairs_log_and_index_after_raw_write_failure(
     assert _read(vault, "wiki/index.md").count(retry.record_id) == 1
 
 
+def test_changed_source_retry_rewrites_stale_canonical_after_raw_write(
+    tmp_path, monkeypatch
+):
+    vault, workspace = _roots(tmp_path)
+    store = LlmWikiStore(vault_root=vault, runtime_root=workspace)
+    first = store.save_source(SOURCE, SUMMARY)
+    changed_source = LlmWikiSource(
+        normalized_url=SOURCE.normalized_url,
+        source_type=SOURCE.source_type,
+        title=SOURCE.title,
+        content="The revised source content.",
+        retrieved_at=SOURCE.retrieved_at,
+    )
+    changed_summary = LlmWikiSummary("Revised summary", "The source changed.")
+    original_write = module._atomic_write_text
+    failed = False
+
+    def fail_source_canonical(path, text):
+        nonlocal failed
+        if not failed and path.parent.name == "sources":
+            failed = True
+            raise OSError("canonical write failed")
+        return original_write(path, text)
+
+    monkeypatch.setattr(module, "_atomic_write_text", fail_source_canonical)
+    failed_save = store.save_source(changed_source, changed_summary)
+
+    assert failed_save.ok is False
+    assert len(list((vault / "raw/sources").glob("*.md"))) == 2
+    assert "Revised summary" not in _read(vault, first.canonical_path)
+    monkeypatch.setattr(module, "_atomic_write_text", original_write)
+
+    retry = store.save_source(changed_source, changed_summary)
+
+    assert retry.status == "updated"
+    assert len(list((vault / "raw/sources").glob("*.md"))) == 2
+    canonical = _read(vault, retry.canonical_path)
+    assert first.raw_path in canonical
+    assert retry.raw_path in canonical
+    assert "Revised summary" in canonical
+    assert _read(vault, "wiki/log.md").count(first.record_id) == 1
+    assert _read(vault, "wiki/log.md").count(retry.record_id) == 1
+    assert _read(vault, "wiki/index.md").count(first.record_id) == 1
+    assert _read(vault, "wiki/index.md").count(retry.record_id) == 1
+
+
 def test_subprocess_lock_contention_fails_closed_then_recovers(tmp_path, monkeypatch):
     vault, workspace = _roots(tmp_path)
     store = LlmWikiStore(vault_root=vault, runtime_root=workspace)

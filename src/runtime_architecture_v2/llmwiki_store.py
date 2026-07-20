@@ -152,7 +152,7 @@ class LlmWikiStore:
                     safe_url=safe_url,
                     snapshots=snapshots,
                 )
-                needs_canonical = not raw_exists or not canonical.exists()
+                needs_canonical = not _text_matches(canonical, canonical_text)
                 needs_log = not _has_marker(log, _log_marker(record_id))
                 needs_index = not _has_marker(index, _index_marker(record_id))
                 if needs_canonical:
