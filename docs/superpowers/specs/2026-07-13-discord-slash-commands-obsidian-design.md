@@ -2,7 +2,7 @@
 
 Status: APPROVED CANONICAL DESIGN
 Created: 2026-07-13 KST
-Last updated: 2026-07-16 KST
+Last updated: 2026-07-20 KST
 Canonical architecture: `docs/runtime-architecture-v2.md`
 
 ## 1. Decision
@@ -31,6 +31,9 @@ the source and document type from Discord context and any linked `MeetingRun`.
 Discord's native thread feature owns conversation organization. AI_Agent does
 not create a second thread abstraction or require a command merely to open a
 thread.
+
+All `/llmwiki-ingest` URL acquisition uses one official ArchiveBox `abx-dl`
+CLI adapter. Runtime v2 does not own separate source adapters by website.
 
 ## 2. Architecture Alignment
 
@@ -123,6 +126,44 @@ rejected without guessing.
 `/llmwiki-note` sanitizes and stores the complete free-form note using the
 existing raw and canonical Markdown policy. `/llmwiki-find` is read-only and
 searches the complete Obsidian vault through the QMD policy in Section 10.
+
+### 3.4 Unified URL acquisition
+
+`/llmwiki-ingest` has one external acquisition boundary: the official
+ArchiveBox `abx-dl` CLI. Runtime v2 validates and normalizes the single URL,
+invokes `abx-dl` with an argument array and `shell=False`, and converts the
+result into one `LlmWikiSource`. Runtime v2 does not maintain separate
+Instagram, Threads, YouTube, article, or PDF adapters. Source-specific behavior
+is owned by the pinned `abx-dl` plugin bundle, including `gallery-dl`, `yt-dlp`,
+Chromium, Defuddle, Readability, and Trafilatura.
+
+The first production profile requests bounded text, subtitle, and JSON metadata
+outputs. Large media, screenshots, PDFs, WARC files, recursive crawling, and
+full ArchiveBox collection storage are outside the ingest critical path. The
+adapter selects successful artifacts in this order: subtitles/transcripts,
+clean Markdown or article text, social caption/description metadata, then
+rendered-page text. Image-only or audio-only sources without usable text fail
+as `unsupported_source` until a separately reviewed vision or transcription
+stage exists.
+
+`abx-dl` runs from a temporary directory with a sanitized environment, fixed
+timeouts and byte/file-count limits, and runtime dependency installation
+disabled. Dependencies are installed and version-pinned during deployment.
+The adapter deletes temporary artifacts after producing the immutable raw
+Markdown record. Initial URL validation remains in Runtime v2; credentials,
+cookies, private-source personas, and unrestricted recursive crawling are not
+part of the first rollout.
+
+Upstream references:
+
+- `abx-dl`: <https://github.com/ArchiveBox/abx-dl>
+- shared extractor plugins: <https://github.com/ArchiveBox/abx-plugins>
+- ArchiveBox extractor configuration: <https://github.com/ArchiveBox/ArchiveBox/wiki/Configuration>
+
+The previous direct standard-library HTTP and direct `yt-dlp` implementation
+has been removed after the unified adapter passed its offline contract tests.
+Production therefore has one acquisition boundary; the Ubuntu ARM64 live probe
+remains a deployment check rather than a fallback gate.
 
 ## 4. Obsidian Storage
 
@@ -357,7 +398,8 @@ Implementation should keep these boundaries:
 4. Context classifier and `MeetingRun` resolver.
 5. Obsidian path, raw snapshot, canonical page, index, and log writer.
 6. Secret and mention sanitizer shared with the existing knowledge loop.
-7. URL source classifier, retriever, deduplicator, and Source Summary service.
+7. Single `abx-dl` acquisition adapter, artifact selector, deduplicator, and
+   Source Summary service.
 8. QMD CLI adapter, freshness scheduler, and single update lock.
 9. Archive, LLM Wiki, and meeting orchestration services returning
    transport-independent results.
@@ -384,7 +426,8 @@ command-surface policy to its prior disabled state.
 1. Confirm the shared Hermes command adapter, natural-language argument
    handling, authorization, safe responses, background jobs, and locking.
 2. Add and probe the single QMD `obsidian` collection and retrieval adapter.
-3. Implement and verify `/llmwiki-ingest`, `/llmwiki-note`, and
+3. Replace direct HTTP/`yt-dlp` retrieval with the single `abx-dl` adapter,
+   then implement and verify `/llmwiki-ingest`, `/llmwiki-note`, and
    `/llmwiki-find` against the existing vault structure.
 4. Implement and verify `/meeting-start` and `/meeting-report` through Runtime
    v2 without duplicating meeting orchestration.
@@ -415,7 +458,12 @@ Required automated coverage:
 - incremental update, coalesced embedding, locking, stale-index recovery, and
   BM25 fallback;
 - Korean query and evidence-snippet retrieval fixtures;
-- ingest source classification, deduplication, and unsupported URL handling;
+- one `abx-dl` invocation boundary, deterministic artifact selection,
+  deduplication, and unsupported URL handling;
+- generic web, YouTube, Instagram, and Threads fixture coverage without
+  site-specific Runtime v2 adapters;
+- sanitized subprocess environment, no-shell execution, disabled runtime
+  installation, timeout, output-size, and file-count enforcement;
 - natural-language note persistence and blank-input rejection;
 - URL and attachment metadata preservation;
 - pagination, checkpoint, retry, and partial failure;
@@ -452,3 +500,7 @@ The design is complete when all of the following are true:
 13. Successful writes schedule background index updates, while search performs
     a fast freshness check and falls back safely when embeddings are stale.
 14. Existing Runtime v2 behavior remains regression-clean.
+15. `/llmwiki-ingest` uses one pinned `abx-dl` adapter for all URL sources and
+    does not keep site-specific production fallbacks.
+16. Generic web, YouTube, Instagram, and Threads URLs either produce bounded
+    textual evidence or fail with a stable sanitized error.
