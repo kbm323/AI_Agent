@@ -380,7 +380,9 @@ def test_rollback_tracks_stops_restores_resyncs_and_verifies_all_profiles():
 def test_runbook_pins_single_qmd_collection_and_korean_model():
     runbook = RUNBOOK.read_text(encoding="utf-8")
 
-    assert "npm install -g @tobilu/qmd@2.1.0" in runbook
+    assert "npm install -g @tobilu/qmd@2.5.3" in runbook
+    assert "QMD_FORCE_CPU=1" in runbook
+    assert "QMD_LLAMA_GPU=false" in runbook
     assert "node --version" in runbook
     assert "qmd collection add /home/ubuntu/Obsidian --name obsidian" in runbook
     assert 'QMD_EMBED_MODEL="hf:Qwen/Qwen3-Embedding-0.6B-GGUF/' in runbook

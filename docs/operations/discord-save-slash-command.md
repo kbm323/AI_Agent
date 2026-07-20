@@ -478,7 +478,7 @@ test "$(uname -m)" = "aarch64"
 
 node --version | tee "$DEPLOY_RECORD_DIR/node-version.txt"
 node -e 'const major=Number(process.versions.node.split(".")[0]); process.exit(major >= 22 ? 0 : 1)'
-npm install -g @tobilu/qmd@2.1.0
+npm install -g @tobilu/qmd@2.5.3
 qmd --version | tee "$DEPLOY_RECORD_DIR/qmd-version.txt"
 
 uv tool install abx-dl==1.11.235
@@ -501,6 +501,8 @@ without moving `raw/` or `wiki/`.
 ```bash
 set -euo pipefail
 export QMD_EMBED_MODEL="hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf"
+export QMD_FORCE_CPU=1
+export QMD_LLAMA_GPU=false
 
 if ! qmd collection list | grep -q '^obsidian'; then
   qmd collection add /home/ubuntu/Obsidian --name obsidian --mask "**/*.md"
@@ -570,6 +572,8 @@ WorkingDirectory=/home/ubuntu/hermes-workspace/AI_Agent
 Environment=HOME=/home/ubuntu
 Environment=PYTHONUTF8=1
 Environment=QMD_EMBED_MODEL=hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf
+Environment=QMD_FORCE_CPU=1
+Environment=QMD_LLAMA_GPU=false
 ExecStart=/usr/bin/python3 -m scripts.run_qmd_reconcile --root /home/ubuntu/hermes-workspace/AI_Agent
 EOF
 
