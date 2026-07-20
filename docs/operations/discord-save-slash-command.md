@@ -455,3 +455,179 @@ bash scripts/pre-commit-secret-scan.sh --range "$REVIEWED_BASE..$AI_AGENT_COMMIT
 위 Python regression, Ubuntu static gate, identity sync, 일곱 profile hash
 증명, assistant smoke 중 하나라도 실패하면 controller는 deployment success를
 선언하지 않는다.
+# LLM Wiki/QMD rollout addendum (2026-07-20)
+
+This section extends the existing `/archive` procedure for
+`/llmwiki-ingest`, `/llmwiki-note`, and `/llmwiki-find`. It does not replace
+the existing vault folders or create one QMD collection per Hermes profile.
+The commands and versions below were checked against the official QMD GitHub
+repository and the ArchiveBox-owned PyPI package before this revision.
+
+## Pinned prerequisites and ARM64 gate
+
+Run this once on `aiagent` before restarting any Gateway. Stop immediately if
+the architecture, runtime version, package version, or plugin inventory does
+not match the reviewed values.
+
+```bash
+set -euo pipefail
+cd /home/ubuntu/hermes-workspace/AI_Agent
+
+uname -m | tee "$DEPLOY_RECORD_DIR/machine-architecture.txt"
+test "$(uname -m)" = "aarch64"
+
+node --version | tee "$DEPLOY_RECORD_DIR/node-version.txt"
+node -e 'const major=Number(process.versions.node.split(".")[0]); process.exit(major >= 22 ? 0 : 1)'
+npm install -g @tobilu/qmd@2.1.0
+qmd --version | tee "$DEPLOY_RECORD_DIR/qmd-version.txt"
+
+uv tool install abx-dl==1.11.235
+abx-dl version | tee "$DEPLOY_RECORD_DIR/abx-dl-version.txt"
+abx-dl plugins | tee "$DEPLOY_RECORD_DIR/abx-dl-plugins.txt"
+```
+
+`abx-dl plugins` is the authoritative dependency inventory for this pinned
+release. Install every reviewed text/metadata extractor dependency it reports
+before continuing. Runtime commands always pass `--no-install`; a Gateway is
+never allowed to install packages in response to Discord input. Keep browser
+cookies, authenticated personas, and private-source credentials outside the
+first rollout.
+
+## One whole-vault QMD collection
+
+The collection is shared by all seven profiles and covers the existing vault
+without moving `raw/` or `wiki/`.
+
+```bash
+set -euo pipefail
+export QMD_EMBED_MODEL="hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf"
+
+if ! qmd collection list | grep -q '^obsidian'; then
+  qmd collection add /home/ubuntu/Obsidian --name obsidian --mask "**/*.md"
+fi
+qmd update -c obsidian
+qmd embed -f -c obsidian
+qmd query "회의 결정" --json -c obsidian -n 5 \
+  | tee "$DEPLOY_RECORD_DIR/qmd-korean-query.json"
+test -s "$DEPLOY_RECORD_DIR/qmd-korean-query.json"
+```
+
+Do not create profile-specific collections. QMD configuration, indexes,
+models, locks, and `runtime/qmd/dirty.json` stay on local server storage, not
+inside the Google Drive-mounted vault.
+
+## `abx-dl --no-install` source probes
+
+Set four accessible public test URLs. These are deployment inputs, not saved
+configuration. Do not use private, paid, login-only, or sensitive sources.
+
+```bash
+export ABX_PROBE_ARTICLE_URL='https://example.com/'
+export ABX_PROBE_YOUTUBE_URL='<public YouTube video URL>'
+export ABX_PROBE_INSTAGRAM_URL='<public Instagram post URL>'
+export ABX_PROBE_THREADS_URL='<public Threads post URL>'
+
+probe_abx_text() {
+  label="$1"
+  url="$2"
+  output="$DEPLOY_RECORD_DIR/abx-probe-$label"
+  mkdir -p "$output"
+  timeout 150 abx-dl --no-install --dir="$output" "$url"
+  test -s "$output/index.jsonl"
+  find "$output" -type f \
+    \( -name '*.md' -o -name '*.txt' -o -name '*.json' \
+       -o -name '*.vtt' -o -name '*.srt' -o -name '*.html' \) \
+    -size +0c -print -quit | grep -q .
+}
+
+probe_abx_text generic-article "$ABX_PROBE_ARTICLE_URL"       # generic article
+probe_abx_text youtube-video "$ABX_PROBE_YOUTUBE_URL"         # YouTube video
+probe_abx_text instagram-post "$ABX_PROBE_INSTAGRAM_URL"      # public Instagram post
+probe_abx_text threads-post "$ABX_PROBE_THREADS_URL"          # public Threads post
+```
+
+An inaccessible source or a source with no bounded textual artifact is an
+unsupported case. Do not add a Runtime v2 site-specific fallback to make a
+failed probe pass.
+
+## Shared five-minute reconciliation timer
+
+Install exactly one service and one timer for the whole server. Do not install
+copies under the seven profile directories.
+
+```bash
+python -m scripts.run_qmd_reconcile --root /home/ubuntu/hermes-workspace/AI_Agent
+
+sudo tee /etc/systemd/system/ai-agent-qmd-reconcile.service >/dev/null <<'EOF'
+[Unit]
+Description=Reconcile the AI Agent Obsidian QMD index
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/hermes-workspace/AI_Agent
+Environment=HOME=/home/ubuntu
+Environment=PYTHONUTF8=1
+Environment=QMD_EMBED_MODEL=hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf
+ExecStart=/usr/bin/python3 -m scripts.run_qmd_reconcile --root /home/ubuntu/hermes-workspace/AI_Agent
+EOF
+
+sudo tee /etc/systemd/system/ai-agent-qmd-reconcile.timer >/dev/null <<'EOF'
+[Unit]
+Description=Run QMD reconciliation every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=ai-agent-qmd-reconcile.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now ai-agent-qmd-reconcile.timer
+sudo systemctl start ai-agent-qmd-reconcile.service
+systemctl --no-pager --full status ai-agent-qmd-reconcile.service
+systemctl --no-pager --full status ai-agent-qmd-reconcile.timer
+```
+
+A nonzero service result leaves `runtime/qmd/dirty.json` in place for the next
+timer run. Service output contains only stable status codes and must not include
+source text, tokens, stderr, or absolute credential paths.
+
+## Assistant-first command smoke and rollout
+
+Deploy the reviewed plugin hash to `aicompanyassistant` first. In a designated
+test thread, verify these commands in order:
+
+1. `/llmwiki-note deployment smoke note`
+2. `/llmwiki-ingest summarize this https://example.com/`
+3. `/llmwiki-find deployment smoke`
+4. `/archive`
+5. Repeat `/archive` without new messages and confirm `unchanged`.
+
+Confirm the new raw record is under `raw/notes/` or `raw/sources/`, the
+canonical page is under `wiki/`, `wiki/log.md` contains one idempotency marker,
+and the Korean QMD query returns only vault-relative paths. Record no message
+body or credential in deployment evidence.
+
+Only after the Assistant smoke passes, install the same plugin file hashes and
+restart the remaining six profiles sequentially. Stop on the first hash,
+Gateway, command, or timer failure.
+
+Rollback disables `ai-agent-qmd-reconcile.timer`, restores the previous plugin
+revision, and restarts only profiles that were running before deployment:
+
+```bash
+sudo systemctl disable --now ai-agent-qmd-reconcile.timer
+sudo systemctl stop ai-agent-qmd-reconcile.service
+bash scripts/rollback_discord_save_profiles.sh prepare
+# Verify plugin/tool/command absence for all profiles, then:
+bash scripts/rollback_discord_save_profiles.sh finalize
+```
+
+Rollback leaves the Obsidian vault, immutable raw records, and the local QMD
+cache intact. It must not delete user knowledge to remove the command surface.

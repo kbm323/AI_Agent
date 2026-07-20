@@ -375,3 +375,43 @@ def test_rollback_tracks_stops_restores_resyncs_and_verifies_all_profiles():
     assert "save_discord_thread_to_obsidian" in rollback
     assert "/archive" in rollback
     assert "picker" in rollback
+
+
+def test_runbook_pins_single_qmd_collection_and_korean_model():
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+
+    assert "npm install -g @tobilu/qmd@2.1.0" in runbook
+    assert "node --version" in runbook
+    assert "qmd collection add /home/ubuntu/Obsidian --name obsidian" in runbook
+    assert 'QMD_EMBED_MODEL="hf:Qwen/Qwen3-Embedding-0.6B-GGUF/' in runbook
+    assert "Qwen3-Embedding-0.6B-Q8_0.gguf" in runbook
+    assert 'qmd query "회의 결정" --json -c obsidian' in runbook
+
+
+def test_runbook_pins_abxdl_and_no_install_arm64_probes():
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+
+    assert "uv tool install abx-dl==1.11.235" in runbook
+    assert "abx-dl version" in runbook
+    assert "abx-dl plugins" in runbook
+    assert "--no-install" in runbook
+    assert "generic article" in runbook
+    assert "YouTube video" in runbook
+    assert "public Instagram post" in runbook
+    assert "public Threads post" in runbook
+    assert "uname -m" in runbook
+
+
+def test_runbook_defines_one_five_minute_reconcile_timer_and_rollout_gate():
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+
+    assert "ai-agent-qmd-reconcile.service" in runbook
+    assert "ai-agent-qmd-reconcile.timer" in runbook
+    assert "OnUnitActiveSec=5min" in runbook
+    assert "python -m scripts.run_qmd_reconcile" in runbook
+    assert "/llmwiki-ingest" in runbook
+    assert "/llmwiki-note" in runbook
+    assert "/llmwiki-find" in runbook
+    assistant = runbook.index("aicompanyassistant")
+    remaining = runbook.index("remaining six profiles", assistant)
+    assert assistant < remaining
