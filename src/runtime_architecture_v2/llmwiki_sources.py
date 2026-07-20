@@ -6,9 +6,11 @@ import html
 import http.client
 import ipaddress
 import json
+import re
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -47,14 +49,25 @@ Resolver = Callable[[str, int], Sequence[str]]
 YtDlpRunner = Callable[..., Any]
 
 
+@dataclass(frozen=True)
+class _YtDlpResult:
+    returncode: int
+    stdout: str
+
+
 def extract_single_url(text: str) -> str:
     """Return the one URL in user text, rejecting ambiguous input."""
 
     if not isinstance(text, str):
         raise SourceError("invalid_url")
+    starts = list(_URL_START.finditer(text))
     matches = []
-    for candidate in _URL_CANDIDATES(text):
-        trimmed = candidate.rstrip(".,;:!?")
+    for index, start in enumerate(starts):
+        end = starts[index + 1].start() if index + 1 < len(starts) else len(text)
+        candidate = _URL_TOKEN.match(text[start.start() : end])
+        if candidate is None:
+            continue
+        trimmed = candidate.group().rstrip(".,;:!?")
         if trimmed:
             matches.append(trimmed)
     if len(matches) != 1:
@@ -72,11 +85,13 @@ def normalize_source_url(url: str) -> str:
         or any(character.isspace() for character in url)
     ):
         raise SourceError("invalid_url")
+    if _MALFORMED_PERCENT.search(url):
+        raise SourceError("invalid_url")
     try:
         parsed = urlsplit(url)
         port = parsed.port
-    except ValueError as exc:
-        raise SourceError("invalid_url") from exc
+    except ValueError:
+        raise SourceError("invalid_url") from None
     scheme = parsed.scheme.lower()
     host = parsed.hostname
     if (
@@ -84,12 +99,18 @@ def normalize_source_url(url: str) -> str:
         or not host
         or parsed.username is not None
         or parsed.password is not None
+        or parsed.netloc.endswith(":")
+        or port == 0
     ):
         raise SourceError("invalid_url")
     try:
-        host = host.encode("idna").decode("ascii").lower()
-    except UnicodeError as exc:
-        raise SourceError("invalid_url") from exc
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is None:
+        host = _normalize_domain_name(host)
+    else:
+        host = address.compressed.lower()
     default_port = 80 if scheme == "http" else 443
     display_host = f"[{host}]" if ":" in host else host
     netloc = display_host if port in {None, default_port} else f"{display_host}:{port}"
@@ -108,7 +129,7 @@ class SourceRetriever:
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._resolver = resolver or _resolve_public_host
-        self._fetcher = fetcher or _StdlibHttpFetcher(self._resolver)
+        self._fetcher = fetcher or _StdlibHttpFetcher()
         self._yt_dlp_runner = yt_dlp_runner or _run_yt_dlp
         self._clock = clock
 
@@ -123,8 +144,14 @@ class SourceRetriever:
         current_url = normalized_url
         redirects = 0
         while True:
-            _validate_public_target(current_url, self._resolver)
-            response = self._fetch(current_url, _remaining(deadline, self._clock))
+            addresses = _validate_public_target(
+                current_url, self._resolver, deadline, self._clock
+            )
+            response = self._fetch(
+                current_url,
+                _remaining(deadline, self._clock),
+                addresses,
+            )
             _validate_peer_address(response.peer_address)
             if len(response.body) > MAX_RESPONSE_BYTES:
                 raise SourceError("response_too_large")
@@ -145,10 +172,25 @@ class SourceRetriever:
                 raise SourceError("retrieval_failed")
             return _to_web_source(current_url, response)
 
-    def _fetch(self, url: str, remaining: float) -> HttpResponse:
+    def _fetch(
+        self, url: str, remaining: float, addresses: Sequence[str]
+    ) -> HttpResponse:
         try:
-            fetch = getattr(self._fetcher, "fetch", self._fetcher)
-            response = fetch(url, timeout=remaining, max_bytes=MAX_RESPONSE_BYTES)
+            if isinstance(self._fetcher, _StdlibHttpFetcher):
+                response = self._fetcher.fetch(
+                    url,
+                    timeout=remaining,
+                    max_bytes=MAX_RESPONSE_BYTES,
+                    addresses=addresses,
+                )
+            else:
+                fetch = getattr(self._fetcher, "fetch", self._fetcher)
+                response = _fetch_bounded(
+                    fetch,
+                    url,
+                    remaining,
+                    MAX_RESPONSE_BYTES,
+                )
         except SourceError:
             raise
         except TimeoutError:
@@ -167,6 +209,7 @@ class SourceRetriever:
                     "yt-dlp",
                     "--dump-single-json",
                     "--skip-download",
+                    "--no-playlist",
                     "--write-auto-subs",
                     "--write-subs",
                     "--sub-langs",
@@ -178,12 +221,23 @@ class SourceRetriever:
                     normalized_url,
                 ]
                 result = self._yt_dlp_runner(
-                    arguments, cwd=directory, timeout=_remaining(deadline, self._clock)
+                    arguments,
+                    cwd=directory,
+                    timeout=_remaining(deadline, self._clock),
+                    max_bytes=MAX_RESPONSE_BYTES,
                 )
                 if getattr(result, "returncode", 1) != 0:
                     raise SourceError("unsupported_source")
-                metadata = _parse_youtube_metadata(getattr(result, "stdout", ""))
-                transcript = _read_vtt_transcript(Path(directory))
+                stdout = getattr(result, "stdout", "")
+                metadata_bytes = _ensure_text_limit(stdout, MAX_RESPONSE_BYTES)
+                metadata = _parse_youtube_metadata(stdout)
+                _remaining(deadline, self._clock)
+                transcript = _read_vtt_transcript(
+                    Path(directory),
+                    MAX_RESPONSE_BYTES - metadata_bytes,
+                    deadline,
+                    self._clock,
+                )
         except SourceError:
             raise
         except (TimeoutError, subprocess.TimeoutExpired):
@@ -207,17 +261,20 @@ class SourceRetriever:
 class _StdlibHttpFetcher:
     """HTTP transport that connects only to prevalidated DNS addresses."""
 
-    def __init__(self, resolver: Resolver) -> None:
-        self._resolver = resolver
-
-    def fetch(self, url: str, *, timeout: float, max_bytes: int) -> HttpResponse:
+    def fetch(
+        self,
+        url: str,
+        *,
+        timeout: float,
+        max_bytes: int,
+        addresses: Sequence[str],
+    ) -> HttpResponse:
         deadline = time.monotonic() + timeout
         parsed = urlsplit(url)
         host = parsed.hostname
         if host is None:
             raise SourceError("invalid_url")
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        addresses = tuple(self._resolver(host, port))
         _validate_addresses(addresses)
         connection: http.client.HTTPConnection
         if parsed.scheme == "https":
@@ -238,8 +295,12 @@ class _StdlibHttpFetcher:
             )
             response = connection.getresponse()
             content_length = response.getheader("content-length")
-            if content_length is not None and int(content_length) > max_bytes:
-                raise SourceError("response_too_large")
+            if content_length is not None:
+                try:
+                    if int(content_length) > max_bytes:
+                        raise SourceError("response_too_large")
+                except ValueError:
+                    raise SourceError("retrieval_failed") from None
             body = _read_bounded(response, max_bytes, deadline, connection.sock)
             peer = connection.sock.getpeername()[0] if connection.sock else None
             return HttpResponse(
@@ -388,9 +449,10 @@ class _VisibleHtmlParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self._ignored_depth:
             return
-        self.text.append(data)
         if self._in_title:
             self.title.append(data)
+            return
+        self.text.append(data)
 
 
 def _parse_youtube_metadata(stdout: object) -> dict[str, object]:
@@ -398,8 +460,8 @@ def _parse_youtube_metadata(stdout: object) -> dict[str, object]:
         raise SourceError("unsupported_source")
     try:
         data = json.loads(stdout)
-    except (TypeError, ValueError) as exc:
-        raise SourceError("unsupported_source") from exc
+    except (TypeError, ValueError):
+        raise SourceError("unsupported_source") from None
     if not isinstance(data, dict):
         raise SourceError("unsupported_source")
     metadata = {
@@ -412,11 +474,20 @@ def _parse_youtube_metadata(stdout: object) -> dict[str, object]:
     return metadata
 
 
-def _read_vtt_transcript(directory: Path) -> str:
+def _read_vtt_transcript(
+    directory: Path,
+    max_bytes: int,
+    deadline: float,
+    clock: Callable[[], float],
+) -> str:
     lines: list[str] = []
+    total_bytes = 0
     for path in sorted(directory.rglob("*.vtt")):
+        _remaining(deadline, clock)
         try:
-            source = path.read_text(encoding="utf-8", errors="replace")
+            source, total_bytes = _read_limited_text(
+                path, total_bytes, max_bytes, deadline, clock
+            )
         except OSError:
             continue
         in_cues = False
@@ -454,7 +525,12 @@ def _is_youtube_video(url: str) -> bool:
     )
 
 
-def _validate_public_target(url: str, resolver: Resolver) -> None:
+def _validate_public_target(
+    url: str,
+    resolver: Resolver,
+    deadline: float,
+    clock: Callable[[], float],
+) -> tuple[str, ...]:
     parsed = urlsplit(url)
     host = parsed.hostname
     if host is None:
@@ -465,23 +541,20 @@ def _validate_public_target(url: str, resolver: Resolver) -> None:
         literal_address = None
     if literal_address is not None:
         _validate_address(str(literal_address))
-        return
-    try:
-        addresses = resolver(
-            host, parsed.port or (443 if parsed.scheme == "https" else 80)
-        )
-    except SourceError:
-        raise
-    except Exception:
-        raise SourceError("retrieval_failed") from None
+        return (str(literal_address),)
+    addresses = _resolve_bounded(
+        resolver,
+        host,
+        parsed.port or (443 if parsed.scheme == "https" else 80),
+        deadline,
+        clock,
+    )
     _validate_addresses(addresses)
+    return addresses
 
 
 def _resolve_public_host(host: str, port: int) -> tuple[str, ...]:
-    try:
-        records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except OSError as exc:
-        raise SourceError("retrieval_failed") from exc
+    records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     return tuple(dict.fromkeys(record[4][0] for record in records))
 
 
@@ -501,8 +574,8 @@ def _validate_peer_address(address: str | None) -> None:
 def _validate_address(address: str) -> None:
     try:
         parsed = ipaddress.ip_address(address)
-    except ValueError as exc:
-        raise SourceError("unsafe_target") from exc
+    except ValueError:
+        raise SourceError("unsafe_target") from None
     if (
         not parsed.is_global
         or parsed.is_private
@@ -516,17 +589,53 @@ def _validate_address(address: str) -> None:
 
 
 def _run_yt_dlp(
-    argv: list[str], *, cwd: str, timeout: float
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    argv: list[str], *, cwd: str, timeout: float, max_bytes: int
+) -> _YtDlpResult:
+    process = subprocess.Popen(
         argv,
         cwd=cwd,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
         shell=False,
-        check=False,
     )
+    if process.stdout is None:
+        _kill_process(process)
+        raise OSError("missing_stdout")
+    deadline = time.monotonic() + timeout
+    chunks: list[bytes] = []
+    size = 0
+    overflow = threading.Event()
+    complete = threading.Event()
+
+    def drain_stdout() -> None:
+        nonlocal size
+        try:
+            while chunk := process.stdout.read(64 * 1024):
+                if size + len(chunk) > max_bytes:
+                    overflow.set()
+                    _kill_process(process)
+                    return
+                chunks.append(chunk)
+                size += len(chunk)
+        finally:
+            complete.set()
+
+    threading.Thread(target=drain_stdout, daemon=True).start()
+    while process.poll() is None:
+        if overflow.is_set():
+            _kill_process(process)
+            raise SourceError("response_too_large")
+        if time.monotonic() >= deadline:
+            _kill_process(process)
+            raise TimeoutError
+        time.sleep(0.005)
+    if not complete.wait(_deadline_remaining(deadline)):
+        _kill_process(process)
+        raise TimeoutError
+    if overflow.is_set():
+        raise SourceError("response_too_large")
+    return _YtDlpResult(process.returncode or 0, b"".join(chunks).decode("utf-8"))
 
 
 def _remaining(deadline: float, clock: Callable[[], float]) -> float:
@@ -541,6 +650,130 @@ def _deadline_remaining(deadline: float) -> float:
     if remaining <= 0:
         raise TimeoutError
     return remaining
+
+
+def _resolve_bounded(
+    resolver: Resolver,
+    host: str,
+    port: int,
+    deadline: float,
+    clock: Callable[[], float],
+) -> tuple[str, ...]:
+    result: list[Sequence[str]] = []
+    failed = threading.Event()
+    completed = threading.Event()
+
+    def resolve() -> None:
+        try:
+            result.append(resolver(host, port))
+        except Exception:
+            failed.set()
+        finally:
+            completed.set()
+
+    threading.Thread(target=resolve, daemon=True).start()
+    if not completed.wait(_remaining(deadline, clock)):
+        raise SourceError("timeout")
+    _remaining(deadline, clock)
+    if failed.is_set() or not result:
+        raise SourceError("retrieval_failed")
+    return tuple(result[0])
+
+
+def _fetch_bounded(
+    fetch: Callable[..., HttpResponse],
+    url: str,
+    timeout: float,
+    max_bytes: int,
+) -> HttpResponse:
+    result: list[HttpResponse] = []
+    failure: list[BaseException] = []
+    completed = threading.Event()
+
+    def run_fetch() -> None:
+        try:
+            result.append(fetch(url, timeout=timeout, max_bytes=max_bytes))
+        except BaseException as exc:
+            failure.append(exc)
+        finally:
+            completed.set()
+
+    threading.Thread(target=run_fetch, daemon=True).start()
+    if not completed.wait(timeout):
+        raise SourceError("timeout")
+    if failure:
+        if isinstance(failure[0], SourceError):
+            raise SourceError(failure[0].code) from None
+        if isinstance(failure[0], TimeoutError):
+            raise SourceError("timeout") from None
+        raise SourceError("retrieval_failed") from None
+    if not result:
+        raise SourceError("retrieval_failed")
+    return result[0]
+
+
+def _normalize_domain_name(host: str) -> str:
+    if host.endswith("."):
+        raise SourceError("invalid_url")
+    labels = host.split(".")
+    if any(not label for label in labels):
+        raise SourceError("invalid_url")
+    normalized = []
+    for label in labels:
+        try:
+            ascii_label = label.encode("idna").decode("ascii").lower()
+        except UnicodeError:
+            raise SourceError("invalid_url") from None
+        if (
+            not 1 <= len(ascii_label) <= 63
+            or not ascii_label[0].isalnum()
+            or not ascii_label[-1].isalnum()
+            or any(
+                not (character.isalnum() or character == "-")
+                for character in ascii_label
+            )
+        ):
+            raise SourceError("invalid_url")
+        normalized.append(ascii_label)
+    return ".".join(normalized)
+
+
+def _ensure_text_limit(value: object, max_bytes: int) -> int:
+    if not isinstance(value, str):
+        raise SourceError("unsupported_source")
+    try:
+        size = len(value.encode("utf-8"))
+    except UnicodeError:
+        raise SourceError("unsupported_source") from None
+    if size > max_bytes:
+        raise SourceError("response_too_large")
+    return size
+
+
+def _read_limited_text(
+    path: Path,
+    total: int,
+    max_bytes: int,
+    deadline: float,
+    clock: Callable[[], float],
+) -> tuple[str, int]:
+    chunks = []
+    with path.open("rb") as handle:
+        while chunk := handle.read(64 * 1024):
+            _remaining(deadline, clock)
+            total += len(chunk)
+            if total > max_bytes:
+                raise SourceError("response_too_large")
+            chunks.append(chunk)
+    return b"".join(chunks).decode("utf-8", errors="replace"), total
+
+
+def _kill_process(process: subprocess.Popen[bytes]) -> None:
+    try:
+        if process.poll() is None:
+            process.kill()
+    except Exception:
+        return
 
 
 def _header(headers: Mapping[str, str], name: str) -> str:
@@ -565,7 +798,8 @@ def _decode_body(body: bytes, content_type: str) -> str:
 
 def _host_header(host: str, port: int, scheme: str) -> str:
     default_port = 443 if scheme == "https" else 80
-    return host if port == default_port else f"{host}:{port}"
+    display_host = f"[{host}]" if ":" in host else host
+    return display_host if port == default_port else f"{display_host}:{port}"
 
 
 def _title_from_url(url: str) -> str:
@@ -587,10 +821,6 @@ def _strip_html_tags(text: str) -> str:
     return _collapse_whitespace(" ".join(parser.text))
 
 
-def _url_candidates(text: str) -> list[str]:
-    import re
-
-    return re.findall(r"https?://[^\s<>\"']+", text, flags=re.IGNORECASE)
-
-
-_URL_CANDIDATES = _url_candidates
+_MALFORMED_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_URL_START = re.compile(r"https?://", re.IGNORECASE)
+_URL_TOKEN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)

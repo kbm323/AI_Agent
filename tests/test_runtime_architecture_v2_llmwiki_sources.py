@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import time
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 
+from src.runtime_architecture_v2 import llmwiki_sources as module
 from src.runtime_architecture_v2.llmwiki_sources import (  # noqa: I001
     HttpResponse,
     SourceError,
@@ -49,18 +53,71 @@ class FakeFetcher:
         return self.responses.pop(0)
 
 
+class AdvancingClock:
+    def __init__(self, now: float = 0):
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class BlockingResolver:
+    def __call__(self, host: str, port: int) -> tuple[str, ...]:
+        del host, port
+        time.sleep(0.2)
+        return ("93.184.216.34",)
+
+
+class BlockingFetcher:
+    def fetch(self, url: str, *, timeout: float, max_bytes: int) -> HttpResponse:
+        del url, timeout, max_bytes
+        time.sleep(0.2)
+        raise AssertionError("fetch completed after deadline")
+
+
+class FakeProcess:
+    def __init__(self, stdout: bytes = b"", *, running: bool = False):
+        self.stdout = BytesIO(stdout)
+        self.returncode = None if running else 0
+        self.killed = False
+
+    def poll(self):
+        return self.returncode
+
+    def kill(self):
+        self.killed = True
+        self.returncode = -9
+
+    def wait(self, timeout=None):
+        del timeout
+        return self.returncode
+
+
 class FakeYtDlpRunner:
-    def __init__(self, stdout: str, *, returncode: int = 0, vtt: str | None = None):
+    def __init__(
+        self,
+        stdout: str,
+        *,
+        returncode: int = 0,
+        vtt: str | None = None,
+        vtt_files: tuple[str, ...] = (),
+    ):
         self.stdout = stdout
         self.returncode = returncode
         self.vtt = vtt if vtt is not None else (
             "WEBVTT\n\n00:00.000 --> 00:01.000\ntranscript text\n"
         )
+        self.vtt_files = vtt_files
         self.argv: list[str] = []
 
-    def __call__(self, argv: list[str], *, cwd: str, timeout: float):
+    def __call__(
+        self, argv: list[str], *, cwd: str, timeout: float, max_bytes: int
+    ):
+        del timeout, max_bytes
         self.argv = argv
         Path(cwd, "video123.en.vtt").write_text(self.vtt, encoding="utf-8")
+        for index, source in enumerate(self.vtt_files):
+            Path(cwd, f"video123.{index}.vtt").write_text(source, encoding="utf-8")
         return type(
             "Result", (), {"returncode": self.returncode, "stdout": self.stdout}
         )()
@@ -78,12 +135,43 @@ def test_extract_single_url_trims_ordinary_sentence_punctuation():
     )
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "https://a.examplehttps://b.example",
+        "https://a.example,https://b.example",
+    ],
+)
+def test_extract_single_url_rejects_adjacent_or_comma_separated_urls(text):
+    with pytest.raises(SourceError, match="invalid_url"):
+        extract_single_url(text)
+
+
 def test_normalize_source_url_sanitizes_only_nonsemantic_components():
     normalized = normalize_source_url(
         "HTTPS://Example.COM:443/a%20path?b=2&a=1&a=0#section"
     )
 
     assert normalized == "https://example.com/a%20path?b=2&a=1&a=0"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/%zz",
+        "https://example..com/",
+        "https://example.com:0/",
+        "https://example.com:/",
+        "https://bad_host.example/",
+        "https://user:password@example.com/",
+    ],
+)
+def test_normalize_source_url_rejects_malformed_components_without_causes(url):
+    with pytest.raises(SourceError, match="^invalid_url$") as error:
+        normalize_source_url(url)
+
+    assert error.value.__cause__ is None
+    assert str(error.value) == "invalid_url"
 
 
 @pytest.mark.parametrize(
@@ -132,6 +220,48 @@ def test_generic_retriever_revalidates_redirect_targets_and_connected_peer():
             SAFE_URL
         )
 
+
+def test_generic_deadline_stops_before_fetch_after_resolver_uses_budget():
+    clock = AdvancingClock()
+    fetcher = FakeFetcher([])
+
+    def resolver(host: str, port: int) -> tuple[str, ...]:
+        del host, port
+        clock.now += 31
+        return ("93.184.216.34",)
+
+    with pytest.raises(SourceError, match="^timeout$") as error:
+        SourceRetriever(fetcher=fetcher, resolver=resolver, clock=clock).retrieve(
+            SAFE_URL
+        )
+
+    assert error.value.__cause__ is None
+    assert fetcher.urls == []
+
+
+def test_generic_dns_wait_is_bounded_and_does_not_block_retrieval(monkeypatch):
+    monkeypatch.setattr(module, "RETRIEVAL_TIMEOUT_SECONDS", 0.01)
+    started = time.monotonic()
+
+    with pytest.raises(SourceError, match="^timeout$"):
+        SourceRetriever(fetcher=FakeFetcher([]), resolver=BlockingResolver()).retrieve(
+            SAFE_URL
+        )
+
+    assert time.monotonic() - started < 0.1
+
+
+def test_generic_injected_fetch_wait_is_bounded(monkeypatch):
+    monkeypatch.setattr(module, "RETRIEVAL_TIMEOUT_SECONDS", 0.01)
+    started = time.monotonic()
+
+    with pytest.raises(SourceError, match="^timeout$"):
+        SourceRetriever(
+            fetcher=BlockingFetcher(), resolver=FakeResolver()
+        ).retrieve(SAFE_URL)
+
+    assert time.monotonic() - started < 0.1
+
     peer_fetcher = FakeFetcher(
         [
             HttpResponse(
@@ -170,8 +300,30 @@ def test_generic_retriever_strips_active_html_and_collapses_whitespace():
 
     assert source.source_type == "web"
     assert source.title == "Example title"
-    assert source.content == "Example title first second third"
+    assert source.content == "first second third"
     assert source.normalized_url == SAFE_URL
+
+
+def test_generic_retriever_keeps_title_out_of_body_and_rejects_empty_html():
+    title_only = FakeFetcher(
+        [
+            HttpResponse(
+                status=200,
+                headers={"content-type": "text/html"},
+                body=(
+                    b"<title>Only a title</title><script>bad()</script>"
+                    b"<style>hidden</style><noscript>fallback</noscript>"
+                    b"<template>template</template>"
+                ),
+                peer_address="93.184.216.34",
+            )
+        ]
+    )
+
+    with pytest.raises(SourceError, match="^unsupported_source$") as error:
+        SourceRetriever(fetcher=title_only, resolver=FakeResolver()).retrieve(SAFE_URL)
+
+    assert error.value.__cause__ is None
 
 
 @pytest.mark.parametrize(
@@ -254,6 +406,7 @@ def test_youtube_uses_metadata_and_subtitles_without_media_download():
     assert "--skip-download" in runner.argv
     assert "--write-auto-subs" in runner.argv
     assert "--write-subs" in runner.argv
+    assert "--no-playlist" in runner.argv
     assert source.source_type == "youtube"
     assert source.title == "A public video"
     assert source.content == "transcript text"
@@ -280,6 +433,83 @@ def test_youtube_vtt_headers_do_not_become_transcript_content():
     source = SourceRetriever(yt_dlp_runner=runner).retrieve(YOUTUBE_URL)
 
     assert source.content == "transcript text"
+
+
+def test_youtube_rejects_oversized_metadata_without_exposing_output():
+    runner = FakeYtDlpRunner("x" * (10 * 1024 * 1024 + 1))
+
+    with pytest.raises(SourceError, match="^response_too_large$") as error:
+        SourceRetriever(yt_dlp_runner=runner).retrieve(YOUTUBE_URL)
+
+    assert error.value.__cause__ is None
+    assert "x" not in str(error.value)
+
+
+def test_youtube_rejects_cumulative_oversized_vtt_files():
+    cue = "WEBVTT\n\n00:00.000 --> 00:01.000\ntext\n"
+    runner = FakeYtDlpRunner(
+        YOUTUBE_JSON,
+        vtt_files=(cue + "x" * (6 * 1024 * 1024),) * 2,
+    )
+
+    with pytest.raises(SourceError, match="^response_too_large$"):
+        SourceRetriever(yt_dlp_runner=runner).retrieve(YOUTUBE_URL)
+
+
+def test_youtube_shares_the_size_budget_between_metadata_and_vtt():
+    metadata = json.dumps({"title": "x" * (6 * 1024 * 1024)})
+    runner = FakeYtDlpRunner(
+        metadata,
+        vtt="WEBVTT\n\n00:00.000 --> 00:01.000\n" + "x" * (5 * 1024 * 1024),
+    )
+
+    with pytest.raises(SourceError, match="^response_too_large$"):
+        SourceRetriever(yt_dlp_runner=runner).retrieve(YOUTUBE_URL)
+
+
+def test_youtube_deadline_expires_before_transcript_reading(monkeypatch):
+    clock = AdvancingClock()
+    runner = FakeYtDlpRunner(YOUTUBE_JSON)
+    original_runner = runner.__call__
+
+    def advance_clock(*args, **kwargs):
+        result = original_runner(*args, **kwargs)
+        clock.now += 31
+        return result
+
+    monkeypatch.setattr(
+        module,
+        "_read_vtt_transcript",
+        lambda *args: pytest.fail("transcript read after deadline"),
+    )
+
+    with pytest.raises(SourceError, match="^timeout$"):
+        SourceRetriever(yt_dlp_runner=advance_clock, clock=clock).retrieve(YOUTUBE_URL)
+
+
+def test_default_ytdlp_runner_kills_timed_out_process_and_discards_stderr(
+    monkeypatch, tmp_path
+):
+    process = FakeProcess(running=True)
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured.update(kwargs)
+        return process
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+
+    with pytest.raises(TimeoutError):
+        module._run_yt_dlp(
+            ["yt-dlp", "--version"],
+            cwd=str(tmp_path),
+            timeout=0.01,
+            max_bytes=1024,
+        )
+
+    assert process.killed is True
+    assert captured["stderr"] is subprocess.DEVNULL
+    assert captured["stdout"] is subprocess.PIPE
 
 
 def test_youtube_posts_use_generic_fetcher_instead_of_yt_dlp():
@@ -317,3 +547,12 @@ def test_youtube_failures_are_stable_and_do_not_expose_runner_output(runner):
         SourceRetriever(yt_dlp_runner=runner).retrieve(YOUTUBE_URL)
 
     assert "not json" not in str(error.value)
+
+
+def test_host_header_brackets_ipv6_literals_and_preserves_non_default_port():
+    assert module._host_header("2001:4860:4860::8888", 443, "https") == (
+        "[2001:4860:4860::8888]"
+    )
+    assert module._host_header("2001:4860:4860::8888", 8443, "https") == (
+        "[2001:4860:4860::8888]:8443"
+    )
