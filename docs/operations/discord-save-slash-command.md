@@ -571,6 +571,7 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/hermes-workspace/AI_Agent
 Environment=HOME=/home/ubuntu
 Environment=PYTHONUTF8=1
+Environment=PATH=/home/ubuntu/.local/bin:/home/ubuntu/.hermes/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=QMD_EMBED_MODEL=hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf
 Environment=QMD_FORCE_CPU=1
 Environment=QMD_LLAMA_GPU=false

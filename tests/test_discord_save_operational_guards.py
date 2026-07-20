@@ -383,6 +383,10 @@ def test_runbook_pins_single_qmd_collection_and_korean_model():
     assert "npm install -g @tobilu/qmd@2.5.3" in runbook
     assert "QMD_FORCE_CPU=1" in runbook
     assert "QMD_LLAMA_GPU=false" in runbook
+    assert (
+        "Environment=PATH=/home/ubuntu/.local/bin:/home/ubuntu/.hermes/bin:"
+        in runbook
+    )
     assert "node --version" in runbook
     assert "qmd collection add /home/ubuntu/Obsidian --name obsidian" in runbook
     assert 'QMD_EMBED_MODEL="hf:Qwen/Qwen3-Embedding-0.6B-GGUF/' in runbook
