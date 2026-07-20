@@ -124,7 +124,7 @@ def test_manifest_declares_tool_without_secret_or_provider_dependencies() -> Non
 
     assert manifest == (
         "name: ai-agent-commands\n"
-        "version: 0.1.0\n"
+        "version: 0.2.0\n"
         'description: "Runtime Architecture v2 Discord commands for meetings '
         'and Obsidian knowledge capture."\n'
         'author: "kbm323"\n'
@@ -135,14 +135,26 @@ def test_manifest_declares_tool_without_secret_or_provider_dependencies() -> Non
     assert "provider" not in manifest.lower()
 
 
-def test_plugin_registers_archive_command_and_async_parameterless_tool() -> None:
+def test_plugin_registers_archive_and_llmwiki_commands_with_async_tool() -> None:
     ctx, tool = _registered_tool()
 
-    assert list(ctx.commands) == ["archive"]
+    assert list(ctx.commands) == [
+        "archive",
+        "llmwiki-ingest",
+        "llmwiki-find",
+        "llmwiki-note",
+    ]
     command = ctx.commands["archive"]
     assert command["description"] == "Archive the current Discord thread to Obsidian."
     assert command["args_hint"] == ""
     assert inspect.iscoroutinefunction(command["handler"])
+    assert ctx.commands["llmwiki-ingest"]["args_hint"] == "요청과 URL"
+    assert ctx.commands["llmwiki-find"]["args_hint"] == "검색어"
+    assert ctx.commands["llmwiki-note"]["args_hint"] == "저장할 내용"
+    assert all(
+        inspect.iscoroutinefunction(ctx.commands[name]["handler"])
+        for name in ("llmwiki-ingest", "llmwiki-find", "llmwiki-note")
+    )
     assert list(ctx.tools) == [TOOL_NAME]
     assert tool["toolset"] == "ai_agent_commands"
     assert tool["is_async"] is True
@@ -175,6 +187,125 @@ async def test_save_command_runs_existing_save_pipeline_and_returns_message(
 
     assert response == "rendered response"
     run_save.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_llmwiki_commands_construct_reviewed_dependencies_and_forward_text(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from src.runtime_architecture_v2 import (
+        llmwiki_commands,
+        llmwiki_sources,
+        llmwiki_store,
+        qmd_indexing,
+        qmd_search,
+    )
+
+    plugin = _load_plugin()
+    ctx = FakePluginContext()
+    plugin.register(ctx)
+    vault = tmp_path / "Obsidian"
+    monkeypatch.setenv("AI_AGENT_ROOT", str(PROJECT_ROOT))
+    monkeypatch.setenv("OBSIDIAN_VAULT_PATH", str(vault))
+
+    retriever = object()
+    summarizer = object()
+    store = object()
+    qmd = object()
+    scheduler = object()
+    retriever_factory = Mock(return_value=retriever)
+    summarizer_factory = Mock(return_value=summarizer)
+    store_factory = Mock(return_value=store)
+    qmd_factory = Mock(return_value=qmd)
+    scheduler_factory = Mock(return_value=scheduler)
+    run_ingest = AsyncMock(return_value=object())
+    run_note = AsyncMock(return_value=object())
+    run_find = AsyncMock(return_value=object())
+    monkeypatch.setattr(llmwiki_sources, "SourceRetriever", retriever_factory)
+    monkeypatch.setattr(
+        llmwiki_commands, "HermesSourceSummarizer", summarizer_factory
+    )
+    monkeypatch.setattr(llmwiki_store, "LlmWikiStore", store_factory)
+    monkeypatch.setattr(qmd_search, "QmdClient", qmd_factory)
+    monkeypatch.setattr(qmd_indexing, "QmdIndexScheduler", scheduler_factory)
+    monkeypatch.setattr(llmwiki_commands, "run_llmwiki_ingest", run_ingest)
+    monkeypatch.setattr(llmwiki_commands, "run_llmwiki_note", run_note)
+    monkeypatch.setattr(llmwiki_commands, "run_llmwiki_find", run_find)
+    monkeypatch.setattr(
+        llmwiki_commands, "render_llmwiki_ingest", Mock(return_value="ingested")
+    )
+    monkeypatch.setattr(
+        llmwiki_commands, "render_llmwiki_note", Mock(return_value="noted")
+    )
+    monkeypatch.setattr(
+        llmwiki_commands, "render_llmwiki_find", Mock(return_value="found")
+    )
+
+    ingest_text = "이 링크를 정리해줘 https://example.com/a"
+    assert await ctx.commands["llmwiki-ingest"]["handler"](ingest_text) == "ingested"
+    assert await ctx.commands["llmwiki-note"]["handler"]("아이디어 메모") == "noted"
+    assert await ctx.commands["llmwiki-find"]["handler"]("검색 표현") == "found"
+
+    retriever_factory.assert_called_once_with()
+    summarizer_factory.assert_called_once_with(ctx.llm)
+    assert store_factory.call_count == 2
+    store_factory.assert_called_with(vault_root=vault, runtime_root=PROJECT_ROOT)
+    assert qmd_factory.call_count == 3
+    assert scheduler_factory.call_count == 3
+    scheduler_factory.assert_called_with(runtime_root=PROJECT_ROOT, client=qmd)
+    run_ingest.assert_awaited_once_with(
+        request=ingest_text,
+        retriever=retriever,
+        summarizer=summarizer,
+        store=store,
+        scheduler=scheduler,
+    )
+    run_note.assert_awaited_once_with(
+        "아이디어 메모",
+        author=ctx.profile_name,
+        store=store,
+        scheduler=scheduler,
+    )
+    run_find.assert_awaited_once_with(
+        "검색 표현", qmd=qmd, scheduler=scheduler
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "expected_calls"),
+    [("created", 1), ("updated", 1), ("unchanged", 0)],
+)
+async def test_archive_schedules_qmd_only_after_a_changed_write(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    status: str,
+    expected_calls: int,
+) -> None:
+    from src.runtime_architecture_v2 import qmd_indexing, qmd_search, save_command
+    from src.runtime_architecture_v2.save_command import SaveCommandResult
+
+    plugin = _load_plugin()
+    ctx = FakePluginContext()
+    plugin.register(ctx)
+    run_save = _stub_successful_save(monkeypatch, tmp_path)
+    run_save.return_value = SaveCommandResult(ok=True, status=status)
+    qmd = object()
+    qmd_factory = Mock(return_value=qmd)
+    scheduler = SimpleNamespace(mark_dirty=Mock(), schedule=Mock(return_value=True))
+    scheduler_factory = Mock(return_value=scheduler)
+    monkeypatch.setattr(qmd_search, "QmdClient", qmd_factory)
+    monkeypatch.setattr(qmd_indexing, "QmdIndexScheduler", scheduler_factory)
+    monkeypatch.setattr(
+        save_command, "render_save_response", Mock(return_value="rendered response")
+    )
+
+    response = await ctx.commands["archive"]["handler"]("")
+
+    assert response == "rendered response"
+    assert scheduler.mark_dirty.call_count == expected_calls
+    assert scheduler.schedule.call_count == expected_calls
 
 
 @pytest.mark.asyncio
@@ -583,7 +714,12 @@ async def test_save_tool_fails_closed_when_required_profile_env_is_missing(
     )
 
     assert _message(response) == expected_message
-    assert list(ctx.commands) == ["archive"]
+    assert list(ctx.commands) == [
+        "archive",
+        "llmwiki-ingest",
+        "llmwiki-find",
+        "llmwiki-note",
+    ]
 
 
 @pytest.mark.asyncio

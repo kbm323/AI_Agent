@@ -1,13 +1,15 @@
-"""Bounded, SSRF-safe retrieval of public LLM Wiki sources."""
+"""Bounded retrieval of public LLM Wiki sources through abx-dl."""
 
 from __future__ import annotations
 
 import html
-import http.client
 import ipaddress
 import json
+import os
 import re
+import signal
 import socket
+import stat
 import subprocess
 import tempfile
 import threading
@@ -18,13 +20,13 @@ from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from .llmwiki_models import LlmWikiSource
 
-MAX_REDIRECTS = 5
-MAX_RESPONSE_BYTES = 10 * 1024 * 1024
-RETRIEVAL_TIMEOUT_SECONDS = 30.0
+MAX_OUTPUT_BYTES = 10 * 1024 * 1024
+MAX_OUTPUT_FILES = 256
+RETRIEVAL_TIMEOUT_SECONDS = 120.0
 
 
 class SourceError(Exception):
@@ -36,23 +38,27 @@ class SourceError(Exception):
 
 
 @dataclass(frozen=True)
-class HttpResponse:
-    """The bounded output of one HTTP request without redirect following."""
+class AbxDlRunResult:
+    """The non-sensitive result of one abx-dl process."""
 
-    status: int
-    headers: Mapping[str, str]
-    body: bytes
-    peer_address: str | None
-
-
-Resolver = Callable[[str, int], Sequence[str]]
-YtDlpRunner = Callable[..., Any]
+    returncode: int
+    output_root: Path
 
 
 @dataclass(frozen=True)
-class _YtDlpResult:
-    returncode: int
-    stdout: str
+class _Artifact:
+    priority: int
+    language_priority: int
+    relative_path: str
+    extractor: str
+    kind: str
+    content: str
+    title: str | None = None
+    metadata: Mapping[str, object] | None = None
+
+
+Resolver = Callable[[str, int], Sequence[str]]
+AbxDlRunner = Callable[..., AbxDlRunResult]
 
 
 def extract_single_url(text: str) -> str:
@@ -118,309 +124,410 @@ def normalize_source_url(url: str) -> str:
 
 
 class SourceRetriever:
-    """Retrieve only public URLs through injected or standard-library transports."""
+    """Retrieve public URLs through one isolated abx-dl adapter invocation."""
 
     def __init__(
         self,
         *,
-        fetcher: Any | None = None,
-        yt_dlp_runner: YtDlpRunner | None = None,
+        abxdl_runner: AbxDlRunner | None = None,
         resolver: Resolver | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        self._abxdl_runner = abxdl_runner or _run_abx_dl
         self._resolver = resolver or _resolve_public_host
-        self._fetcher = fetcher or _StdlibHttpFetcher()
-        self._yt_dlp_runner = yt_dlp_runner or _run_yt_dlp
         self._clock = clock
 
     def retrieve(self, url: str) -> LlmWikiSource:
         normalized_url = normalize_source_url(url)
-        if _is_youtube_video(normalized_url):
-            return self._retrieve_youtube(normalized_url)
-        return self._retrieve_generic(normalized_url)
-
-    def _retrieve_generic(self, normalized_url: str) -> LlmWikiSource:
         deadline = self._clock() + RETRIEVAL_TIMEOUT_SECONDS
-        current_url = normalized_url
-        redirects = 0
-        while True:
-            addresses = _validate_public_target(
-                current_url, self._resolver, deadline, self._clock
-            )
-            response = self._fetch(
-                current_url,
-                _remaining(deadline, self._clock),
-                addresses,
-            )
-            _validate_peer_address(response.peer_address)
-            if len(response.body) > MAX_RESPONSE_BYTES:
-                raise SourceError("response_too_large")
-            if self._clock() > deadline:
-                raise SourceError("timeout")
-            if 300 <= response.status < 400:
-                location = _header(response.headers, "location")
-                if not location:
-                    raise SourceError("retrieval_failed")
-                if redirects >= MAX_REDIRECTS:
-                    raise SourceError("too_many_redirects")
-                current_url = normalize_source_url(urljoin(current_url, location))
-                redirects += 1
-                continue
-            if response.status in {401, 403}:
-                raise SourceError("unsupported_source")
-            if not 200 <= response.status < 300:
-                raise SourceError("retrieval_failed")
-            return _to_web_source(current_url, response)
+        _validate_public_target(
+            normalized_url,
+            self._resolver,
+            deadline,
+            self._clock,
+        )
 
-    def _fetch(
-        self, url: str, remaining: float, addresses: Sequence[str]
-    ) -> HttpResponse:
-        try:
-            if isinstance(self._fetcher, _StdlibHttpFetcher):
-                response = self._fetcher.fetch(
-                    url,
-                    timeout=remaining,
-                    max_bytes=MAX_RESPONSE_BYTES,
-                    addresses=addresses,
-                )
-            else:
-                fetch = getattr(self._fetcher, "fetch", self._fetcher)
-                response = _fetch_bounded(
-                    fetch,
-                    url,
-                    remaining,
-                    MAX_RESPONSE_BYTES,
-                )
-        except SourceError:
-            raise
-        except TimeoutError:
-            raise SourceError("timeout") from None
-        except Exception:
-            raise SourceError("retrieval_failed") from None
-        if not isinstance(response, HttpResponse):
-            raise SourceError("retrieval_failed")
-        return response
-
-    def _retrieve_youtube(self, normalized_url: str) -> LlmWikiSource:
-        deadline = self._clock() + RETRIEVAL_TIMEOUT_SECONDS
-        try:
-            with tempfile.TemporaryDirectory(prefix="llmwiki-ytdlp-") as directory:
-                arguments = [
-                    "yt-dlp",
-                    "--dump-single-json",
-                    "--skip-download",
-                    "--no-playlist",
-                    "--write-auto-subs",
-                    "--write-subs",
-                    "--sub-langs",
-                    "ko,en",
-                    "--sub-format",
-                    "vtt",
-                    "--paths",
-                    directory,
-                    normalized_url,
-                ]
-                result = self._yt_dlp_runner(
-                    arguments,
-                    cwd=directory,
+        with tempfile.TemporaryDirectory(prefix="llmwiki-abxdl-") as directory:
+            root = Path(directory).resolve()
+            argv = [
+                "abx-dl",
+                "--no-install",
+                f"--dir={root}",
+                normalized_url,
+            ]
+            try:
+                result = self._abxdl_runner(
+                    argv,
+                    cwd=str(root),
                     timeout=_remaining(deadline, self._clock),
-                    max_bytes=MAX_RESPONSE_BYTES,
+                    max_bytes=MAX_OUTPUT_BYTES,
+                    max_files=MAX_OUTPUT_FILES,
                 )
-                if getattr(result, "returncode", 1) != 0:
-                    raise SourceError("unsupported_source")
-                stdout = getattr(result, "stdout", "")
-                metadata_bytes = _ensure_text_limit(stdout, MAX_RESPONSE_BYTES)
-                metadata = _parse_youtube_metadata(stdout)
-                _remaining(deadline, self._clock)
-                transcript = _read_vtt_transcript(
-                    Path(directory),
-                    MAX_RESPONSE_BYTES - metadata_bytes,
-                    deadline,
-                    self._clock,
-                )
-        except SourceError:
-            raise
-        except (TimeoutError, subprocess.TimeoutExpired):
-            raise SourceError("timeout") from None
-        except Exception:
-            raise SourceError("unsupported_source") from None
-        if self._clock() > deadline:
-            raise SourceError("timeout")
-        if not transcript:
-            raise SourceError("unsupported_source")
-        return LlmWikiSource(
-            normalized_url=normalized_url,
-            source_type="youtube",
-            title=str(metadata.pop("title", "YouTube video")),
-            content=transcript,
-            retrieved_at=_retrieved_at(),
-            metadata=metadata,
-        )
+            except SourceError:
+                raise
+            except FileNotFoundError:
+                raise SourceError("missing_dependency") from None
+            except TimeoutError:
+                raise SourceError("timeout") from None
+            except Exception:
+                raise SourceError("retrieval_failed") from None
 
+            if not isinstance(result, AbxDlRunResult):
+                raise SourceError("retrieval_failed")
+            if result.output_root.resolve() != root:
+                raise SourceError("unsafe_output")
+            if result.returncode != 0:
+                raise SourceError("unsupported_source")
 
-class _StdlibHttpFetcher:
-    """HTTP transport that connects only to prevalidated DNS addresses."""
+            files = _collect_output_files(root, MAX_OUTPUT_BYTES, MAX_OUTPUT_FILES)
+            _validate_index_jsonl(root, files)
+            title = _read_capture_title(root, files)
+            artifact = _select_artifact(root, files)
+            if artifact is None:
+                raise SourceError("unsupported_source")
 
-    def fetch(
-        self,
-        url: str,
-        *,
-        timeout: float,
-        max_bytes: int,
-        addresses: Sequence[str],
-    ) -> HttpResponse:
-        deadline = time.monotonic() + timeout
-        parsed = urlsplit(url)
-        host = parsed.hostname
-        if host is None:
-            raise SourceError("invalid_url")
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        _validate_addresses(addresses)
-        connection: http.client.HTTPConnection
-        if parsed.scheme == "https":
-            connection = _ValidatedHTTPSConnection(host, port, addresses, deadline)
-        else:
-            connection = _ValidatedHTTPConnection(host, port, addresses, deadline)
-        target = parsed.path or "/"
-        if parsed.query:
-            target = f"{target}?{parsed.query}"
-        try:
-            connection.request(
-                "GET",
-                target,
-                headers={
-                    "Host": _host_header(host, port, parsed.scheme),
-                    "User-Agent": "Oracle-LLMWiki/1.0",
-                },
+            metadata = dict(artifact.metadata or {})
+            metadata.update({
+                "acquisition_adapter": "abx-dl",
+                "extractor": artifact.extractor,
+                "artifact_path": artifact.relative_path,
+                "artifact_kind": artifact.kind,
+            })
+            return LlmWikiSource(
+                normalized_url=normalized_url,
+                source_type=_source_type(artifact.extractor),
+                title=title or artifact.title or _title_from_url(normalized_url),
+                content=artifact.content,
+                retrieved_at=_retrieved_at(),
+                metadata=metadata,
             )
-            response = connection.getresponse()
-            content_length = response.getheader("content-length")
-            if content_length is not None:
-                try:
-                    if int(content_length) > max_bytes:
-                        raise SourceError("response_too_large")
-                except ValueError:
-                    raise SourceError("retrieval_failed") from None
-            body = _read_bounded(response, max_bytes, deadline, connection.sock)
-            peer = connection.sock.getpeername()[0] if connection.sock else None
-            return HttpResponse(
-                status=response.status,
-                headers={key.lower(): value for key, value in response.getheaders()},
-                body=body,
-                peer_address=peer,
-            )
-        finally:
-            connection.close()
 
 
-class _ValidatedHTTPConnection(http.client.HTTPConnection):
-    def __init__(
-        self, host: str, port: int, addresses: Sequence[str], deadline: float
-    ) -> None:
-        super().__init__(host, port, timeout=_deadline_remaining(deadline))
-        self._addresses = addresses
-        self._deadline = deadline
-
-    def connect(self) -> None:
-        self.sock = _connect_to_public_address(
-            self._addresses, self.port, self._deadline
-        )
-
-
-class _ValidatedHTTPSConnection(http.client.HTTPSConnection):
-    def __init__(
-        self, host: str, port: int, addresses: Sequence[str], deadline: float
-    ) -> None:
-        super().__init__(host, port, timeout=_deadline_remaining(deadline))
-        self._addresses = addresses
-        self._deadline = deadline
-
-    def connect(self) -> None:
-        raw_socket = _connect_to_public_address(
-            self._addresses, self.port, self._deadline
-        )
-        try:
-            self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
-            _validate_peer_address(self.sock.getpeername()[0])
-        except Exception:
-            raw_socket.close()
-            raise
-
-
-def _connect_to_public_address(
-    addresses: Sequence[str], port: int, deadline: float
-) -> socket.socket:
-    last_error: OSError | None = None
-    for address in addresses:
-        _validate_address(address)
-        try:
-            sock = socket.create_connection(
-                (address, port), timeout=_deadline_remaining(deadline)
-            )
-        except OSError as exc:
-            last_error = exc
-            continue
-        try:
-            _validate_peer_address(sock.getpeername()[0])
-            return sock
-        except Exception:
-            sock.close()
-            raise
-    if last_error is not None:
-        raise last_error
-    raise OSError("no_public_address")
-
-
-def _read_bounded(
-    response: http.client.HTTPResponse,
+def _run_abx_dl(
+    argv: list[str],
+    *,
+    cwd: str,
+    timeout: float,
     max_bytes: int,
-    deadline: float,
-    sock: socket.socket | None,
-) -> bytes:
-    chunks = []
-    size = 0
-    while True:
-        if sock is not None:
-            sock.settimeout(_deadline_remaining(deadline))
-        chunk = response.read(min(64 * 1024, max_bytes - size + 1))
-        if not chunk:
-            return b"".join(chunks)
-        size += len(chunk)
-        if size > max_bytes:
-            raise SourceError("response_too_large")
-        chunks.append(chunk)
+    max_files: int,
+) -> AbxDlRunResult:
+    """Run abx-dl without a shell while bounding time and disk output."""
 
-
-def _to_web_source(url: str, response: HttpResponse) -> LlmWikiSource:
-    content_type = _header(response.headers, "content-type").split(";", 1)[0].lower()
-    text = _decode_body(response.body, _header(response.headers, "content-type"))
-    if content_type in {"text/html", "application/xhtml+xml"}:
-        parser = _VisibleHtmlParser()
-        try:
-            parser.feed(text)
-            parser.close()
-        except Exception:
-            raise SourceError("unsupported_source") from None
-        content = _collapse_whitespace(" ".join(parser.text))
-        title = _collapse_whitespace(" ".join(parser.title)) or _title_from_url(url)
-    elif content_type.startswith("text/") or content_type in {
-        "application/json",
-        "application/ld+json",
-    } or content_type.endswith("+json"):
-        content = text
-        title = _title_from_url(url)
+    popen_options: dict[str, Any] = {
+        "cwd": cwd,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "shell": False,
+        "env": _sanitized_environment(),
+    }
+    if os.name == "nt":
+        popen_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
+        popen_options["start_new_session"] = True
+    try:
+        process = subprocess.Popen(argv, **popen_options)
+    except FileNotFoundError:
+        raise SourceError("missing_dependency") from None
+    except OSError:
+        raise SourceError("retrieval_failed") from None
+
+    deadline = time.monotonic() + timeout
+    root = Path(cwd).resolve()
+    try:
+        while process.poll() is None:
+            _measure_output_tree(root, max_bytes, max_files)
+            if time.monotonic() >= deadline:
+                raise SourceError("timeout")
+            time.sleep(0.01)
+        _measure_output_tree(root, max_bytes, max_files)
+    except SourceError:
+        _terminate_process_tree(process)
+        raise
+
+    return AbxDlRunResult(returncode=process.returncode or 0, output_root=root)
+
+
+def _sanitized_environment() -> dict[str, str]:
+    """Forward only runtime basics, excluding credentials and agent secrets."""
+
+    allowed = {
+        "APPDATA",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "LOCALAPPDATA",
+        "PATH",
+        "SSL_CERT_DIR",
+        "SSL_CERT_FILE",
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "USERPROFILE",
+        "WINDIR",
+    }
+    environment = {key: value for key, value in os.environ.items() if key in allowed}
+    environment.setdefault("PATH", os.defpath)
+    environment["NO_COLOR"] = "1"
+    environment["PYTHONUNBUFFERED"] = "1"
+    return environment
+
+
+def _terminate_process_tree(process: Any) -> None:
+    try:
+        if process.poll() is not None:
+            return
+        if os.name != "nt" and getattr(process, "pid", None):
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                process.kill()
+        else:
+            process.kill()
+        process.wait(timeout=1)
+    except Exception:
+        return
+
+
+def _measure_output_tree(root: Path, max_bytes: int, max_files: int) -> None:
+    count = 0
+    total = 0
+    try:
+        for current, directories, filenames in os.walk(root, followlinks=False):
+            current_path = Path(current)
+            for name in directories:
+                if (current_path / name).is_symlink():
+                    raise SourceError("unsafe_output")
+            for name in filenames:
+                path = current_path / name
+                if path.is_symlink():
+                    raise SourceError("unsafe_output")
+                status = path.stat(follow_symlinks=False)
+                if not stat.S_ISREG(status.st_mode):
+                    raise SourceError("unsafe_output")
+                count += 1
+                total += status.st_size
+                if count > max_files or total > max_bytes:
+                    raise SourceError("response_too_large")
+    except SourceError:
+        raise
+    except OSError:
+        raise SourceError("unsafe_output") from None
+
+
+def _collect_output_files(
+    root: Path, max_bytes: int, max_files: int
+) -> tuple[Path, ...]:
+    _measure_output_tree(root, max_bytes, max_files)
+    files: list[Path] = []
+    try:
+        for path in root.rglob("*"):
+            if path.is_symlink():
+                raise SourceError("unsafe_output")
+            if not path.is_file():
+                continue
+            resolved = path.resolve()
+            if not resolved.is_relative_to(root):
+                raise SourceError("unsafe_output")
+            files.append(path)
+    except SourceError:
+        raise
+    except OSError:
+        raise SourceError("unsafe_output") from None
+    return tuple(sorted(files, key=lambda item: item.as_posix().lower()))
+
+
+def _validate_index_jsonl(root: Path, files: Sequence[Path]) -> None:
+    index = root / "index.jsonl"
+    if index not in files:
         raise SourceError("unsupported_source")
-    if not content.strip():
-        raise SourceError("unsupported_source")
-    return LlmWikiSource(
-        normalized_url=url,
-        source_type="web",
-        title=title,
-        content=content,
-        retrieved_at=_retrieved_at(),
-        metadata={"content_type": content_type, "status_code": response.status},
+    try:
+        lines = index.read_text(encoding="utf-8").splitlines()
+        if not lines:
+            raise ValueError
+        for line in lines:
+            if not line.strip() or not isinstance(json.loads(line), dict):
+                raise ValueError
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+        raise SourceError("unsupported_source") from None
+
+
+def _read_capture_title(root: Path, files: Sequence[Path]) -> str | None:
+    title_path = root / "title" / "title.txt"
+    if title_path not in files:
+        return None
+    try:
+        title = title_path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    return _collapse_whitespace(title) or None
+
+
+def _select_artifact(root: Path, files: Sequence[Path]) -> _Artifact | None:
+    candidates = []
+    for path in files:
+        relative = path.relative_to(root).as_posix()
+        if relative in {"index.jsonl", "title/title.txt"}:
+            continue
+        candidate = _artifact_from_file(path, relative)
+        if candidate is not None and candidate.content.strip():
+            candidates.append(candidate)
+    if not candidates:
+        return None
+    return min(
+        candidates,
+        key=lambda item: (
+            item.priority,
+            item.language_priority,
+            item.relative_path.lower(),
+        ),
     )
+
+
+def _artifact_from_file(path: Path, relative: str) -> _Artifact | None:
+    suffix = path.suffix.lower()
+    extractor = relative.split("/", 1)[0].lower() if "/" in relative else "unknown"
+    if suffix not in {".htm", ".html", ".json", ".md", ".srt", ".txt", ".vtt"}:
+        return None
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    language_priority = _language_priority(path.name)
+    if suffix in {".vtt", ".srt"}:
+        content = _parse_subtitle(raw)
+        return _Artifact(
+            0,
+            language_priority,
+            relative,
+            extractor,
+            "transcript",
+            content,
+        )
+
+    title = None
+    metadata: Mapping[str, object] | None = None
+    if suffix == ".json":
+        content, title, metadata = _read_json_evidence(raw)
+    elif suffix in {".html", ".htm"}:
+        content, title = _read_html_evidence(raw)
+    else:
+        content = raw.strip()
+
+    clean_extractors = {"defuddle", "mercury", "readability", "trafilatura"}
+    social_extractors = {"gallerydl", "ytdlp"}
+    dom_extractors = {"dom", "htmltotext", "singlefile"}
+    if extractor in clean_extractors:
+        priority, kind = 10, "clean_text"
+    elif extractor in social_extractors:
+        priority, kind = 20, "metadata_text"
+    elif extractor in dom_extractors:
+        priority, kind = 30, "rendered_text"
+    else:
+        priority, kind = 40, "text"
+    return _Artifact(
+        priority,
+        language_priority,
+        relative,
+        extractor,
+        kind,
+        content,
+        title,
+        metadata,
+    )
+
+
+def _read_json_evidence(
+    raw: str,
+) -> tuple[str, str | None, Mapping[str, object] | None]:
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return "", None, None
+    if not isinstance(data, dict):
+        return "", None, None
+    content = ""
+    for key in ("transcript", "description", "caption", "content", "text", "summary"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            content = value.strip()
+            break
+    title_value = data.get("title")
+    title = title_value.strip() if isinstance(title_value, str) else None
+    safe_metadata: dict[str, object] = {}
+    evidence_keys = {
+        "caption",
+        "content",
+        "description",
+        "summary",
+        "text",
+        "transcript",
+    }
+    for key, value in data.items():
+        if key in evidence_keys:
+            continue
+        if (
+            isinstance(value, str)
+            and len(value) <= 500
+            or isinstance(value, bool | int | float)
+            or value is None
+        ):
+            safe_metadata[key] = value
+        if len(safe_metadata) >= 24:
+            break
+    return content, title, safe_metadata
+
+
+def _read_html_evidence(raw: str) -> tuple[str, str | None]:
+    parser = _VisibleHtmlParser()
+    try:
+        parser.feed(raw)
+        parser.close()
+    except Exception:
+        return "", None
+    content = _collapse_whitespace(" ".join(parser.text))
+    title = _collapse_whitespace(" ".join(parser.title)) or None
+    return content, title
+
+
+def _parse_subtitle(raw: str) -> str:
+    lines: list[str] = []
+    for line in raw.splitlines():
+        candidate = line.strip()
+        if (
+            not candidate
+            or candidate.isdecimal()
+            or "-->" in candidate
+            or candidate == "WEBVTT"
+            or candidate.startswith(("Kind:", "Language:", "NOTE", "STYLE", "REGION"))
+        ):
+            continue
+        visible = _strip_html_tags(candidate)
+        if visible and (not lines or lines[-1] != visible):
+            lines.append(visible)
+    return _collapse_whitespace(" ".join(lines))
+
+
+def _language_priority(filename: str) -> int:
+    lower = filename.lower()
+    tokens = set(re.split(r"[^a-z0-9]+", lower))
+    if "ko" in tokens or "kor" in tokens:
+        return 0
+    if "en" in tokens or "eng" in tokens:
+        return 1
+    return 2
+
+
+def _source_type(extractor: str) -> str:
+    if extractor == "ytdlp":
+        return "video"
+    if extractor == "gallerydl":
+        return "social"
+    if extractor in {"defuddle", "mercury", "readability", "trafilatura"}:
+        return "article"
+    return "web"
 
 
 class _VisibleHtmlParser(HTMLParser):
@@ -451,78 +558,8 @@ class _VisibleHtmlParser(HTMLParser):
             return
         if self._in_title:
             self.title.append(data)
-            return
-        self.text.append(data)
-
-
-def _parse_youtube_metadata(stdout: object) -> dict[str, object]:
-    if not isinstance(stdout, str):
-        raise SourceError("unsupported_source")
-    try:
-        data = json.loads(stdout)
-    except (TypeError, ValueError):
-        raise SourceError("unsupported_source") from None
-    if not isinstance(data, dict):
-        raise SourceError("unsupported_source")
-    metadata = {
-        key: data[key]
-        for key in ("id", "channel", "uploader", "duration")
-        if key in data and isinstance(data[key], str | int | float)
-    }
-    if isinstance(data.get("title"), str) and data["title"].strip():
-        metadata["title"] = data["title"].strip()
-    return metadata
-
-
-def _read_vtt_transcript(
-    directory: Path,
-    max_bytes: int,
-    deadline: float,
-    clock: Callable[[], float],
-) -> str:
-    lines: list[str] = []
-    total_bytes = 0
-    for path in sorted(directory.rglob("*.vtt")):
-        _remaining(deadline, clock)
-        try:
-            source, total_bytes = _read_limited_text(
-                path, total_bytes, max_bytes, deadline, clock
-            )
-        except OSError:
-            continue
-        in_cues = False
-        for line in source.splitlines():
-            candidate = line.strip()
-            if "-->" in candidate:
-                in_cues = True
-                continue
-            if not in_cues or not candidate:
-                continue
-            if candidate.isdecimal() or candidate.startswith(
-                ("NOTE", "STYLE", "REGION")
-            ):
-                continue
-            visible = _strip_html_tags(candidate)
-            if visible:
-                lines.append(visible)
-    return _collapse_whitespace(" ".join(lines))
-
-
-def _is_youtube_video(url: str) -> bool:
-    parsed = urlsplit(url)
-    host = parsed.hostname or ""
-    if host == "youtu.be":
-        return bool(parsed.path.strip("/"))
-    if host not in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
-        return False
-    if parsed.path == "/watch":
-        return any(
-            part.startswith("v=") and len(part) > 2
-            for part in parsed.query.split("&")
-        )
-    return parsed.path.startswith("/shorts/") and bool(
-        parsed.path.removeprefix("/shorts/")
-    )
+        else:
+            self.text.append(data)
 
 
 def _validate_public_target(
@@ -565,12 +602,6 @@ def _validate_addresses(addresses: Sequence[str]) -> None:
         _validate_address(address)
 
 
-def _validate_peer_address(address: str | None) -> None:
-    if not address:
-        raise SourceError("retrieval_failed")
-    _validate_address(address)
-
-
 def _validate_address(address: str) -> None:
     try:
         parsed = ipaddress.ip_address(address)
@@ -586,70 +617,6 @@ def _validate_address(address: str) -> None:
         or parsed.is_unspecified
     ):
         raise SourceError("unsafe_target")
-
-
-def _run_yt_dlp(
-    argv: list[str], *, cwd: str, timeout: float, max_bytes: int
-) -> _YtDlpResult:
-    process = subprocess.Popen(
-        argv,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        shell=False,
-    )
-    if process.stdout is None:
-        _kill_process(process)
-        raise OSError("missing_stdout")
-    deadline = time.monotonic() + timeout
-    chunks: list[bytes] = []
-    size = 0
-    overflow = threading.Event()
-    complete = threading.Event()
-
-    def drain_stdout() -> None:
-        nonlocal size
-        try:
-            while chunk := process.stdout.read(64 * 1024):
-                if size + len(chunk) > max_bytes:
-                    overflow.set()
-                    _kill_process(process)
-                    return
-                chunks.append(chunk)
-                size += len(chunk)
-        finally:
-            complete.set()
-
-    threading.Thread(target=drain_stdout, daemon=True).start()
-    while process.poll() is None:
-        if overflow.is_set():
-            _kill_process(process)
-            raise SourceError("response_too_large")
-        if time.monotonic() >= deadline:
-            _kill_process(process)
-            raise TimeoutError
-        time.sleep(0.005)
-    if not complete.wait(_deadline_remaining(deadline)):
-        _kill_process(process)
-        raise TimeoutError
-    if overflow.is_set():
-        raise SourceError("response_too_large")
-    return _YtDlpResult(process.returncode or 0, b"".join(chunks).decode("utf-8"))
-
-
-def _remaining(deadline: float, clock: Callable[[], float]) -> float:
-    remaining = deadline - clock()
-    if remaining <= 0:
-        raise SourceError("timeout")
-    return remaining
-
-
-def _deadline_remaining(deadline: float) -> float:
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise TimeoutError
-    return remaining
 
 
 def _resolve_bounded(
@@ -680,38 +647,6 @@ def _resolve_bounded(
     return tuple(result[0])
 
 
-def _fetch_bounded(
-    fetch: Callable[..., HttpResponse],
-    url: str,
-    timeout: float,
-    max_bytes: int,
-) -> HttpResponse:
-    result: list[HttpResponse] = []
-    failure: list[BaseException] = []
-    completed = threading.Event()
-
-    def run_fetch() -> None:
-        try:
-            result.append(fetch(url, timeout=timeout, max_bytes=max_bytes))
-        except BaseException as exc:
-            failure.append(exc)
-        finally:
-            completed.set()
-
-    threading.Thread(target=run_fetch, daemon=True).start()
-    if not completed.wait(timeout):
-        raise SourceError("timeout")
-    if failure:
-        if isinstance(failure[0], SourceError):
-            raise SourceError(failure[0].code) from None
-        if isinstance(failure[0], TimeoutError):
-            raise SourceError("timeout") from None
-        raise SourceError("retrieval_failed") from None
-    if not result:
-        raise SourceError("retrieval_failed")
-    return result[0]
-
-
 def _normalize_domain_name(host: str) -> str:
     if host.endswith("."):
         raise SourceError("invalid_url")
@@ -738,68 +673,11 @@ def _normalize_domain_name(host: str) -> str:
     return ".".join(normalized)
 
 
-def _ensure_text_limit(value: object, max_bytes: int) -> int:
-    if not isinstance(value, str):
-        raise SourceError("unsupported_source")
-    try:
-        size = len(value.encode("utf-8"))
-    except UnicodeError:
-        raise SourceError("unsupported_source") from None
-    if size > max_bytes:
-        raise SourceError("response_too_large")
-    return size
-
-
-def _read_limited_text(
-    path: Path,
-    total: int,
-    max_bytes: int,
-    deadline: float,
-    clock: Callable[[], float],
-) -> tuple[str, int]:
-    chunks = []
-    with path.open("rb") as handle:
-        while chunk := handle.read(64 * 1024):
-            _remaining(deadline, clock)
-            total += len(chunk)
-            if total > max_bytes:
-                raise SourceError("response_too_large")
-            chunks.append(chunk)
-    return b"".join(chunks).decode("utf-8", errors="replace"), total
-
-
-def _kill_process(process: subprocess.Popen[bytes]) -> None:
-    try:
-        if process.poll() is None:
-            process.kill()
-    except Exception:
-        return
-
-
-def _header(headers: Mapping[str, str], name: str) -> str:
-    for key, value in headers.items():
-        if key.lower() == name:
-            return value
-    return ""
-
-
-def _decode_body(body: bytes, content_type: str) -> str:
-    charset = "utf-8"
-    for parameter in content_type.split(";")[1:]:
-        key, separator, value = parameter.partition("=")
-        if separator and key.strip().lower() == "charset" and value.strip():
-            charset = value.strip().strip('"')
-            break
-    try:
-        return body.decode(charset, errors="replace")
-    except LookupError:
-        return body.decode("utf-8", errors="replace")
-
-
-def _host_header(host: str, port: int, scheme: str) -> str:
-    default_port = 443 if scheme == "https" else 80
-    display_host = f"[{host}]" if ":" in host else host
-    return display_host if port == default_port else f"{display_host}:{port}"
+def _remaining(deadline: float, clock: Callable[[], float]) -> float:
+    remaining = deadline - clock()
+    if remaining <= 0:
+        raise SourceError("timeout")
+    return remaining
 
 
 def _title_from_url(url: str) -> str:
