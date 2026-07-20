@@ -568,6 +568,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 User=ubuntu
+TimeoutStartSec=30min
 WorkingDirectory=/home/ubuntu/hermes-workspace/AI_Agent
 Environment=HOME=/home/ubuntu
 Environment=PYTHONUTF8=1
