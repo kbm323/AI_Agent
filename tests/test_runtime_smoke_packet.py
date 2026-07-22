@@ -8,6 +8,7 @@ through gateway_bridge.
 
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -19,6 +20,8 @@ from src.runtime_architecture_v2.gateway_bridge import (
     classify_meeting_intent,
     run_meeting_from_gateway,
 )
+from src.runtime_architecture_v2.hermes_command_context import HermesCommandContext
+from src.runtime_architecture_v2.store import MeetingRunStore
 
 
 @pytest.fixture
@@ -42,6 +45,160 @@ def test_dry_run_succeeds(tmp_root: Path) -> None:
     assert result.success, f"dry-run failed: {result.error}"
     assert result.meeting_run_id
     assert result.bot_participants
+
+
+def test_meeting_trigger_and_command_context_expose_origin_identity() -> None:
+    trigger_fields = {field.name for field in fields(GatewayMeetingTrigger)}
+    context_fields = {field.name for field in fields(HermesCommandContext)}
+
+    assert "invocation_id" in trigger_fields
+    assert {"guild_id", "parent_channel_id", "invocation_id"} <= context_fields
+
+
+def test_gateway_persists_real_discord_trigger_provenance(tmp_root: Path) -> None:
+    trigger = GatewayMeetingTrigger(
+        text="실제 출처 보존 회의",
+        user_id="real-user",
+        channel_id="real-parent",
+        guild_id="real-guild",
+        thread_id="real-thread",
+        platform="discord",
+        priority="P1",
+        invocation_id="interaction-123",
+    )
+
+    result = run_meeting_from_gateway(
+        trigger,
+        root=tmp_root,
+        live_discord=False,
+        create_thread=False,
+        require_meeting_intent=False,
+    )
+
+    assert result.success is True
+    run = MeetingRunStore(tmp_root).load_meeting_run(result.meeting_run_id)
+    discord = dict(run.trigger["discord"])
+    assert run.trigger["user_id"] == "real-user"
+    assert discord == {
+        "channel_id": "real-parent",
+        "thread_id": "real-thread",
+        "guild_id": "real-guild",
+    }
+    assert run.priority == "P1"
+    assert run.metadata["platform"] == "discord"
+    assert run.metadata["invocation_id"] == "interaction-123"
+
+
+def test_gateway_reuses_completed_invocation_without_second_pilot(
+    tmp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_pilot(**kwargs: Any) -> SimpleNamespace:
+        calls.append(kwargs)
+        return SimpleNamespace(
+            ok=True,
+            meeting_run=SimpleNamespace(meeting_run_id="meeting-once"),
+            meeting_thread_id="thread-once",
+            final_report="",
+            bot_participants=("ceo_coordinator",),
+            rounds_completed=2,
+            projection_messages_posted=2,
+        )
+
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.gateway_bridge.run_phase14_multi_bot_pilot",
+        fake_pilot,
+    )
+    trigger = GatewayMeetingTrigger(
+        text="중복 방지 회의",
+        user_id="real-user",
+        channel_id="real-parent",
+        guild_id="real-guild",
+        invocation_id="interaction-once",
+    )
+
+    first = run_meeting_from_gateway(
+        trigger,
+        root=tmp_root,
+        live_discord=False,
+        create_thread=False,
+        require_meeting_intent=False,
+    )
+    duplicate = run_meeting_from_gateway(
+        trigger,
+        root=tmp_root,
+        live_discord=False,
+        create_thread=False,
+        require_meeting_intent=False,
+    )
+
+    assert first.success is True
+    assert duplicate.success is True
+    assert duplicate.meeting_run_id == first.meeting_run_id
+    assert duplicate.thread_id == first.thread_id
+    assert len(calls) == 1
+
+
+def test_gateway_fallback_identity_expires_after_ninety_seconds(
+    tmp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    now = 1_000.0
+
+    def fake_pilot(**_kwargs: Any) -> SimpleNamespace:
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(
+            ok=True,
+            meeting_run=SimpleNamespace(meeting_run_id=f"meeting-{calls}"),
+            meeting_thread_id=f"thread-{calls}",
+            final_report="",
+            bot_participants=("ceo_coordinator",),
+            rounds_completed=2,
+            projection_messages_posted=2,
+        )
+
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.gateway_bridge.run_phase14_multi_bot_pilot",
+        fake_pilot,
+    )
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.gateway_bridge.time.time",
+        lambda: now,
+    )
+    trigger = GatewayMeetingTrigger(
+        text="호출 ID 없는 회의",
+        user_id="real-user",
+        channel_id="real-parent",
+        guild_id="real-guild",
+    )
+
+    first = run_meeting_from_gateway(
+        trigger,
+        root=tmp_root,
+        live_discord=False,
+        require_meeting_intent=False,
+    )
+    within_window = run_meeting_from_gateway(
+        trigger,
+        root=tmp_root,
+        live_discord=False,
+        require_meeting_intent=False,
+    )
+    now += 91.0
+    after_window = run_meeting_from_gateway(
+        trigger,
+        root=tmp_root,
+        live_discord=False,
+        require_meeting_intent=False,
+    )
+
+    assert within_window.meeting_run_id == first.meeting_run_id
+    assert after_window.meeting_run_id != first.meeting_run_id
+    assert calls == 2
 
 
 def test_live_mode_needs_discord_token(

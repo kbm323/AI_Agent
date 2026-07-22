@@ -735,6 +735,12 @@ def run_phase14_multi_bot_pilot(
     discord_http_post: Callable[..., Mapping[str, object]] | None = None,
     live_bot_roles_override: tuple[str, ...] | None = None,
     fake_bot_roles_override: tuple[str, ...] | None = None,
+    user_id: str | None = None,
+    guild_id: str | None = None,
+    priority: str | None = None,
+    platform: str = "discord",
+    invocation_id: str = "",
+    idempotency_key: str = "",
 ) -> MultiBotPilotResult:
     """Run the Phase 14 multi-bot operational protocol pilot."""
 
@@ -763,12 +769,30 @@ def run_phase14_multi_bot_pilot(
     request = build_phase14_pilot_request()
     if trigger_text is not None:
         request["trigger_text"] = trigger_text
+    if user_id is not None:
+        request["user_id"] = user_id
+    request["channel_id"] = target_channel_id
+    request["thread_id"] = target_thread_id
+    if guild_id is not None:
+        request["guild_id"] = guild_id
+    if priority is not None:
+        request["priority"] = priority
     if live_bot_roles_override is not None:
         request["live_bot_roles"] = list(live_bot_roles_override)
     if fake_bot_roles_override is not None:
         request["fake_bot_roles"] = list(fake_bot_roles_override)
     run = create_phase13_meeting_run(root, request)
+    run = replace(
+        run,
+        metadata={
+            **run.metadata,
+            "platform": platform,
+            **({"invocation_id": invocation_id} if invocation_id else {}),
+            **({"idempotency_key": idempotency_key} if idempotency_key else {}),
+        },
+    )
     store = MeetingRunStore(root)
+    store.save_meeting_run(run)
     route = build_phase13_route(run)
     live_count = 0 if mode == "dry-run" else max_live_workers
 

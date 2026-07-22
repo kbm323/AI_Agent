@@ -124,6 +124,11 @@ def _snowflake(value: object) -> str:
     return str(int(candidate) & ~((1 << 22) - 1))
 
 
+def _exact_snowflake(value: object) -> str:
+    candidate = str(value or "")
+    return candidate if _SNOWFLAKE_RE.fullmatch(candidate) else ""
+
+
 def _turn_start_snowflake() -> str:
     milliseconds = int(time.time() * 1000)
     return str(max(0, milliseconds - _DISCORD_EPOCH_MS) << 22)
@@ -168,10 +173,12 @@ def _capture_gateway_boundary(**kwargs: Any) -> None:
         return
 
     raw_message = getattr(event, "raw_message", None)
-    cutoff = _snowflake(getattr(raw_message, "id", None))
+    exact_invocation_id = _exact_snowflake(getattr(raw_message, "id", None))
+    cutoff = _snowflake(exact_invocation_id)
     boundary_kind = "discord_interaction_id"
     if not cutoff:
-        cutoff = _snowflake(getattr(event, "message_id", None))
+        exact_invocation_id = _exact_snowflake(getattr(event, "message_id", None))
+        cutoff = _snowflake(exact_invocation_id)
         boundary_kind = "discord_message_id"
     if not cutoff:
         cutoff = _turn_start_snowflake()
@@ -187,6 +194,11 @@ def _capture_gateway_boundary(**kwargs: Any) -> None:
             "boundary_kind": boundary_kind,
             "source_kind": source_kind,
             "chat_id": str(getattr(source, "chat_id", "") or ""),
+            "guild_id": str(getattr(source, "guild_id", "") or ""),
+            "parent_channel_id": str(
+                getattr(source, "parent_channel_id", "") or ""
+            ),
+            "invocation_id": exact_invocation_id,
         }
     )
 
@@ -390,6 +402,18 @@ def register(ctx: Any) -> None:
             context = read_hermes_command_context()
             if not context.profile:
                 context = replace(context, profile=ctx.profile_name)
+            boundary = _dispatch_boundary.get() or {}
+            context = replace(
+                context,
+                guild_id=boundary.get("guild_id") or context.guild_id,
+                parent_channel_id=(
+                    boundary.get("parent_channel_id")
+                    or context.parent_channel_id
+                ),
+                invocation_id=(
+                    boundary.get("invocation_id") or context.invocation_id
+                ),
+            )
             result = await asyncio.to_thread(
                 run_meeting_start,
                 raw_args,

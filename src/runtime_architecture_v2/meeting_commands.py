@@ -17,6 +17,7 @@ from .on_demand_exports import (
     OnDemandExportType,
     run_on_demand_export,
 )
+from .projection import DiscordLiveBoundaryPolicy
 from .store import MeetingRunStore
 
 _DISCORD_MESSAGE_LIMIT = 1900
@@ -70,19 +71,69 @@ def run_meeting_start(
             ),
         )
 
+    store = MeetingRunStore(root)
+    boundary = DiscordLiveBoundaryPolicy.current_verified()
+    ceo_channel_id = boundary.allowed_channel_ids_by_profile["aicompanyceo"]
+    guild_id = context.guild_id or boundary.guild_id
+    if guild_id != boundary.guild_id:
+        return MeetingCommandResult(
+            ok=False,
+            status="invalid_guild",
+            message="승인된 Discord 서버에서만 회의를 시작할 수 있습니다.",
+        )
+
+    thread_id = context.thread_id
+    if thread_id:
+        try:
+            linked_run = store.find_by_discord_thread_id(thread_id)
+        except (OSError, TypeError, ValueError):
+            linked_run = None
+        if linked_run is None:
+            return MeetingCommandResult(
+                ok=False,
+                status="unlinked_thread",
+                message="현재 스레드는 기존 회의와 연결되어 있지 않습니다.",
+            )
+        linked_discord = dict(linked_run.trigger.get("discord") or {})
+        parent_channel_id = str(linked_discord.get("channel_id") or "")
+        linked_guild_id = str(linked_discord.get("guild_id") or guild_id)
+        if (
+            parent_channel_id != ceo_channel_id
+            or linked_guild_id != boundary.guild_id
+            or (
+                context.parent_channel_id
+                and context.parent_channel_id != parent_channel_id
+            )
+        ):
+            return MeetingCommandResult(
+                ok=False,
+                status="invalid_channel",
+                message="대표 회의실에 연결된 회의 스레드에서만 시작할 수 있습니다.",
+            )
+    else:
+        parent_channel_id = context.parent_channel_id or context.chat_id
+        if parent_channel_id != ceo_channel_id:
+            return MeetingCommandResult(
+                ok=False,
+                status="invalid_channel",
+                message="대표 회의실 채널에서만 새 회의를 시작할 수 있습니다.",
+            )
+
     trigger = GatewayMeetingTrigger(
         text=topic,
         user_id=context.user_id or "discord-user",
-        channel_id=context.chat_id,
-        thread_id=context.thread_id,
+        channel_id=parent_channel_id,
+        guild_id=guild_id,
+        thread_id=thread_id,
         platform="discord",
+        invocation_id=context.invocation_id,
     )
     try:
         gateway_result = gateway_runner(
             trigger,
             root=Path(root),
             live_discord=True,
-            create_thread=not bool(context.thread_id),
+            create_thread=not bool(thread_id),
             require_meeting_intent=False,
         )
     except Exception:

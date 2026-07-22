@@ -16,16 +16,24 @@ def discord_timestamp_floor_snowflake(value: object) -> str:
     return str(int(candidate) & _SNOWFLAKE_TIMESTAMP_MASK)
 
 
+def discord_exact_snowflake(value: object) -> str:
+    candidate = str(value or "")
+    return candidate if _SNOWFLAKE_RE.fullmatch(candidate) else ""
+
+
 @dataclass(frozen=True)
 class HermesCommandContext:
     platform: str = ""
     chat_id: str = ""
     chat_name: str = ""
     thread_id: str = ""
+    guild_id: str = ""
+    parent_channel_id: str = ""
     user_id: str = ""
     user_name: str = ""
     session_id: str = ""
     invocation_message_id: str = ""
+    invocation_id: str = ""
     invocation_boundary_kind: str = ""
     session_start_message_id: str = ""
     source_kind: str = ""
@@ -43,16 +51,20 @@ def read_hermes_command_context(
         from gateway.session_context import get_session_env
 
         get_env = get_session_env
+    raw_message_id = get_env("HERMES_SESSION_MESSAGE_ID", "")
     return HermesCommandContext(
         platform=get_env("HERMES_SESSION_PLATFORM", ""),
         chat_id=get_env("HERMES_SESSION_CHAT_ID", ""),
         chat_name=get_env("HERMES_SESSION_CHAT_NAME", ""),
         thread_id=get_env("HERMES_SESSION_THREAD_ID", ""),
+        guild_id=get_env("HERMES_SESSION_GUILD_ID", ""),
+        parent_channel_id=get_env("HERMES_SESSION_PARENT_CHANNEL_ID", ""),
         user_id=get_env("HERMES_SESSION_USER_ID", ""),
         user_name=get_env("HERMES_SESSION_USER_NAME", ""),
         session_id=get_env("HERMES_SESSION_ID", ""),
         invocation_message_id=discord_timestamp_floor_snowflake(
-            get_env("HERMES_SESSION_MESSAGE_ID", "")
+            raw_message_id
         ),
+        invocation_id=discord_exact_snowflake(raw_message_id),
         profile=get_env("HERMES_SESSION_PROFILE", ""),
     )

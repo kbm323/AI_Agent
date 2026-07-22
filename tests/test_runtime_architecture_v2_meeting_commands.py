@@ -18,14 +18,19 @@ from src.runtime_architecture_v2.on_demand_exports import (
 from src.runtime_architecture_v2.schemas import MeetingRun
 from src.runtime_architecture_v2.store import MeetingRunStore
 
+_CEO_CHANNEL_ID = "1505600167221526621"
+_GUILD_ID = "1505600166676271244"
+
 
 def _context(**overrides: str) -> HermesCommandContext:
     values = {
         "platform": "discord",
-        "chat_id": "channel-1",
+        "chat_id": _CEO_CHANNEL_ID,
         "thread_id": "",
+        "guild_id": _GUILD_ID,
         "user_id": "user-1",
         "session_id": "session-1",
+        "invocation_id": "interaction-1",
         "profile": "aicompanyceo",
     }
     values.update(overrides)
@@ -37,8 +42,9 @@ def _linked_meeting(root: Path, thread_id: str = "thread-1") -> MeetingRun:
         meeting_run_id="meeting-linked",
         trigger_text="신제품 회의",
         user_id="user-1",
-        channel_id="channel-1",
+        channel_id=_CEO_CHANNEL_ID,
         thread_id="",
+        guild_id=_GUILD_ID,
     )
     run = replace(run, metadata={"discord_thread_id": thread_id})
     MeetingRunStore(root).save_meeting_run(run)
@@ -79,18 +85,26 @@ def test_meeting_start_rejects_invalid_input_without_calling_gateway(
 
 
 @pytest.mark.parametrize(
-    ("context", "expected_thread", "expected_create"),
+    ("context", "expected_channel", "expected_thread", "expected_create"),
     [
-        (_context(), "", True),
-        (_context(chat_id="thread-1", thread_id="thread-1"), "thread-1", False),
+        (_context(), _CEO_CHANNEL_ID, "", True),
+        (
+            _context(chat_id="thread-1", thread_id="thread-1"),
+            _CEO_CHANNEL_ID,
+            "thread-1",
+            False,
+        ),
     ],
 )
 def test_meeting_start_calls_runtime_v2_with_current_discord_context(
     tmp_path: Path,
     context: HermesCommandContext,
+    expected_channel: str,
     expected_thread: str,
     expected_create: bool,
 ) -> None:
+    if context.thread_id:
+        _linked_meeting(tmp_path, context.thread_id)
     captured = {}
 
     def gateway_runner(trigger, **kwargs):
@@ -118,12 +132,52 @@ def test_meeting_start_calls_runtime_v2_with_current_discord_context(
     assert "<#thread-created>" in result.message
     assert captured["trigger"].text == "신제품 아이디어"
     assert captured["trigger"].user_id == "user-1"
-    assert captured["trigger"].channel_id == context.chat_id
+    assert captured["trigger"].channel_id == expected_channel
     assert captured["trigger"].thread_id == expected_thread
+    assert captured["trigger"].guild_id == _GUILD_ID
+    assert captured["trigger"].invocation_id == "interaction-1"
     assert captured["root"] == tmp_path
     assert captured["live_discord"] is True
     assert captured["create_thread"] is expected_create
     assert captured["require_meeting_intent"] is False
+
+
+def test_meeting_start_rejects_non_ceo_parent_before_gateway(tmp_path: Path) -> None:
+    called = False
+
+    def gateway_runner(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError((args, kwargs))
+
+    result = run_meeting_start(
+        "신제품 아이디어",
+        context=_context(chat_id="wrong-parent"),
+        root=tmp_path,
+        gateway_runner=gateway_runner,
+    )
+
+    assert result.status == "invalid_channel"
+    assert called is False
+
+
+def test_meeting_start_rejects_unlinked_thread_before_gateway(tmp_path: Path) -> None:
+    called = False
+
+    def gateway_runner(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError((args, kwargs))
+
+    result = run_meeting_start(
+        "신제품 아이디어",
+        context=_context(chat_id="unknown-thread", thread_id="unknown-thread"),
+        root=tmp_path,
+        gateway_runner=gateway_runner,
+    )
+
+    assert result.status == "unlinked_thread"
+    assert called is False
 
 
 def test_meeting_start_sanitizes_gateway_failure(tmp_path: Path) -> None:

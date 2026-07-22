@@ -177,6 +177,72 @@ class MeetingRunStore:
             return None
         return sorted(matches, key=lambda run: run.meeting_run_id)[-1]
 
+    def reserve_gateway_invocation(
+        self,
+        invocation_key: str,
+        *,
+        created_at_epoch: float,
+        expires_after_seconds: float | None,
+    ) -> tuple[bool, dict[str, Any]]:
+        """Atomically reserve one Gateway invocation across processes."""
+
+        self._validate_id(invocation_key, "invocation_key")
+        directory = self.root / "runtime" / "gateway_invocations"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{invocation_key}.json"
+        initial = {
+            "invocation_key": invocation_key,
+            "created_at_epoch": created_at_epoch,
+            "completed": False,
+        }
+        while True:
+            try:
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+            except FileExistsError:
+                existing = self._read_json(path)
+                if expires_after_seconds is None:
+                    return False, existing
+                age = created_at_epoch - float(existing.get("created_at_epoch", 0.0))
+                if age <= expires_after_seconds:
+                    return False, existing
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    continue
+            else:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(initial, handle, ensure_ascii=False, sort_keys=True)
+                    handle.write("\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                return True, initial
+
+    def complete_gateway_invocation(
+        self,
+        invocation_key: str,
+        payload: dict[str, Any],
+    ) -> Path:
+        """Persist the reusable result for a reserved Gateway invocation."""
+
+        self._validate_id(invocation_key, "invocation_key")
+        path = (
+            self.root
+            / "runtime"
+            / "gateway_invocations"
+            / f"{invocation_key}.json"
+        )
+        existing = self._read_json(path) if path.exists() else {}
+        self._atomic_write_json(
+            path,
+            {
+                **existing,
+                "invocation_key": invocation_key,
+                **payload,
+                "completed": True,
+            },
+        )
+        return path
+
     def save_checkpoint(self, checkpoint: RecoveryCheckpoint) -> Path:
         self._validate_id(checkpoint.checkpoint_id, "checkpoint_id")
         run_dir = self._ensure_run_layout(checkpoint.meeting_run_id)

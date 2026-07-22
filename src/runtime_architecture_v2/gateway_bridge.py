@@ -17,7 +17,9 @@ Design (Option A):
 
 from __future__ import annotations
 
+import hashlib
 import json
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +29,7 @@ from src.runtime_architecture_v2.multi_bot import (
     _default_discord_http_post,
     run_phase14_multi_bot_pilot,
 )
+from src.runtime_architecture_v2.store import MeetingRunStore
 
 # ── Gateway trigger shape ────────────────────────────────────────────────
 
@@ -42,6 +45,7 @@ class GatewayMeetingTrigger:
     thread_id: str = ""
     platform: str = "discord"
     priority: str = "P1"
+    invocation_id: str = ""
 
     @classmethod
     def from_discord_mention(
@@ -142,6 +146,16 @@ def run_meeting_from_gateway(
             error="thread creation requires aicompanyceo DISCORD_BOT_TOKEN",
         )
 
+    invocation_key, expires_after_seconds = _gateway_invocation_key(trigger)
+    store = MeetingRunStore(root)
+    reserved, existing = store.reserve_gateway_invocation(
+        invocation_key,
+        created_at_epoch=time.time(),
+        expires_after_seconds=expires_after_seconds,
+    )
+    if not reserved:
+        return _result_from_invocation(existing)
+
     # Derive a thread name from the trigger text
     thread_name = _derive_thread_name(trigger.text)
 
@@ -162,12 +176,18 @@ def run_meeting_from_gateway(
             discord_http_post=post,
             live_bot_roles_override=bot_roles,
             fake_bot_roles_override=(),
+            user_id=trigger.user_id,
+            guild_id=trigger.guild_id,
+            priority=trigger.priority,
+            platform=trigger.platform,
+            invocation_id=trigger.invocation_id,
+            idempotency_key=invocation_key,
         )
     except Exception as exc:
-        return GatewayMeetingResult(
+        return _complete_gateway_invocation(store, invocation_key, GatewayMeetingResult(
             success=False,
             error=f"pipeline exception: {exc}",
-        )
+        ))
 
     if not result.ok:
         if live_discord and _is_provider_failure(result.error):
@@ -182,23 +202,27 @@ def run_meeting_from_gateway(
                 existing_thread_id=result.meeting_thread_id,
             )
             if fallback.ok:
-                return _gateway_success_result(
+                return _complete_gateway_invocation(store, invocation_key, _gateway_success_result(
                     fallback,
                     thread_name=thread_name,
                     fallback_reason=result.error or "provider failure",
-                )
-            return GatewayMeetingResult(
+                ))
+            return _complete_gateway_invocation(store, invocation_key, GatewayMeetingResult(
                 success=False,
                 meeting_run_id=fallback.meeting_run.meeting_run_id,
                 error=f"provider fallback failed: {fallback.error or 'meeting_failed'}",
-            )
-        return GatewayMeetingResult(
+            ))
+        return _complete_gateway_invocation(store, invocation_key, GatewayMeetingResult(
             success=False,
             meeting_run_id=result.meeting_run.meeting_run_id,
             error=result.error or "meeting_failed",
-        )
+        ))
 
-    return _gateway_success_result(result, thread_name=thread_name)
+    return _complete_gateway_invocation(
+        store,
+        invocation_key,
+        _gateway_success_result(result, thread_name=thread_name),
+    )
 
 
 def _run_deterministic_live_fallback(
@@ -229,6 +253,76 @@ def _run_deterministic_live_fallback(
         discord_http_post=http_post,
         live_bot_roles_override=(),
         fake_bot_roles_override=bot_roles,
+        user_id=trigger.user_id,
+        guild_id=trigger.guild_id,
+        priority=trigger.priority,
+        platform=trigger.platform,
+        invocation_id=trigger.invocation_id,
+    )
+
+
+def _gateway_invocation_key(
+    trigger: GatewayMeetingTrigger,
+) -> tuple[str, float | None]:
+    if trigger.invocation_id:
+        identity = f"exact\0{trigger.platform}\0{trigger.invocation_id}"
+        expires_after_seconds = None
+    else:
+        normalized_text = " ".join(trigger.text.casefold().split())
+        identity = "\0".join(
+            (
+                "fallback",
+                trigger.platform,
+                trigger.guild_id,
+                trigger.channel_id,
+                trigger.thread_id,
+                trigger.user_id,
+                normalized_text,
+            )
+        )
+        expires_after_seconds = 90.0
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return f"gateway_{digest}", expires_after_seconds
+
+
+def _complete_gateway_invocation(
+    store: MeetingRunStore,
+    invocation_key: str,
+    result: GatewayMeetingResult,
+) -> GatewayMeetingResult:
+    store.complete_gateway_invocation(
+        invocation_key,
+        {
+            "success": result.success,
+            "meeting_run_id": result.meeting_run_id,
+            "thread_id": result.thread_id,
+            "thread_name": result.thread_name,
+            "summary": result.summary,
+            "bot_participants": list(result.bot_participants),
+            "projection_messages_posted": result.projection_messages_posted,
+            "error": result.error,
+        },
+    )
+    return result
+
+
+def _result_from_invocation(payload: Mapping[str, object]) -> GatewayMeetingResult:
+    if not payload.get("completed"):
+        return GatewayMeetingResult(success=False, error="meeting_in_progress")
+    participants = payload.get("bot_participants") or []
+    return GatewayMeetingResult(
+        success=bool(payload.get("success")),
+        meeting_run_id=str(payload.get("meeting_run_id") or ""),
+        thread_id=str(payload.get("thread_id") or ""),
+        thread_name=str(payload.get("thread_name") or ""),
+        summary=str(payload.get("summary") or ""),
+        bot_participants=(
+            tuple(str(role) for role in participants)
+            if isinstance(participants, list)
+            else ()
+        ),
+        projection_messages_posted=int(payload.get("projection_messages_posted") or 0),
+        error=str(payload.get("error") or ""),
     )
 
 

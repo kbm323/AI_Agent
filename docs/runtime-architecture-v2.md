@@ -428,8 +428,12 @@ continue only when it is already linked to a stored `MeetingRun`; otherwise the
 command fails closed with a user-facing instruction.
 
 Discord interaction ID is the canonical idempotency key. When unavailable, a
-90-second key derived from profile, user, channel or thread, and normalized topic
-prevents immediate duplicate starts.
+90-second key derived from platform, guild, user, channel or thread, and
+normalized topic prevents immediate duplicate starts. Only the SHA-256 digest is
+stored under `runtime/gateway_invocations/`; the normalized command text and bot
+tokens are not written to the reservation record. Reservation uses exclusive
+file creation before provider work, and completion adds the reusable
+`MeetingRun`/thread result without replacing the original reservation time.
 
 The expected baseline cost is:
 

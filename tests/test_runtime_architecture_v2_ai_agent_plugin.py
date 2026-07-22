@@ -363,6 +363,77 @@ async def test_meeting_commands_forward_context_through_background_thread(
 
 
 @pytest.mark.asyncio
+async def test_meeting_start_merges_exact_gateway_origin_into_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.runtime_architecture_v2 import (
+        hermes_command_context,
+        meeting_commands,
+    )
+    from src.runtime_architecture_v2.hermes_command_context import HermesCommandContext
+    from src.runtime_architecture_v2.meeting_commands import MeetingCommandResult
+
+    plugin = _load_plugin()
+    ctx = FakePluginContext()
+    ctx.profile_name = "aicompanyceo"
+    plugin.register(ctx)
+    monkeypatch.setenv("AI_AGENT_ROOT", str(PROJECT_ROOT))
+    base_context = HermesCommandContext(
+        platform="discord",
+        chat_id="1505600167221526621",
+        user_id="user-1",
+        profile="aicompanyceo",
+    )
+    run_start = Mock(
+        return_value=MeetingCommandResult(
+            True,
+            "started",
+            "회의 시작 응답",
+            meeting_run_id="meeting-1",
+            thread_id="thread-1",
+        )
+    )
+
+    async def invoke(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(
+        hermes_command_context,
+        "read_hermes_command_context",
+        Mock(return_value=base_context),
+    )
+    monkeypatch.setattr(meeting_commands, "run_meeting_start", run_start)
+    monkeypatch.setattr(plugin.asyncio, "to_thread", AsyncMock(side_effect=invoke))
+
+    interaction_id = "123456789012345678"
+    hook = ctx.hooks["pre_gateway_dispatch"]
+    hook(
+        event=SimpleNamespace(
+            source=SimpleNamespace(
+                platform="discord",
+                chat_id="1505600167221526621",
+                thread_id="",
+                chat_type="channel",
+                guild_id="1505600166676271244",
+                parent_channel_id="1505600167221526621",
+            ),
+            raw_message=SimpleNamespace(id=interaction_id),
+            message_id=None,
+        ),
+        gateway=object(),
+        session_store=object(),
+    )
+
+    response = await ctx.commands["meeting-start"]["handler"]("신제품 아이디어")
+
+    assert response == "회의 시작 응답"
+    forwarded = run_start.call_args.kwargs["context"]
+    assert forwarded.guild_id == "1505600166676271244"
+    assert forwarded.parent_channel_id == "1505600167221526621"
+    assert forwarded.invocation_id == interaction_id
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("status", "expected_calls"),
     [("created", 1), ("updated", 1), ("unchanged", 0)],

@@ -509,42 +509,46 @@ git commit -m "fix: ground meeting reports in canonical evidence"
 - Extends: the pilot entry point with real trigger provenance.
 - Produces: store lookup and reservation by invocation or 90-second fallback key.
 
-- [ ] **Step 1: Write failing provenance tests**
+- [x] **Step 1: Write failing provenance tests**
 
 Start through the real Gateway boundary and assert the stored `MeetingRun`
 contains the real user, guild, parent channel, thread, priority, platform, and
 invocation values rather than `phase14-*` fixtures.
 
-- [ ] **Step 2: Write failing routing tests**
+- [x] **Step 2: Write failing routing tests**
 
 Assert new starts outside the CEO parent channel fail before provider work.
 Assert an already-linked meeting thread resolves its stored parent channel.
 Assert an unlinked thread fails closed instead of treating the thread as its own
 parent.
 
-- [ ] **Step 3: Write failing duplicate-delivery tests**
+- [x] **Step 3: Write failing duplicate-delivery tests**
 
 Invoke the same interaction twice and assert only one MeetingRun, one thread
 creation, and one provider sequence. Cover the 90-second fallback key when no
 interaction ID is available.
 
-- [ ] **Step 4: Run the new tests and confirm RED**
+- [x] **Step 4: Run the new tests and confirm RED**
 
 Expected: fixture provenance, parent mismatch, and duplicate work.
 
-- [ ] **Step 5: Implement provenance and routing corrections**
+- [x] **Step 5: Implement provenance and routing corrections**
 
 Pass the trigger fields into the pilot request. Resolve linked threads through
 `MeetingRunStore`; otherwise require the verified CEO parent channel. Keep
 profile tokens and channel IDs unchanged.
 
-- [ ] **Step 6: Implement idempotent reservation**
+- [x] **Step 6: Implement idempotent reservation**
 
 Persist the invocation key before provider execution. A repeated delivery
 returns the stored MeetingRun result. Never use token values or raw command text
 as key material.
 
-- [ ] **Step 7: Run focused tests and commit**
+- [x] **Step 7: Run focused tests and commit**
+
+Implemented on 2026-07-22. The focused Gateway, command, Hermes context,
+plugin, and store suite passed (90 tests) before final cross-meeting
+verification.
 
 ```bash
 git add src/runtime_architecture_v2/gateway_bridge.py src/runtime_architecture_v2/multi_bot.py src/runtime_architecture_v2/meeting_commands.py src/runtime_architecture_v2/hermes_command_context.py src/runtime_architecture_v2/store.py hermes_plugins/ai-agent-commands/__init__.py tests/test_runtime_smoke_packet.py tests/test_runtime_architecture_v2_meeting_commands.py
