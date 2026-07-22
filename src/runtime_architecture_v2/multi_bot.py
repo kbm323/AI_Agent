@@ -894,6 +894,14 @@ def run_phase14_multi_bot_pilot(
             f"proj_{run.meeting_run_id}_phase14_msg_{i}"
             for i in range(len(projection_results))
         ),
+        metadata={
+            **run.metadata,
+            **(
+                {"discord_thread_id": meeting_thread_id}
+                if meeting_thread_id
+                else {}
+            ),
+        },
     )
     store.save_meeting_run(run)
 

@@ -100,6 +100,10 @@ def test_gateway_provider_error_falls_back_to_deterministic_live_projection(
         "src.runtime_architecture_v2.gateway_bridge.run_phase14_multi_bot_pilot",
         fake_pilot,
     )
+    monkeypatch.setattr(
+        "src.runtime_architecture_v2.gateway_bridge._build_profile_env",
+        lambda _profile: {"DISCORD_BOT_TOKEN": "test-token"},
+    )
 
     trigger = GatewayMeetingTrigger(
         text="쇼츠 컨텐츠 마케팅 회의 시작하자",
@@ -123,6 +127,26 @@ def test_gateway_provider_error_falls_back_to_deterministic_live_projection(
     assert calls[1]["live_bot_roles_override"] == ()
     assert calls[1]["fake_bot_roles_override"] == calls[0]["live_bot_roles_override"]
     assert calls[1]["max_live_workers"] == 0
+
+
+def test_explicit_meeting_command_bypasses_keyword_intent_gate(
+    tmp_root: Path,
+) -> None:
+    trigger = GatewayMeetingTrigger(
+        text="신제품 아이디어",
+        user_id="u1",
+        channel_id="ch1",
+    )
+
+    result = run_meeting_from_gateway(
+        trigger,
+        root=tmp_root,
+        live_discord=False,
+        create_thread=False,
+        require_meeting_intent=False,
+    )
+
+    assert result.success is True
 
 
 def test_gateway_trigger_cli_roundtrip(tmp_root: Path) -> None:

@@ -102,6 +102,7 @@ def run_meeting_from_gateway(
     root: str | Path | None = None,
     live_discord: bool = True,
     create_thread: bool = True,
+    require_meeting_intent: bool = True,
     bot_roles: tuple[str, ...] = (
         "ceo_coordinator",
         "content_lead",
@@ -126,7 +127,7 @@ def run_meeting_from_gateway(
     root.mkdir(parents=True, exist_ok=True)
 
     # Intent gate: skip multi-bot pipeline for trivial messages
-    if not classify_meeting_intent(trigger.text):
+    if require_meeting_intent and not classify_meeting_intent(trigger.text):
         return GatewayMeetingResult(
             success=False,
             error="no_meeting_intent",

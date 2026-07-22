@@ -29,6 +29,7 @@ from src.runtime_architecture_v2.schemas import (
     MeetingRunState,
     WorkerTaskState,
 )
+from src.runtime_architecture_v2.store import MeetingRunStore
 from src.runtime_architecture_v2.workers import OpenCodeGoRunResult
 
 # ── Schema Tests ────────────────────────────────────────────────────────
@@ -611,8 +612,14 @@ def test_route_bot_projection_to_shared_meeting_thread_uses_role_profile_token()
 
 def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messages(
     tmp_path: Path,
+    monkeypatch,
 ):
     calls = []
+    monkeypatch.setattr(
+        multi_bot_module,
+        "_discord_env_for_profile",
+        lambda _profile: {"DISCORD_BOT_TOKEN": "test-token"},
+    )
 
     def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
         return OpenCodeGoRunResult(
@@ -684,8 +691,14 @@ def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messag
 
 def test_phase33_live_projection_order_is_chair_led_even_when_ceo_is_fake(
     tmp_path: Path,
+    monkeypatch,
 ):
     calls = []
+    monkeypatch.setattr(
+        multi_bot_module,
+        "_discord_env_for_profile",
+        lambda _profile: {"DISCORD_BOT_TOKEN": "test-token"},
+    )
 
     def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
         return OpenCodeGoRunResult(
@@ -785,6 +798,21 @@ def test_phase14_dry_run_produces_multi_bot_output(tmp_path: Path):
     assert "content_lead" in result.bot_participants
     assert result.rounds_completed == 2
     assert result.projection_messages_posted >= 4  # 3 opinions + at least 1 rebuttal
+
+
+def test_phase14_persists_provided_discord_thread_linkage(tmp_path: Path):
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="dry-run",
+        target_thread_id="thread-123",
+        create_meeting_thread=False,
+    )
+
+    stored = MeetingRunStore(tmp_path).find_by_discord_thread_id("thread-123")
+
+    assert result.ok is True
+    assert stored is not None
+    assert stored.metadata["discord_thread_id"] == "thread-123"
 
 
 def test_phase14_dry_run_never_calls_injected_command_runner(tmp_path: Path):
