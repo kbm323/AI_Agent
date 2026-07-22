@@ -20,6 +20,8 @@ _TOOL_NAME = "save_discord_thread_to_obsidian"
 _TOOLSET = "ai_agent_commands"
 _TOOL_DESCRIPTION = "Save the current Discord thread to Obsidian."
 _COMMAND_DESCRIPTION = "Archive the current Discord thread to Obsidian."
+_MEETING_START_DESCRIPTION = "Start a Runtime v2 company meeting."
+_MEETING_REPORT_DESCRIPTION = "Generate an on-demand report for this meeting."
 _LLMWIKI_INGEST_DESCRIPTION = "Retrieve one URL and save it to the Obsidian LLM Wiki."
 _LLMWIKI_FIND_DESCRIPTION = "Search the complete Obsidian vault with QMD."
 _LLMWIKI_NOTE_DESCRIPTION = "Save a free-form note to the Obsidian LLM Wiki."
@@ -127,10 +129,7 @@ def _turn_start_snowflake() -> str:
     return str(max(0, milliseconds - _DISCORD_EPOCH_MS) << 22)
 
 
-def _runtime_paths() -> tuple[Path, Path] | None:
-    vault_path = os.environ.get("OBSIDIAN_VAULT_PATH", "").strip()
-    if not vault_path:
-        return None
+def _runtime_root() -> Path | None:
     try:
         root = (
             Path(os.environ.get("AI_AGENT_ROOT", _DEFAULT_AI_AGENT_ROOT))
@@ -139,12 +138,20 @@ def _runtime_paths() -> tuple[Path, Path] | None:
         )
         if not (root / "src" / "runtime_architecture_v2").is_dir():
             return None
-        vault = Path(vault_path).expanduser()
     except OSError:
         return None
     root_text = str(root)
     if root_text not in sys.path:
         sys.path.insert(0, root_text)
+    return root
+
+
+def _runtime_paths() -> tuple[Path, Path] | None:
+    root = _runtime_root()
+    vault_path = os.environ.get("OBSIDIAN_VAULT_PATH", "").strip()
+    if root is None or not vault_path:
+        return None
+    vault = Path(vault_path).expanduser()
     return root, vault
 
 
@@ -368,6 +375,56 @@ def register(ctx: Any) -> None:
         except Exception:
             return "검색을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요."
 
+    async def execute_meeting_start(raw_args: str) -> str:
+        root = _runtime_root()
+        if root is None:
+            return "회의 시스템을 사용할 수 없습니다. 서버 설정을 확인해 주세요."
+        try:
+            from src.runtime_architecture_v2.hermes_command_context import (
+                read_hermes_command_context,
+            )
+            from src.runtime_architecture_v2.meeting_commands import (
+                run_meeting_start,
+            )
+
+            context = read_hermes_command_context()
+            if not context.profile:
+                context = replace(context, profile=ctx.profile_name)
+            result = await asyncio.to_thread(
+                run_meeting_start,
+                raw_args,
+                context=context,
+                root=root,
+            )
+            return result.message
+        except Exception:
+            return "회의를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요."
+
+    async def execute_meeting_report(raw_args: str) -> str:
+        root = _runtime_root()
+        if root is None:
+            return "회의 시스템을 사용할 수 없습니다. 서버 설정을 확인해 주세요."
+        try:
+            from src.runtime_architecture_v2.hermes_command_context import (
+                read_hermes_command_context,
+            )
+            from src.runtime_architecture_v2.meeting_commands import (
+                run_meeting_report,
+            )
+
+            context = read_hermes_command_context()
+            if not context.profile:
+                context = replace(context, profile=ctx.profile_name)
+            result = await asyncio.to_thread(
+                run_meeting_report,
+                raw_args,
+                context=context,
+                root=root,
+            )
+            return result.message
+        except Exception:
+            return "회의 보고서를 만들지 못했습니다. 잠시 후 다시 시도해 주세요."
+
     async def handle_save(args: object, **dispatch_context: Any) -> str:
         if not isinstance(args, dict) or args:
             return _tool_result(_SAVE_FAILED_RESPONSE)
@@ -405,6 +462,18 @@ def register(ctx: Any) -> None:
         handler=handle_save_command,
         description=_COMMAND_DESCRIPTION,
         args_hint="",
+    )
+    ctx.register_command(
+        "meeting-start",
+        handler=execute_meeting_start,
+        description=_MEETING_START_DESCRIPTION,
+        args_hint="회의 주제",
+    )
+    ctx.register_command(
+        "meeting-report",
+        handler=execute_meeting_report,
+        description=_MEETING_REPORT_DESCRIPTION,
+        args_hint="선택: 보고 요청",
     )
     ctx.register_command(
         "llmwiki-ingest",

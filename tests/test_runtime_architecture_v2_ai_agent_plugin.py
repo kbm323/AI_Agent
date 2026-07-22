@@ -124,7 +124,7 @@ def test_manifest_declares_tool_without_secret_or_provider_dependencies() -> Non
 
     assert manifest == (
         "name: ai-agent-commands\n"
-        "version: 0.2.0\n"
+        "version: 0.3.0\n"
         'description: "Runtime Architecture v2 Discord commands for meetings '
         'and Obsidian knowledge capture."\n'
         'author: "kbm323"\n'
@@ -135,11 +135,13 @@ def test_manifest_declares_tool_without_secret_or_provider_dependencies() -> Non
     assert "provider" not in manifest.lower()
 
 
-def test_plugin_registers_archive_and_llmwiki_commands_with_async_tool() -> None:
+def test_plugin_registers_all_runtime_v2_commands_with_async_tool() -> None:
     ctx, tool = _registered_tool()
 
     assert list(ctx.commands) == [
         "archive",
+        "meeting-start",
+        "meeting-report",
         "llmwiki-ingest",
         "llmwiki-find",
         "llmwiki-note",
@@ -148,12 +150,20 @@ def test_plugin_registers_archive_and_llmwiki_commands_with_async_tool() -> None
     assert command["description"] == "Archive the current Discord thread to Obsidian."
     assert command["args_hint"] == ""
     assert inspect.iscoroutinefunction(command["handler"])
+    assert ctx.commands["meeting-start"]["args_hint"] == "회의 주제"
+    assert ctx.commands["meeting-report"]["args_hint"] == "선택: 보고 요청"
     assert ctx.commands["llmwiki-ingest"]["args_hint"] == "요청과 URL"
     assert ctx.commands["llmwiki-find"]["args_hint"] == "검색어"
     assert ctx.commands["llmwiki-note"]["args_hint"] == "저장할 내용"
     assert all(
         inspect.iscoroutinefunction(ctx.commands[name]["handler"])
-        for name in ("llmwiki-ingest", "llmwiki-find", "llmwiki-note")
+        for name in (
+            "meeting-start",
+            "meeting-report",
+            "llmwiki-ingest",
+            "llmwiki-find",
+            "llmwiki-note",
+        )
     )
     assert list(ctx.tools) == [TOOL_NAME]
     assert tool["toolset"] == "ai_agent_commands"
@@ -270,6 +280,86 @@ async def test_llmwiki_commands_construct_reviewed_dependencies_and_forward_text
     run_find.assert_awaited_once_with(
         "검색 표현", qmd=qmd, scheduler=scheduler
     )
+
+
+@pytest.mark.asyncio
+async def test_meeting_commands_forward_context_through_background_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.runtime_architecture_v2 import (
+        hermes_command_context,
+        meeting_commands,
+    )
+    from src.runtime_architecture_v2.hermes_command_context import (
+        HermesCommandContext,
+    )
+    from src.runtime_architecture_v2.meeting_commands import MeetingCommandResult
+
+    plugin = _load_plugin()
+    ctx = FakePluginContext()
+    plugin.register(ctx)
+    monkeypatch.setenv("AI_AGENT_ROOT", str(PROJECT_ROOT))
+    monkeypatch.delenv("OBSIDIAN_VAULT_PATH", raising=False)
+    command_context = HermesCommandContext(
+        platform="discord",
+        chat_id="thread-1",
+        thread_id="thread-1",
+        user_id="user-1",
+        session_id="session-1",
+        profile="aicompanyassistant",
+    )
+    read_context = Mock(return_value=command_context)
+    run_start = Mock(
+        return_value=MeetingCommandResult(
+            True,
+            "started",
+            "회의 시작 응답",
+            meeting_run_id="meeting-1",
+            thread_id="thread-1",
+        )
+    )
+    run_report = Mock(
+        return_value=MeetingCommandResult(
+            True,
+            "reported",
+            "회의 보고 응답",
+            meeting_run_id="meeting-1",
+            thread_id="thread-1",
+        )
+    )
+
+    async def invoke(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    to_thread = AsyncMock(side_effect=invoke)
+    monkeypatch.setattr(
+        hermes_command_context,
+        "read_hermes_command_context",
+        read_context,
+    )
+    monkeypatch.setattr(meeting_commands, "run_meeting_start", run_start)
+    monkeypatch.setattr(meeting_commands, "run_meeting_report", run_report)
+    monkeypatch.setattr(plugin.asyncio, "to_thread", to_thread)
+
+    start_response = await ctx.commands["meeting-start"]["handler"](
+        "신제품 아이디어"
+    )
+    report_response = await ctx.commands["meeting-report"]["handler"]("브리핑해줘")
+
+    assert start_response == "회의 시작 응답"
+    assert report_response == "회의 보고 응답"
+    read_context.assert_called()
+    run_start.assert_called_once_with(
+        "신제품 아이디어",
+        context=command_context,
+        root=PROJECT_ROOT,
+    )
+    run_report.assert_called_once_with(
+        "브리핑해줘",
+        context=command_context,
+        root=PROJECT_ROOT,
+    )
+    assert to_thread.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -716,6 +806,8 @@ async def test_save_tool_fails_closed_when_required_profile_env_is_missing(
     assert _message(response) == expected_message
     assert list(ctx.commands) == [
         "archive",
+        "meeting-start",
+        "meeting-report",
         "llmwiki-ingest",
         "llmwiki-find",
         "llmwiki-note",
