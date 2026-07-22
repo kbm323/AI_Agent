@@ -452,37 +452,40 @@ git commit -m "feat: validate meeting outcomes from transcript evidence"
 - Changes: all export types load canonical session and outcome artifacts.
 - Produces: `reports/<export_type>.md` for every successful export.
 
-- [ ] **Step 1: Write failing evidence-based report tests**
+- [x] **Step 1: Write failing evidence-based report tests**
 
 Persist unique phrases in round messages and structured action items in the
 outcome. Assert summary, agreement, action, and final reports contain those
 phrases and do not contain the old generic action text. Assert legacy meetings
 display an explicit reduced-evidence notice.
 
-- [ ] **Step 2: Write a failing long-report delivery test**
+- [x] **Step 2: Write a failing long-report delivery test**
 
 Assert the compact Discord response ends at a complete section boundary,
 identifies the `MeetingRun`, and leaves the complete Markdown in
 `reports/final_report.md` instead of adding `...` after 1,900 characters.
 
-- [ ] **Step 3: Run report tests and confirm RED**
+- [x] **Step 3: Run report tests and confirm RED**
 
 Expected: empty-session reconstruction, generic actions, and character slicing
 violate the assertions.
 
-- [ ] **Step 4: Rebuild exports from stored artifacts**
+- [x] **Step 4: Rebuild exports from stored artifacts**
 
 Remove `_reconstruct_session`. Load the canonical session and outcome, render
 evidence citations by role and round, write reports atomically, and use only
 verifiable worker artifacts for disclosed legacy fallback.
 
-- [ ] **Step 5: Replace character slicing with compact rendering**
+- [x] **Step 5: Replace character slicing with compact rendering**
 
 Return a bounded summary containing outcome status, summary, disagreements,
 next actions, and full artifact location. Never cut a Markdown section or
 fabricate omitted content.
 
-- [ ] **Step 6: Run focused tests and commit**
+- [x] **Step 6: Run focused tests and commit**
+
+Implemented on 2026-07-22. Canonical export and command tests passed (34),
+and the wider meeting/outcome/store/report compatibility suite passed (93).
 
 ```bash
 git add src/runtime_architecture_v2/on_demand_exports.py src/runtime_architecture_v2/meeting_commands.py tests/test_runtime_architecture_v2_on_demand_exports.py tests/test_runtime_architecture_v2_meeting_commands.py

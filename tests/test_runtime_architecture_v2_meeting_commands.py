@@ -228,3 +228,33 @@ def test_meeting_report_sanitizes_export_failure(tmp_path: Path) -> None:
     assert result.status == "report_failed"
     assert "secret" not in result.message
     assert "/home/ubuntu" not in result.message
+
+
+def test_meeting_report_compacts_at_complete_section_boundary(tmp_path: Path) -> None:
+    run = _linked_meeting(tmp_path)
+    conclusion = "결론 근거 " * 40
+    long_evidence = "세부 근거 " * 500
+
+    def exporter(root, meeting_run_id, export_type):
+        return OnDemandExportResult(
+            export_type=str(export_type),
+            meeting_run_id=meeting_run_id,
+            content=(
+                f"# 회의 보고서\n\n## 결론\n{conclusion}\n\n"
+                f"## 전체 근거\n{long_evidence}\n"
+            ),
+        )
+
+    result = run_meeting_report(
+        "보고서",
+        context=_context(chat_id="thread-1", thread_id="thread-1"),
+        root=tmp_path,
+        exporter=exporter,
+    )
+
+    assert result.ok is True
+    assert len(result.message) <= 1900
+    assert conclusion.strip() in result.message
+    assert " ..." not in result.message
+    assert "전체 보고서" in result.message
+    assert f"runtime/meeting_runs/{run.meeting_run_id}/reports/final_report.md" in result.message

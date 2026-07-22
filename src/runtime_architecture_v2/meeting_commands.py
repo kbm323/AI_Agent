@@ -148,7 +148,15 @@ def run_meeting_report(
     perspective = request.strip()
     request_line = f"요청: {perspective}\n" if perspective else ""
     prefix = f"MeetingRun: `{meeting_run.meeting_run_id}`\n{request_line}\n"
-    message = _bounded_message(prefix + export_result.content.strip())
+    report_path = (
+        f"runtime/meeting_runs/{meeting_run.meeting_run_id}/reports/"
+        f"{export_type.value}.md"
+    )
+    message = _compact_report_message(
+        prefix,
+        export_result.content.strip(),
+        report_path,
+    )
     return MeetingCommandResult(
         ok=True,
         status="reported",
@@ -178,10 +186,39 @@ def _contains_any(value: str, candidates: tuple[str, ...]) -> bool:
     return any(candidate in value for candidate in candidates)
 
 
-def _bounded_message(value: str) -> str:
+def _compact_report_message(prefix: str, content: str, report_path: str) -> str:
+    value = prefix + content
     if len(value) <= _DISCORD_MESSAGE_LIMIT:
         return value
-    return value[: _DISCORD_MESSAGE_LIMIT - 4].rstrip() + " ..."
+
+    footer = f"\n\n전체 보고서: `{report_path}`"
+    available = _DISCORD_MESSAGE_LIMIT - len(prefix) - len(footer)
+    selected: list[str] = []
+    used = 0
+    for section in _markdown_sections(content):
+        addition = section if not selected else f"\n\n{section}"
+        if used + len(addition) > available:
+            break
+        selected.append(section)
+        used += len(addition)
+
+    compact_content = "\n\n".join(selected).strip()
+    if not compact_content:
+        compact_content = "보고서가 길어 전체 파일에 저장했습니다."
+    return prefix + compact_content + footer
+
+
+def _markdown_sections(content: str) -> tuple[str, ...]:
+    sections: list[list[str]] = []
+    current: list[str] = []
+    for line in content.splitlines():
+        if line.startswith("## ") and current:
+            sections.append(current)
+            current = []
+        current.append(line)
+    if current:
+        sections.append(current)
+    return tuple("\n".join(section).strip() for section in sections if section)
 
 
 __all__ = [

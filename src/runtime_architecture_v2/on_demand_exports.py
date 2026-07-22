@@ -1,44 +1,27 @@
-"""On-demand meeting artifact exports (Phase 32 / Phase 5).
-
-Default meetings produce only team-lead discussion messages in Discord.
-Summaries, final reports, Notion exports, and Second Brain notes are
-generated only when the user explicitly requests them.
-
-This module provides:
-- Finding the latest meeting_run by directory timestamp.
-- Dispatching export type to the appropriate generator.
-- Simple summary / action-item extraction from meeting session data.
-"""
+"""On-demand exports grounded in durable Runtime v2 meeting evidence."""
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 from dataclasses import dataclass
 from enum import StrEnum, unique
-import json
 from pathlib import Path
-from typing import Any
 
-from src.runtime_architecture_v2.final_report_v3 import (
-    build_default_final_report_decision,
-    render_final_report_v3_discord,
-    render_final_report_v3_local,
-)
-from src.runtime_architecture_v2.multi_bot import (
-    BOT_PERSONAS,
-    MultiBotSession,
-)
-from src.runtime_architecture_v2.schemas import MeetingRun, WorkerTask
-from src.runtime_architecture_v2.store import MeetingRunStore
+from src.runtime_architecture_v2.multi_bot import BOT_PERSONAS, MultiBotSession
+from src.runtime_architecture_v2.schemas import MeetingOutcome, MeetingRun
+from src.runtime_architecture_v2.store import MeetingRunStore, StoreError
 
 
 @unique
 class OnDemandExportType(StrEnum):
     """Export types the user can request after a meeting."""
 
-    SUMMARY = "summary"  # 요약해줘
-    FINAL_REPORT = "final_report"  # 최종보고서로 정리해줘
-    AGREEMENT = "agreement"  # 합의서로 정리해줘
-    ACTION_ITEMS = "action_items"  # 할 일로 만들어줘
+    SUMMARY = "summary"
+    FINAL_REPORT = "final_report"
+    AGREEMENT = "agreement"
+    ACTION_ITEMS = "action_items"
 
 
 @dataclass(frozen=True)
@@ -53,16 +36,14 @@ class OnDemandExportResult:
 
 
 def find_latest_meeting_run_id(root: str | Path) -> str | None:
-    """Return the meeting_run_id of the most-recently modified meeting run.
+    """Return the most recently modified meeting run ID, if one exists."""
 
-    Returns ``None`` when ``runtime/meeting_runs/`` does not exist or is empty.
-    """
     store_root = Path(root) / "runtime" / "meeting_runs"
     if not store_root.exists():
         return None
     dirs = sorted(
-        (d for d in store_root.iterdir() if d.is_dir()),
-        key=lambda d: (d.stat().st_mtime_ns, d.name),
+        (directory for directory in store_root.iterdir() if directory.is_dir()),
+        key=lambda directory: (directory.stat().st_mtime_ns, directory.name),
     )
     return dirs[-1].name if dirs else None
 
@@ -72,34 +53,33 @@ def run_on_demand_export(
     meeting_run_id: str,
     export_type: OnDemandExportType,
 ) -> OnDemandExportResult:
-    """Generate the requested on-demand export for a meeting run.
+    """Generate and persist one report from canonical meeting artifacts."""
 
-    Raises ``FileNotFoundError`` when the meeting_run does not exist.
-    """
     store = MeetingRunStore(root)
     run = store.load_meeting_run(meeting_run_id)
+    session, outcome, legacy_notes = _load_canonical_artifacts(
+        store,
+        meeting_run_id,
+    )
 
-    # Reconstruct the minimal session from stored artifacts.
-    session = _reconstruct_session(store, meeting_run_id, run)
-
-    # Collect worker task metadata from stored output files.
-    worker_outputs_dir = store.meeting_run_dir(meeting_run_id) / "worker_outputs"
-    worker_tasks = _collect_worker_tasks(worker_outputs_dir, run)
-
-    content: str
     if export_type == OnDemandExportType.SUMMARY:
-        content = _generate_summary(run, session)
+        content = _generate_summary(run, session, outcome, legacy_notes)
     elif export_type == OnDemandExportType.FINAL_REPORT:
-        content = _generate_final_report_v3(
-            store=store,
-            run=run,
-            session=session,
-            worker_tasks=worker_tasks,
-        )
+        content = _generate_final_report(run, session, outcome, legacy_notes)
     elif export_type == OnDemandExportType.AGREEMENT:
-        content = _generate_agreement_document(run, session)
+        content = _generate_agreement_document(
+            run,
+            session,
+            outcome,
+            legacy_notes,
+        )
     elif export_type == OnDemandExportType.ACTION_ITEMS:
-        content = _generate_action_items_document(run, session)
+        content = _generate_action_items_document(
+            run,
+            session,
+            outcome,
+            legacy_notes,
+        )
     else:
         return OnDemandExportResult(
             export_type=str(export_type),
@@ -107,6 +87,18 @@ def run_on_demand_export(
             ok=False,
             error=f"unknown export type: {export_type}",
             content="",
+        )
+
+    run_dir = store.meeting_run_dir(meeting_run_id)
+    report_path = run_dir / "reports" / f"{export_type}.md"
+    _atomic_write_text(report_path, content)
+    if export_type == OnDemandExportType.FINAL_REPORT:
+        _write_legacy_final_report_aliases(
+            run_dir=run_dir,
+            run=run,
+            outcome=outcome,
+            content=content,
+            legacy_notes=legacy_notes,
         )
 
     return OnDemandExportResult(
@@ -117,180 +109,227 @@ def run_on_demand_export(
     )
 
 
-# ── Internal helpers ──────────────────────────────────────────────────────
-
-
-def _reconstruct_session(
+def _load_canonical_artifacts(
     store: MeetingRunStore,
     meeting_run_id: str,
-    run: MeetingRun,
-) -> MultiBotSession:
-    """Build a minimal MultiBotSession from stored artifacts."""
-    # For now use consensus summary from meeting_run trigger/state.
-    # A richer reconstruction would load round messages from packets/.
-    return MultiBotSession(
-        meeting_run_id=meeting_run_id,
-        participants=tuple(run.worker_task_ids or ()),
-        rounds=(),
-        consensus_reached=True,
-        escalation_required=False,
-        consensus_summary=str(run.trigger.get("text", "")),
-    )
+) -> tuple[MultiBotSession, MeetingOutcome, tuple[str, ...]]:
+    legacy_notes: list[str] = []
+    try:
+        session = store.load_meeting_session(meeting_run_id)
+    except StoreError as exc:
+        legacy_notes.append(f"회의 발언 기록 없음 ({exc.code})")
+        session = MultiBotSession(
+            meeting_run_id=meeting_run_id,
+            participants=(),
+            rounds=(),
+            consensus_reached=False,
+            escalation_required=True,
+        )
+
+    try:
+        outcome = store.load_meeting_outcome(meeting_run_id)
+    except StoreError as exc:
+        legacy_notes.append(f"구조화된 회의 판정 없음 ({exc.code})")
+        outcome = MeetingOutcome(
+            meeting_run_id=meeting_run_id,
+            status="needs_user_decision",
+            summary="검증 가능한 합의 없음",
+            generation_status="failed",
+            error_code="legacy_missing_canonical_evidence",
+        )
+    return session, outcome, tuple(legacy_notes)
 
 
-def _collect_worker_tasks(
-    worker_outputs_dir: Path,
-    run: MeetingRun,
-) -> list[WorkerTask]:
-    """Collect WorkerTask metadata from stored output files."""
-    tasks: list[WorkerTask] = []
-    if not worker_outputs_dir.exists():
-        return tasks
-    for output_file in sorted(worker_outputs_dir.glob("*.json")):
-        try:
-            data = _read_json(output_file)
-            if isinstance(data, dict):
-                tasks.append(
-                    WorkerTask(
-                        worker_task_id=str(data.get("worker_task_id", output_file.stem)),
-                        meeting_run_id=run.meeting_run_id,
-                        role=str(data.get("role", output_file.stem.rsplit("_", 1)[-1])),
-                        runner=str(data.get("runner", "opencode_go")),
-                        state=str(data.get("state", "succeeded")),
-                        error=str(data.get("error", "")),
-                        output_path=str(output_file),
-                        model_policy=data.get("model_policy", {}),
-                        hermes_refs=data.get("hermes_refs", {}),
-                    )
-                )
-        except (OSError, ValueError):
-            continue
-    return tasks
-
-
-def _collect_specialist_roles(worker_tasks: list[WorkerTask]) -> tuple[str, ...]:
-    """Identify specialist/internal roles from worker tasks."""
-    return tuple(t.role for t in worker_tasks if t.role not in BOT_PERSONAS)
-
-
-def _generate_final_report_v3(
-    *,
-    store: MeetingRunStore,
+def _generate_summary(
     run: MeetingRun,
     session: MultiBotSession,
-    worker_tasks: list[WorkerTask],
+    outcome: MeetingOutcome,
+    legacy_notes: tuple[str, ...],
 ) -> str:
-    """Generate requested Final Report v3 and write local artifacts."""
-    run_dir = store.meeting_run_dir(run.meeting_run_id)
-    agenda = str(run.trigger.get("text", "회의"))
-    source_text = _build_source_text(run=run, session=session, worker_tasks=worker_tasks)
-    source_roles = _source_role_names(run=run, worker_tasks=worker_tasks)
-    decision = build_default_final_report_decision(
-        agenda=agenda,
-        source_text=source_text,
-        source_roles=source_roles,
-    )
-    discord_content = render_final_report_v3_discord(decision, agenda=agenda)
-    local_content = render_final_report_v3_local(
-        decision,
-        agenda=agenda,
-        source_text=source_text,
-        model_evidence="schema=FinalReportDecision; validator=PASS; generator=on-demand-v3",
-    )
-    (run_dir / "decision_summary.json").write_text(
-        json.dumps(decision.to_dict(), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    (run_dir / "final_report_v3.md").write_text(local_content, encoding="utf-8")
-    return discord_content
-
-
-def _build_source_text(
-    *,
-    run: MeetingRun,
-    session: MultiBotSession,
-    worker_tasks: list[WorkerTask],
-) -> str:
-    parts = [str(run.trigger.get("text", "")), session.consensus_summary]
-    for task in worker_tasks:
-        parts.append(f"{task.role} {task.state} {task.error}")
-        if task.output_path:
-            try:
-                parts.append(Path(task.output_path).read_text(encoding="utf-8")[:2000])
-            except OSError:
-                pass
-    return "\n".join(p for p in parts if p)
-
-
-def _source_role_names(
-    *,
-    run: MeetingRun,
-    worker_tasks: list[WorkerTask],
-) -> tuple[str, ...]:
-    role_map = {
-        "ceo_coordinator": "대표",
-        "content_lead": "콘텐츠 팀장",
-        "art_lead": "아트 팀장",
-        "tech_lead": "기술 팀장",
-        "marketing_lead": "마케팅 팀장",
-        "validation_audit": "검증 팀장",
-    }
-    roles: list[str] = []
-    role_ids = tuple(run.worker_task_ids or ()) + tuple(task.role for task in worker_tasks)
-    for role in role_ids:
-        display = role_map.get(str(role), str(role))
-        if display and display not in roles:
-            roles.append(display)
-    if not roles:
-        roles.append("대표")
-    return tuple(roles)
-
-
-def _generate_summary(run: MeetingRun, session: MultiBotSession) -> str:
-    """Generate a short meeting summary."""
-    trigger = str(run.trigger.get("text", "회의"))
-    consensus = session.consensus_summary or trigger
     lines = [
         "# 회의 요약",
         "",
-        f"안건: {trigger}",
-        f"합의: {consensus[:120]}",
+        f"안건: {_agenda(run)}",
+        f"판정: {outcome.status.value}",
+        f"요약: {_outcome_summary(outcome)}",
         f"라운드: {len(session.rounds)}",
         f"참여자: {len(session.participants)}명",
+        "",
+        "## 주요 근거",
+        *_evidence_lines(session, outcome, limit=4),
+        *_legacy_lines(legacy_notes),
     ]
     return "\n".join(lines) + "\n"
 
 
-def _generate_agreement_document(run: MeetingRun, session: MultiBotSession) -> str:
-    """Generate a shorter agreement-focused document."""
-    trigger = str(run.trigger.get("text", "회의"))
+def _generate_agreement_document(
+    run: MeetingRun,
+    session: MultiBotSession,
+    outcome: MeetingOutcome,
+    legacy_notes: tuple[str, ...],
+) -> str:
     lines = [
         "# 합의서",
         "",
-        f"안건: {trigger}",
+        f"안건: {_agenda(run)}",
+        f"판정: {outcome.status.value}",
         "",
         "## 합의안",
-        f"{session.consensus_summary or '합의 결과를 확인하세요.'}",
+        *_bullet_lines(outcome.agreements, empty="검증 가능한 합의 없음"),
+        "",
+        "## 미해결 쟁점",
+        *_bullet_lines(outcome.disagreements, empty="기록된 미해결 쟁점 없음"),
+        "",
+        "## 판정 요약",
+        _outcome_summary(outcome),
+        "",
+        "## 근거",
+        *_evidence_lines(session, outcome, limit=4),
+        *_legacy_lines(legacy_notes),
     ]
     return "\n".join(lines) + "\n"
 
 
-def _generate_action_items_document(run: MeetingRun, session: MultiBotSession) -> str:
-    """Extract action items from meeting results."""
-    trigger = str(run.trigger.get("text", "회의"))
+def _generate_action_items_document(
+    run: MeetingRun,
+    session: MultiBotSession,
+    outcome: MeetingOutcome,
+    legacy_notes: tuple[str, ...],
+) -> str:
     lines = [
         "# 다음 할 일",
         "",
-        f"출처: {trigger}",
+        f"출처: {_agenda(run)}",
+        f"판정 요약: {_outcome_summary(outcome)}",
         "",
         "## 작업 항목",
-        "• 회의 결과를 검토하고 후속 작업을 확정한다.",
-        "• 합의된 방향에 따라 실행 계획을 수립한다.",
+        *_bullet_lines(outcome.action_items, empty="확정된 작업 항목 없음"),
+        "",
+        "## 작업 근거",
+        *_evidence_lines(session, outcome, limit=2),
+        *_legacy_lines(legacy_notes),
     ]
     return "\n".join(lines) + "\n"
 
 
-def _read_json(path: Path) -> Any:
-    import json
+def _generate_final_report(
+    run: MeetingRun,
+    session: MultiBotSession,
+    outcome: MeetingOutcome,
+    legacy_notes: tuple[str, ...],
+) -> str:
+    lines = [
+        f"# 📋 최종보고서: {_agenda(run)}",
+        "",
+        "## 🎯 결론",
+        _outcome_summary(outcome),
+        "",
+        "## ✅ 합의안",
+        *_bullet_lines(outcome.agreements, empty="검증 가능한 합의 없음"),
+        "",
+        "## ⚖️ 미해결 쟁점",
+        *_bullet_lines(outcome.disagreements, empty="기록된 미해결 쟁점 없음"),
+        "",
+        "## 🚀 다음 액션",
+        *_bullet_lines(outcome.action_items, empty="확정된 작업 항목 없음"),
+        "",
+        "## 💬 회의 근거",
+        *_evidence_lines(session, outcome, limit=6),
+        "",
+        "## ⚠️ 응답 상태",
+        f"- 판정: {outcome.status.value}",
+        f"- 판정 생성: {outcome.generation_status}",
+        f"- 모델: {outcome.model or '기록 없음'}",
+        *_bullet_lines(outcome.validator_notes, empty="검증 메모 없음"),
+        *_legacy_lines(legacy_notes),
+    ]
+    return "\n".join(lines) + "\n"
 
-    return json.loads(path.read_text(encoding="utf-8"))
+
+def _agenda(run: MeetingRun) -> str:
+    return str(run.trigger.get("text") or "회의")
+
+
+def _outcome_summary(outcome: MeetingOutcome) -> str:
+    return outcome.summary.strip() or "검증 가능한 합의 없음"
+
+
+def _bullet_lines(items: tuple[str, ...], *, empty: str) -> list[str]:
+    return [f"- {item}" for item in items] if items else [f"- {empty}"]
+
+
+def _legacy_lines(notes: tuple[str, ...]) -> list[str]:
+    if not notes:
+        return []
+    return ["", "## 레거시 기록 주의", *[f"- {note}" for note in notes]]
+
+
+def _evidence_lines(
+    session: MultiBotSession,
+    outcome: MeetingOutcome,
+    *,
+    limit: int,
+) -> list[str]:
+    referenced = set(outcome.evidence_refs)
+    candidates: list[tuple[str, str]] = []
+    for round_data in session.rounds:
+        for message in round_data.messages:
+            ref = f"round:{message.round}:{message.bot_role}"
+            if referenced and ref not in referenced:
+                continue
+            role = BOT_PERSONAS.get(message.bot_role, message.bot_role)
+            status = "" if message.generation_status == "live" else f" [{message.generation_status}]"
+            content = " ".join(message.content.split())
+            if len(content) > 180:
+                content = content[:177].rstrip() + "..."
+            candidates.append((ref, f"- [{ref} · {role}]{status} {content}"))
+
+    if not candidates and referenced:
+        return [f"- 근거 참조: {ref}" for ref in sorted(referenced)[:limit]]
+    if not candidates:
+        return ["- 저장된 발언 근거 없음"]
+    return [line for _, line in candidates[:limit]]
+
+
+def _write_legacy_final_report_aliases(
+    *,
+    run_dir: Path,
+    run: MeetingRun,
+    outcome: MeetingOutcome,
+    content: str,
+    legacy_notes: tuple[str, ...],
+) -> None:
+    """Keep old runtime filenames readable while reports/ is canonical."""
+
+    _atomic_write_text(run_dir / "final_report_v3.md", content)
+    payload = {
+        "meeting_run_id": run.meeting_run_id,
+        "agenda": _agenda(run),
+        "outcome": outcome.to_dict(),
+        "legacy_evidence_warnings": list(legacy_notes),
+        "canonical_report": "reports/final_report.md",
+    }
+    _atomic_write_text(
+        run_dir / "decision_summary.json",
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+    )
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+        text=True,
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        tmp_path.replace(path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
