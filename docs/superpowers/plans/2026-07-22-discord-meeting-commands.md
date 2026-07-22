@@ -568,30 +568,30 @@ git commit -m "fix: preserve meeting origin and prevent duplicates"
 - Keeps: selected internal specialist calls.
 - Adds: one outcome evaluation and a maximum of three concurrent calls per round.
 
-- [ ] **Step 1: Write a failing exact-call-count test**
+- [x] **Step 1: Write a failing exact-call-count test**
 
 For six live roles and no specialists, assert exactly thirteen provider calls:
 twelve discussion calls plus one outcome evaluation. Assert visible-role worker
 artifacts contain their stored final statements without another provider call.
 
-- [ ] **Step 2: Write a failing bounded-concurrency test**
+- [x] **Step 2: Write a failing bounded-concurrency test**
 
 Instrument the runner and assert peak simultaneous calls is at most three,
 round-two calls start only after every round-one call finishes, and outcome
 evaluation starts only after round two is persisted.
 
-- [ ] **Step 3: Run focused tests and confirm RED**
+- [x] **Step 3: Run focused tests and confirm RED**
 
 Expected: eighteen sequential calls.
 
-- [ ] **Step 4: Reuse final statements and add bounded round execution**
+- [x] **Step 4: Reuse final statements and add bounded round execution**
 
 Create visible worker outputs from round-two messages. Dispatch only internal
 specialists through worker runners. Use a three-worker executor inside each
 round while preserving deterministic role order in the stored session and
 Discord projection.
 
-- [ ] **Step 5: Run all meeting and Runtime v2 tests**
+- [x] **Step 5: Run all meeting and Runtime v2 tests**
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_runtime_architecture_v2_phase14_multi_bot.py tests/test_runtime_architecture_v2_meeting_outcome.py tests/test_runtime_architecture_v2_on_demand_exports.py tests/test_runtime_architecture_v2_meeting_commands.py tests/test_runtime_smoke_packet.py -q
@@ -600,13 +600,19 @@ Discord projection.
 git diff --check
 ```
 
-- [ ] **Step 6: Update existing operations and progress documents**
+- [x] **Step 6: Update existing operations and progress documents**
 
 Record the canonical artifact checks, outcome statuses, replacement disclosure,
 exact call-count expectation, and bounded supervised live smoke. Do not create a
 parallel runbook or rotate any Discord token.
 
-- [ ] **Step 7: Commit verification documentation**
+- [x] **Step 7: Commit verification documentation**
+
+Implemented and verified on 2026-07-22. Focused meeting tests passed (111);
+the complete Runtime v2 Python suite passed with `PYTHONUTF8=1` (805 passed,
+1 skipped). The default Windows code page retained the five previously
+documented CP949-only failures. Repository-wide Ruff reported 679 pre-existing
+findings, so changed-file F/I and diff checks remain the scoped quality gate.
 
 ```bash
 git add src/runtime_architecture_v2/multi_bot.py tests/test_runtime_architecture_v2_phase14_multi_bot.py docs/operations/discord-save-slash-command.md .superpowers/sdd/progress.md

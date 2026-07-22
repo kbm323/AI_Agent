@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import src.runtime_architecture_v2.multi_bot as multi_bot_module
@@ -26,6 +28,7 @@ from src.runtime_architecture_v2.projection import (
     SharedMeetingThreadProjectionPolicy,
 )
 from src.runtime_architecture_v2.schemas import (
+    MeetingRun,
     MeetingRunState,
     WorkerTaskState,
 )
@@ -1015,6 +1018,144 @@ def test_phase14_live_worker_persists_evidence_based_agreement(tmp_path: Path):
     assert session.consensus_summary == outcome.summary
 
 
+def test_six_role_meeting_uses_exactly_twelve_statements_and_one_outcome_call(
+    tmp_path: Path,
+) -> None:
+    roles = (
+        "ceo_coordinator",
+        "content_lead",
+        "art_lead",
+        "tech_lead",
+        "marketing_lead",
+        "validation_audit",
+    )
+    calls: list[str] = []
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        prompt = command[command.index("--prompt") + 1]
+        calls.append(prompt)
+        if "필수 키: status" in prompt:
+            run_dirs = list((tmp_path / "runtime" / "meeting_runs").iterdir())
+            stored = MeetingRunStore(tmp_path).load_meeting_session(run_dirs[0].name)
+            assert len(stored.rounds) == 2
+            content = json.dumps(
+                {
+                    "status": "agreed",
+                    "summary": "실행 조건에 합의했습니다.",
+                    "agreements": ["실행 조건"],
+                    "disagreements": [],
+                    "action_items": ["담당자를 지정한다"],
+                    "evidence_refs": [
+                        "round:1:content_lead",
+                        "round:2:validation_audit",
+                    ],
+                    "validator_notes": ["근거 확인"],
+                },
+                ensure_ascii=False,
+            )
+        else:
+            content = f"실제 발언 {len(calls)}"
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout=content,
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=6,
+        command_runner=command_runner,
+        trigger_text="신제품 방향 회의",
+        live_bot_roles_override=roles,
+        fake_bot_roles_override=(),
+    )
+
+    assert result.ok is True
+    assert len(calls) == 13
+    assert sum("현재 1라운드" in prompt for prompt in calls) == 6
+    assert sum("현재 2라운드" in prompt for prompt in calls) == 6
+    assert sum("필수 키: status" in prompt for prompt in calls) == 1
+    final_by_role = {
+        message.bot_role: message.content
+        for message in result.session.rounds[-1].messages
+    }
+    for task in result.worker_tasks:
+        payload = json.loads(Path(task.output_path).read_text(encoding="utf-8"))
+        assert payload["result"]["summary"] == final_by_role[task.role]
+
+
+def test_meeting_rounds_use_bounded_concurrency_and_preserve_round_barrier(
+    tmp_path: Path,
+) -> None:
+    roles = (
+        "ceo_coordinator",
+        "content_lead",
+        "art_lead",
+        "tech_lead",
+        "marketing_lead",
+        "validation_audit",
+    )
+    run = MeetingRun.create(
+        meeting_run_id="meeting-concurrency",
+        trigger_text="병렬 회의",
+        user_id="user-1",
+        channel_id="channel-1",
+        thread_id="",
+    )
+    lock = threading.Lock()
+    active = 0
+    peak_active = 0
+    timeline: list[tuple[str, int]] = []
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        nonlocal active, peak_active
+        prompt = command[command.index("--prompt") + 1]
+        round_number = 1 if "현재 1라운드" in prompt else 2
+        with lock:
+            active += 1
+            peak_active = max(peak_active, active)
+            timeline.append(("start", round_number))
+        time.sleep(0.03)
+        with lock:
+            timeline.append(("end", round_number))
+            active -= 1
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout=f"{round_number}라운드 발언",
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.03,
+        )
+
+    def on_round_completed(session: MultiBotSession) -> None:
+        timeline.append(("persist", len(session.rounds)))
+
+    session = run_meeting_phase(
+        run,
+        participants=roles,
+        live_bot_roles=roles,
+        fake_bot_roles=(),
+        command_runner=command_runner,
+        workdir=str(tmp_path),
+        on_round_completed=on_round_completed,
+    )
+
+    first_round_two = timeline.index(("start", 2))
+    round_one_persisted = timeline.index(("persist", 1))
+    assert 2 <= peak_active <= 3
+    assert round_one_persisted < first_round_two
+    assert all(
+        index < first_round_two
+        for index, event in enumerate(timeline)
+        if event == ("end", 1)
+    )
+    assert [message.bot_role for message in session.rounds[0].messages] == list(roles)
+    assert [message.bot_role for message in session.rounds[1].messages] == list(roles)
+
+
 def test_phase14_persists_provided_discord_thread_linkage(tmp_path: Path):
     result = run_phase14_multi_bot_pilot(
         root=tmp_path,
@@ -1219,7 +1360,11 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
     def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
         model = command[command.index("--model") + 1]
         prompt = command[command.index("--prompt") + 1] if "--prompt" in command else ""
-        if model == "qwen3.7-plus":
+        if (
+            model == "qwen3.7-plus"
+            and "현재 1라운드" not in prompt
+            and "현재 2라운드" not in prompt
+        ):
             return OpenCodeGoRunResult(
                 exit_code=1,
                 stdout="",

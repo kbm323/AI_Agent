@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -515,34 +516,16 @@ def run_meeting_phase(
     created_at = datetime.now(UTC).isoformat()
 
     # Round 1 — Opinions
-    round1_msgs: list[BotMessage] = []
-    for role in all_bots:
-        is_live = role in live_role_set
-        generation = _generate_bot_content(
-            role=role,
-            round_num=1,
-            msg_type="opinion",
-            run=run,
-            is_live=is_live,
-            command_runner=command_runner,
-            workdir=workdir,
-            previous_messages=(),
-        )
-        round1_msgs.append(
-            BotMessage(
-                bot_role=role,
-                meeting_run_id=run.meeting_run_id,
-                round=1,
-                msg_type="opinion",
-                content=generation.content,
-                mentions=(),
-                visible_on_discord=True,
-                generation_status=generation.generation_status,
-                provider=generation.provider,
-                model=generation.model,
-                error_code=generation.error_code,
-            )
-        )
+    round1_msgs = _generate_meeting_round(
+        run=run,
+        roles=all_bots,
+        live_role_set=live_role_set,
+        round_num=1,
+        msg_type="opinion",
+        command_runner=command_runner,
+        workdir=workdir,
+        previous_messages=(),
+    )
     meeting_rounds.append(
         MeetingRound(round_number=1, phase="opinions", messages=tuple(round1_msgs))
     )
@@ -561,35 +544,16 @@ def run_meeting_phase(
 
     # Round 2 — Rebuttals (if rounds >= 2)
     if rounds >= 2:
-        round2_msgs: list[BotMessage] = []
-        for role in all_bots:
-            is_live = role in live_role_set
-            opponents = tuple(r for r in all_bots if r != role)
-            generation = _generate_bot_content(
-                role=role,
-                round_num=2,
-                msg_type="rebuttal",
-                run=run,
-                is_live=is_live,
-                command_runner=command_runner,
-                workdir=workdir,
-                previous_messages=tuple(round1_msgs),
-            )
-            round2_msgs.append(
-                BotMessage(
-                    bot_role=role,
-                    meeting_run_id=run.meeting_run_id,
-                    round=2,
-                    msg_type="rebuttal",
-                    content=generation.content,
-                    mentions=opponents,
-                    visible_on_discord=True,
-                    generation_status=generation.generation_status,
-                    provider=generation.provider,
-                    model=generation.model,
-                    error_code=generation.error_code,
-                )
-            )
+        round2_msgs = _generate_meeting_round(
+            run=run,
+            roles=all_bots,
+            live_role_set=live_role_set,
+            round_num=2,
+            msg_type="rebuttal",
+            command_runner=command_runner,
+            workdir=workdir,
+            previous_messages=tuple(round1_msgs),
+        )
         meeting_rounds.append(
             MeetingRound(round_number=2, phase="rebuttals", messages=tuple(round2_msgs))
         )
@@ -608,6 +572,53 @@ def run_meeting_phase(
     if on_round_completed is not None:
         on_round_completed(session)
     return session
+
+
+def _generate_meeting_round(
+    *,
+    run: MeetingRun,
+    roles: tuple[str, ...],
+    live_role_set: set[str],
+    round_num: int,
+    msg_type: Literal["opinion", "rebuttal"],
+    command_runner: OpenCodeGoCommandRunner | None,
+    workdir: str,
+    previous_messages: tuple[BotMessage, ...],
+) -> tuple[BotMessage, ...]:
+    def generate(role: str) -> BotGenerationResult:
+        return _generate_bot_content(
+            role=role,
+            round_num=round_num,
+            msg_type=msg_type,
+            run=run,
+            is_live=role in live_role_set,
+            command_runner=command_runner,
+            workdir=workdir,
+            previous_messages=previous_messages,
+        )
+
+    with ThreadPoolExecutor(max_workers=min(3, len(roles))) as executor:
+        generations = tuple(executor.map(generate, roles))
+
+    messages: list[BotMessage] = []
+    for role, generation in zip(roles, generations, strict=True):
+        mentions = tuple(other for other in roles if other != role) if round_num >= 2 else ()
+        messages.append(
+            BotMessage(
+                bot_role=role,
+                meeting_run_id=run.meeting_run_id,
+                round=round_num,
+                msg_type=msg_type,
+                content=generation.content,
+                mentions=mentions,
+                visible_on_discord=True,
+                generation_status=generation.generation_status,
+                provider=generation.provider,
+                model=generation.model,
+                error_code=generation.error_code,
+            )
+        )
+    return tuple(messages)
 
 
 # ── Multi-bot Pilot Orchestrator ───────────────────────────────────────
@@ -916,6 +927,13 @@ def run_phase14_multi_bot_pilot(
     )
 
     all_ok = all(task.state == WorkerTaskState.SUCCEEDED for task in completed_tasks)
+    if active_live_bot_roles:
+        all_ok = all_ok and all(
+            message.generation_status == "live"
+            for round_data in session.rounds
+            for message in round_data.messages
+            if message.bot_role in active_live_bot_roles
+        )
 
     validation_verdicts = _build_phase13_validation_verdicts(run, completed_tasks)
     _validation_decision = ValidationPolicy().decide(
@@ -1369,7 +1387,15 @@ def _execute_phase14_tasks(
     completed: list[WorkerTask] = []
     for task in tasks:
         runner: WorkerRunner
-        if task.runner == WorkerTaskRunner.OPENCODE_GO and mode == "live-worker":
+        if task.role in session.participants:
+            bot_output = _resolve_bot_output_for_role(task.role, session)
+            runner = FakeWorkerRunner(
+                output={
+                    "summary": bot_output,
+                    "source": "meeting_session_round_2",
+                }
+            )
+        elif task.runner == WorkerTaskRunner.OPENCODE_GO and mode == "live-worker":
             runner = OpenCodeGoWorkerRunner(
                 command_runner=command_runner,
                 timeout_seconds=600,
