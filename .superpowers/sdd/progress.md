@@ -32,4 +32,5 @@ Baseline: 6229f55
 Task 1: complete (commit e3b559d; explicit command intent bypass, persisted Discord thread linkage, and profile-independent live projection tests; 68 focused tests passed)
 Task 2: complete (commit d82596a; transport-neutral meeting start/report service; 18 tests; Ruff clean)
 Task 3: complete (commit cd90e57; Hermes `/meeting-start` and `/meeting-report`, plugin 0.3.0; 49 combined tests; Ruff clean)
-Task 4: implementation complete (existing design, runbook, operational guards, and progress record updated; live deployment pending final regression and merge)
+Task 4: complete (commit 850c9b7; existing design, runbook, operational guards, and progress record updated; 17 operational guard tests passed)
+Task 5 verification: complete on Ubuntu ARM64 at commit 348c9d3 (5776 repository tests passed; range secret scan inspected 16 files; changed-file Ruff and `git diff --check` clean). Windows UTF-8 run passed 5770 tests with 1 skip and retained 5 known platform-specific failures (path separators, missing Bash, permission semantics, and timer precision). Main merge and seven-profile rollout pending.
