@@ -185,7 +185,8 @@ def test_meeting_phase_produces_two_rounds(tmp_path: Path):
     assert session.rounds[0].phase == "opinions"
     assert session.rounds[1].phase == "rebuttals"
     assert len(session.rounds[0].messages) == 3
-    assert session.consensus_reached is True
+    assert session.consensus_reached is False
+    assert session.escalation_required is True
 
 
 def test_meeting_phase_with_one_live_bot(tmp_path: Path):
@@ -941,6 +942,79 @@ def test_phase14_persists_complete_six_role_session(tmp_path: Path):
     )
 
 
+def test_phase14_dry_run_persists_needs_user_decision_outcome(tmp_path: Path):
+    result = run_phase14_multi_bot_pilot(root=tmp_path, mode="dry-run")
+
+    store = MeetingRunStore(tmp_path)
+    session = store.load_meeting_session(result.meeting_run.meeting_run_id)
+    outcome = store.load_meeting_outcome(result.meeting_run.meeting_run_id)
+
+    assert outcome.status == "needs_user_decision"
+    assert outcome.generation_status == "failed"
+    assert outcome.error_code == "deterministic_mode"
+    assert session.consensus_reached is False
+    assert session.escalation_required is True
+
+
+def test_phase14_live_worker_persists_evidence_based_agreement(tmp_path: Path):
+    roles = (
+        "ceo_coordinator",
+        "content_lead",
+        "art_lead",
+        "tech_lead",
+        "marketing_lead",
+        "validation_audit",
+    )
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        prompt = command[command.index("--prompt") + 1]
+        if "필수 키: status" in prompt:
+            content = json.dumps(
+                {
+                    "status": "agreed",
+                    "summary": "여섯 팀장이 실행 조건에 합의했습니다.",
+                    "agreements": ["실행 조건"],
+                    "disagreements": [],
+                    "action_items": ["담당자를 지정한다"],
+                    "evidence_refs": [
+                        "round:1:content_lead",
+                        "round:2:validation_audit",
+                    ],
+                    "validator_notes": ["근거 확인"],
+                },
+                ensure_ascii=False,
+            )
+        else:
+            content = "역할별 실제 회의 응답"
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout=content,
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=6,
+        command_runner=command_runner,
+        trigger_text="실제 합의 검증 회의",
+        live_bot_roles_override=roles,
+        fake_bot_roles_override=(),
+    )
+
+    store = MeetingRunStore(tmp_path)
+    session = store.load_meeting_session(result.meeting_run.meeting_run_id)
+    outcome = store.load_meeting_outcome(result.meeting_run.meeting_run_id)
+
+    assert outcome.status == "agreed"
+    assert outcome.summary == "여섯 팀장이 실행 조건에 합의했습니다."
+    assert session.consensus_reached is True
+    assert session.escalation_required is False
+    assert session.consensus_summary == outcome.summary
+
+
 def test_phase14_persists_provided_discord_thread_linkage(tmp_path: Path):
     result = run_phase14_multi_bot_pilot(
         root=tmp_path,
@@ -1028,7 +1102,8 @@ def test_phase14_live_worker_mode_with_injected_runner(tmp_path: Path):
     assert result.fake_worker_count == 1 + len(result.internal_specialist_roles)
     assert len(calls) >= 1
     assert {call[2] for call in calls if len(call) >= 3 and call[1] == "--model"} == {
-        "qwen3.7-plus"
+        "qwen3.7-plus",
+        "glm-5.1",
     }
     policies = {task.role: task.model_policy for task in result.worker_tasks}
     assert policies["content_lead"]["role_id"] == "content-director"

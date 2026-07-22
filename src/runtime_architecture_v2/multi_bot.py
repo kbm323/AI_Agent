@@ -37,6 +37,8 @@ from .projection import (
 )
 from .schemas import (
     DiscordProjectionEvent,
+    MeetingOutcome,
+    MeetingOutcomeStatus,
     MeetingRun,
     MeetingRunState,
     WorkerTask,
@@ -293,6 +295,7 @@ class MultiBotPilotResult:
     internal_specialist_roles: tuple[str, ...] = ()
     fallback_events: tuple[str, ...] = ()
     final_report: str = ""
+    outcome: MeetingOutcome | None = None
 
     def to_cli_dict(self) -> dict[str, object]:
         return {
@@ -315,6 +318,7 @@ class MultiBotPilotResult:
             "internal_specialist_roles": list(self.internal_specialist_roles),
             "fallback_events": list(self.fallback_events),
             "final_report": self.final_report,
+            "outcome": self.outcome.to_dict() if self.outcome is not None else None,
             "error": self.error,
             "ok": self.ok,
         }
@@ -590,26 +594,14 @@ def run_meeting_phase(
             MeetingRound(round_number=2, phase="rebuttals", messages=tuple(round2_msgs))
         )
 
-    # Consensus check — simple heuristic
-    consensus_reached = len(all_bots) >= 2
-    escalation_required = not consensus_reached
-
     session = MultiBotSession(
         meeting_run_id=run.meeting_run_id,
         participants=participants,
         rounds=tuple(meeting_rounds),
-        consensus_reached=consensus_reached,
-        escalation_required=escalation_required,
-        consensus_summary=(
-            "모든 팀장의 의견을 수렴하여 합의에 도달했습니다."
-            if consensus_reached
-            else ""
-        ),
-        escalation_reason=(
-            ""
-            if consensus_reached
-            else "참여 팀장 부족으로 합의 불가 — 사용자 판단 필요"
-        ),
+        consensus_reached=False,
+        escalation_required=True,
+        consensus_summary="",
+        escalation_reason="회의 결과 검증 대기",
         created_at=created_at,
         updated_at=datetime.now(UTC).isoformat(),
     )
@@ -861,6 +853,35 @@ def run_phase14_multi_bot_pilot(
         on_round_completed=store.save_meeting_session,
     )
 
+    if mode == "live-worker" and active_live_bot_roles:
+        from .meeting_outcome import evaluate_meeting_outcome
+
+        outcome = evaluate_meeting_outcome(
+            session,
+            command_runner=command_runner,
+            workdir=root,
+        )
+    else:
+        outcome = MeetingOutcome(
+            meeting_run_id=run.meeting_run_id,
+            status=MeetingOutcomeStatus.NEEDS_USER_DECISION,
+            summary="실제 모델 근거가 없어 회의 결과를 확정하지 않았습니다.",
+            generation_status="failed",
+            error_code="deterministic_mode",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    consensus_reached = outcome.status == MeetingOutcomeStatus.AGREED
+    session = replace(
+        session,
+        consensus_reached=consensus_reached,
+        escalation_required=not consensus_reached,
+        consensus_summary=outcome.summary,
+        escalation_reason="" if consensus_reached else outcome.error_code,
+        updated_at=datetime.now(UTC).isoformat(),
+    )
+    store.save_meeting_session(session)
+    store.save_meeting_outcome(outcome)
+
     # Execute worker tasks
     completed_tasks = _execute_phase14_tasks(
         worker_tasks,
@@ -1013,6 +1034,7 @@ def run_phase14_multi_bot_pilot(
         internal_specialist_roles=internal_specialist_roles,
         fallback_events=fallback_events,
         final_report="",  # Phase 32: no longer auto-generated; on-demand only
+        outcome=outcome,
         error=error,
     )
 
