@@ -221,6 +221,74 @@ def test_meeting_phase_with_one_live_bot(tmp_path: Path):
     assert len(calls) >= 2  # opinion + rebuttal for live bot
 
 
+def test_meeting_phase_records_live_and_replacement_generation_evidence(
+    tmp_path: Path,
+):
+    from src.runtime_architecture_v2.pilot import (
+        build_phase13_pilot_request,
+        create_phase13_meeting_run,
+    )
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        prompt = command[command.index("--prompt") + 1]
+        if "'콘텐츠 팀장'" in prompt:
+            return OpenCodeGoRunResult(
+                exit_code=0,
+                stdout="실제 콘텐츠 응답",
+                stderr="",
+                timeout_occurred=False,
+                duration_seconds=0.01,
+            )
+        raise RuntimeError("secret provider detail")
+
+    run = create_phase13_meeting_run(tmp_path, build_phase13_pilot_request())
+    session = run_meeting_phase(
+        run,
+        participants=("content_lead", "marketing_lead"),
+        rounds=2,
+        live_bot_roles=("content_lead", "marketing_lead"),
+        fake_bot_roles=(),
+        command_runner=command_runner,
+        workdir=str(tmp_path),
+    )
+
+    messages = [message for round_data in session.rounds for message in round_data.messages]
+    content_messages = [m for m in messages if m.bot_role == "content_lead"]
+    marketing_messages = [m for m in messages if m.bot_role == "marketing_lead"]
+    assert {m.generation_status for m in content_messages} == {"live"}
+    assert {m.provider for m in content_messages} == {"opencode-go"}
+    assert all(m.model for m in content_messages)
+    assert {m.generation_status for m in marketing_messages} == {"replacement"}
+    assert {m.error_code for m in marketing_messages} == {"provider_error"}
+    assert "secret provider detail" not in json.dumps(
+        session.to_dict(), ensure_ascii=False
+    )
+
+
+def test_meeting_phase_emits_session_after_each_completed_round(tmp_path: Path):
+    from src.runtime_architecture_v2.pilot import (
+        build_phase13_pilot_request,
+        create_phase13_meeting_run,
+    )
+
+    snapshots: list[MultiBotSession] = []
+    run = create_phase13_meeting_run(tmp_path, build_phase13_pilot_request())
+
+    session = run_meeting_phase(
+        run,
+        participants=("content_lead", "quality_lead"),
+        rounds=2,
+        live_bot_roles=(),
+        fake_bot_roles=("content_lead", "quality_lead"),
+        on_round_completed=snapshots.append,
+    )
+
+    assert [len(snapshot.rounds) for snapshot in snapshots] == [1, 2]
+    assert snapshots[-1] == session
+    assert snapshots[0].created_at
+    assert snapshots[-1].updated_at
+
+
 def test_meeting_phase_round2_prompt_uses_round1_transcript_and_quality_language(tmp_path: Path):
     from src.runtime_architecture_v2.pilot import (
         build_phase13_pilot_request,
@@ -842,6 +910,35 @@ def test_phase14_dry_run_produces_multi_bot_output(tmp_path: Path):
     assert "content_lead" in result.bot_participants
     assert result.rounds_completed == 2
     assert result.projection_messages_posted >= 4  # 3 opinions + at least 1 rebuttal
+
+
+def test_phase14_persists_complete_six_role_session(tmp_path: Path):
+    roles = (
+        "ceo_coordinator",
+        "content_lead",
+        "art_lead",
+        "tech_lead",
+        "marketing_lead",
+        "validation_audit",
+    )
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="dry-run",
+        live_bot_roles_override=(),
+        fake_bot_roles_override=roles,
+    )
+
+    stored = MeetingRunStore(tmp_path).load_meeting_session(
+        result.meeting_run.meeting_run_id
+    )
+
+    assert [len(round_data.messages) for round_data in stored.rounds] == [6, 6]
+    assert [message.bot_role for message in stored.rounds[0].messages] == list(roles)
+    assert all(
+        message.generation_status == "replacement"
+        for round_data in stored.rounds
+        for message in round_data.messages
+    )
 
 
 def test_phase14_persists_provided_discord_thread_linkage(tmp_path: Path):

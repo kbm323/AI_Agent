@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -259,6 +260,17 @@ class MultiBotSession:
 
 
 @dataclass(frozen=True)
+class BotGenerationResult:
+    """Sanitized generation evidence for one visible meeting statement."""
+
+    content: str
+    generation_status: Literal["live", "replacement", "failed"]
+    provider: str = ""
+    model: str = ""
+    error_code: str = ""
+
+
+@dataclass(frozen=True)
 class MultiBotPilotResult:
     """Structured result from a Phase 14 multi-bot pilot run."""
 
@@ -483,6 +495,7 @@ def run_meeting_phase(
     fake_bot_roles: tuple[str, ...] = ("marketing_lead", "quality_lead"),
     command_runner: OpenCodeGoCommandRunner | None = None,
     workdir: str = ".",
+    on_round_completed: Callable[[MultiBotSession], object] | None = None,
 ) -> MultiBotSession:
     """Execute a multi-bot meeting phase with opinion and rebuttal rounds.
 
@@ -495,12 +508,13 @@ def run_meeting_phase(
         raise ValueError("meeting phase requires at least one participant")
 
     meeting_rounds: list[MeetingRound] = []
+    created_at = datetime.now(UTC).isoformat()
 
     # Round 1 — Opinions
     round1_msgs: list[BotMessage] = []
     for role in all_bots:
         is_live = role in live_role_set
-        content = _generate_bot_content(
+        generation = _generate_bot_content(
             role=role,
             round_num=1,
             msg_type="opinion",
@@ -516,14 +530,30 @@ def run_meeting_phase(
                 meeting_run_id=run.meeting_run_id,
                 round=1,
                 msg_type="opinion",
-                content=content,
+                content=generation.content,
                 mentions=(),
                 visible_on_discord=True,
+                generation_status=generation.generation_status,
+                provider=generation.provider,
+                model=generation.model,
+                error_code=generation.error_code,
             )
         )
     meeting_rounds.append(
         MeetingRound(round_number=1, phase="opinions", messages=tuple(round1_msgs))
     )
+    if rounds >= 2 and on_round_completed is not None:
+        on_round_completed(
+            MultiBotSession(
+                meeting_run_id=run.meeting_run_id,
+                participants=participants,
+                rounds=tuple(meeting_rounds),
+                consensus_reached=False,
+                escalation_required=False,
+                created_at=created_at,
+                updated_at=datetime.now(UTC).isoformat(),
+            )
+        )
 
     # Round 2 — Rebuttals (if rounds >= 2)
     if rounds >= 2:
@@ -531,7 +561,7 @@ def run_meeting_phase(
         for role in all_bots:
             is_live = role in live_role_set
             opponents = tuple(r for r in all_bots if r != role)
-            content = _generate_bot_content(
+            generation = _generate_bot_content(
                 role=role,
                 round_num=2,
                 msg_type="rebuttal",
@@ -547,9 +577,13 @@ def run_meeting_phase(
                     meeting_run_id=run.meeting_run_id,
                     round=2,
                     msg_type="rebuttal",
-                    content=content,
+                    content=generation.content,
                     mentions=opponents,
                     visible_on_discord=True,
+                    generation_status=generation.generation_status,
+                    provider=generation.provider,
+                    model=generation.model,
+                    error_code=generation.error_code,
                 )
             )
         meeting_rounds.append(
@@ -560,7 +594,7 @@ def run_meeting_phase(
     consensus_reached = len(all_bots) >= 2
     escalation_required = not consensus_reached
 
-    return MultiBotSession(
+    session = MultiBotSession(
         meeting_run_id=run.meeting_run_id,
         participants=participants,
         rounds=tuple(meeting_rounds),
@@ -576,7 +610,12 @@ def run_meeting_phase(
             if consensus_reached
             else "참여 팀장 부족으로 합의 불가 — 사용자 판단 필요"
         ),
+        created_at=created_at,
+        updated_at=datetime.now(UTC).isoformat(),
     )
+    if on_round_completed is not None:
+        on_round_completed(session)
+    return session
 
 
 # ── Multi-bot Pilot Orchestrator ───────────────────────────────────────
@@ -819,6 +858,7 @@ def run_phase14_multi_bot_pilot(
         fake_bot_roles=active_fake_bot_roles,
         command_runner=command_runner,
         workdir=str(root),
+        on_round_completed=store.save_meeting_session,
     )
 
     # Execute worker tasks
@@ -990,14 +1030,18 @@ def _generate_bot_content(
     command_runner: OpenCodeGoCommandRunner | None,
     workdir: str,
     previous_messages: tuple[BotMessage, ...] = (),
-) -> str:
+) -> BotGenerationResult:
     """Generate content for a bot message — live via opencode-go or fake."""
     if not is_live:
-        return _fake_bot_content(
-            role,
-            round_num,
-            msg_type,
-            agenda=str(run.trigger.get("text", "")),
+        return BotGenerationResult(
+            content=_fake_bot_content(
+                role,
+                round_num,
+                msg_type,
+                agenda=str(run.trigger.get("text", "")),
+            ),
+            generation_status="replacement",
+            error_code="deterministic_mode",
         )
     return _live_bot_content(
         role,
@@ -1127,7 +1171,7 @@ def _live_bot_content(
     command_runner: OpenCodeGoCommandRunner | None,
     workdir: str,
     previous_messages: tuple[BotMessage, ...] = (),
-) -> str:
+) -> BotGenerationResult:
     """Generate live bot content through opencode-go worker, respecting the
     role's canonical model policy when available.
     """
@@ -1146,6 +1190,7 @@ def _live_bot_content(
         policy = worker_model_policy_for_role(role)
     except KeyError:
         policy = {"preferred": "glm-5.1", "primary_model": "glm-5.1"}
+    model = str(policy.get("preferred", policy.get("primary_model", "glm-5.1")))
 
     if command_runner is None:
         task_id = f"msg_{run.meeting_run_id}_{round_num}_{role}_{msg_type}"
@@ -1167,14 +1212,21 @@ def _live_bot_content(
                 payload = Path(completed.output_path).read_text(encoding="utf-8")
                 content = str(json.loads(payload).get("content") or "").strip()
                 if content:
-                    return content
+                    return BotGenerationResult(
+                        content=content,
+                        generation_status="live",
+                        provider="opencode-go",
+                        model=model,
+                    )
             except (OSError, ValueError, TypeError):
                 pass
-        return _fake_bot_content(
+        return _replacement_bot_result(
             role,
             round_num,
             msg_type,
-            agenda=str(run.trigger.get("text", "")),
+            run=run,
+            model=model,
+            error_code="worker_failed",
         )
 
     try:
@@ -1182,25 +1234,80 @@ def _live_bot_content(
             [
                 "opencode-go",
                 "--model",
-                str(policy.get("preferred", policy.get("primary_model", "glm-5.1"))),
+                model,
                 "--prompt",
                 prompt,
             ],
             timeout_seconds=300,
             workdir=workdir,
         )
+        if bool(getattr(result, "timeout_occurred", False)):
+            return _replacement_bot_result(
+                role,
+                round_num,
+                msg_type,
+                run=run,
+                model=model,
+                error_code="provider_timeout",
+            )
+        if int(getattr(result, "exit_code", 0)) != 0:
+            return _replacement_bot_result(
+                role,
+                round_num,
+                msg_type,
+                run=run,
+                model=model,
+                error_code="provider_failed",
+            )
         stdout = getattr(result, "stdout", "")
         if stdout:
             content = _human_facing_text(stdout)
             if content:
-                return content
+                return BotGenerationResult(
+                    content=content,
+                    generation_status="live",
+                    provider="opencode-go",
+                    model=model,
+                )
     except Exception:
-        pass
-    return _fake_bot_content(
+        return _replacement_bot_result(
+            role,
+            round_num,
+            msg_type,
+            run=run,
+            model=model,
+            error_code="provider_error",
+        )
+    return _replacement_bot_result(
         role,
         round_num,
         msg_type,
-        agenda=str(run.trigger.get("text", "")),
+        run=run,
+        model=model,
+        error_code="empty_provider_output",
+    )
+
+
+def _replacement_bot_result(
+    role: str,
+    round_num: int,
+    msg_type: str,
+    *,
+    run: MeetingRun,
+    model: str,
+    error_code: str,
+) -> BotGenerationResult:
+    return BotGenerationResult(
+        content=_fake_bot_content(
+            role,
+            round_num,
+            msg_type,
+            agenda=str(run.trigger.get("text", "")),
+        ),
+        generation_status="replacement",
+        provider="opencode-go",
+        model=model,
+        error_code=error_code,
     )
 
 
