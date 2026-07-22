@@ -6,7 +6,7 @@
 > 기준 Seed: `seed_176a489b1d25`
 > Interview: `interview_20260619_051314`
 > Document status: CURRENT FINAL BASELINE
-> Last updated: 2026-06-27 KST
+> Last updated: 2026-07-22 KST
 > Last live Discord verification: 2026-06-25 02:43 KST
 > Decision precedence: latest user decisions and live Discord verification > this file > `docs/system-design-decisions.md` historical decision log > phase result documents > README.
 
@@ -337,60 +337,110 @@ Operational constraints:
 
 ## 4.2 Command Surface
 
-The command surface is Hermes-native first.
-Standalone Discord slash commands such as `/meeting`, `/cancel`, `/status`,
-or `/summon` are not core requirements unless Hermes Gateway officially
-supports the required custom slash-command surface or a separate Discord
-adapter is deliberately added.
-
-Current decision: natural-language `@대표 ... 회의/검토/분석...` is the default
-meeting UX. `/meeting` may be added later only as an optional force/debug path;
-it must not become the required everyday command path.
-
-Priority order:
+The command surface remains Hermes-native. The reviewed `ai-agent-commands`
+plugin uses Hermes' official custom command registration and currently exposes
+the following top-level Discord commands with natural-language tails:
 
 ```text
-1. Bot mention natural-language command, routed by Gateway pre-handler when available
-2. Hermes existing Discord command and gateway behavior
-3. Hermes-supported custom skill/command surface
-4. Optional /meeting force/debug command
-5. Separate Discord Adapter that implements standalone slash commands
+/meeting-start <회의 주제>
+/meeting-report <선택: 보고 요청>
+/llmwiki-ingest <요청과 URL>
+/llmwiki-find <검색 요청>
+/llmwiki-note <메모>
+/archive
 ```
 
-Default meeting initiation:
+`/meeting-start` is the explicit meeting entry point. It reuses the Runtime v2
+Gateway bridge and creates one shared meeting thread from the verified CEO
+meeting parent channel. `/meeting-report` resolves only the `MeetingRun` linked
+to the current thread. `/archive` remains the single explicit command for saving
+the current meeting or bot conversation into the Second Brain.
+
+Natural-language mentions may still perform ordinary bot conversation, but they
+must not silently start, report, ingest, or archive a durable workflow when an
+explicit slash command exists.
+
+The plugin is a thin transport adapter. Meeting, LLM Wiki, and archive behavior
+belongs to transport-neutral Runtime v2 services rather than the Discord
+registration module.
+
+## 4.3 Trustworthy Multi-Agent Meeting Baseline
+
+The visible meeting is a six-role, two-round discussion:
 
 ```text
-@Hermes meeting: 버추얼 아이돌 뮤비 회의 열어줘
+대표 -> 콘텐츠 -> 아트 -> 기술 -> 마케팅 -> 품질관리
+round 1: initial positions
+round 2: agreement, rebuttal, and conditions using the round-1 transcript
 ```
 
-If Hermes Gateway supports the needed slash surface:
+The Personal Assistant may start or report a meeting but is not a company
+decision-making participant. The seven Hermes profiles remain persistent
+Discord persona/gateway endpoints; Runtime v2 and opencode-go perform role
+reasoning.
+
+The current implementation must be hardened around one durable source of truth:
 
 ```text
-/hermes meeting agenda:"버추얼 아이돌 뮤비 회의"
-/hermes cancel meeting_run_id:"mr_..."
-/hermes status meeting_run_id:"mr_..."
+meeting_run.json       lifecycle, routing, Discord provenance, artifact links
+meeting_session.json   participants and complete round-by-round transcript
+meeting_outcome.json   agreement status, decisions, disagreements, actions
 ```
 
-Optional standalone adapter commands:
+Each visible statement records its role, round, complete content, provider,
+model, sanitized error category, and generation status:
 
 ```text
-/meeting
-/cancel
-/status
-/summon
+live | replacement | failed
 ```
 
-These standalone commands are adapter features, not the core architecture.
+Provider failure may use deterministic role text for continuity, but replacement
+text is never presented or stored as a successful live answer. Session state is
+saved after every completed round.
 
-Design rule:
+Agreement is content-derived by the `validation_audit` role model after round
+two. Valid statuses are:
 
 ```text
-Hermes-first architecture requires Hermes-first Discord UI.
-Command handling must follow what Hermes Gateway actually supports before
-inventing independent Discord slash commands.
-Default command interpretation should be a Hermes skill / natural-language
-intent layer, not a separate Discord command framework.
+agreed | partial_agreement | blocked | needs_user_decision
 ```
+
+`agreed` requires live statements from all six visible roles in both rounds.
+`partial_agreement` requires at least four live visible roles in both rounds,
+including `validation_audit`. Lower response coverage, malformed synthesis, or
+missing evidence forces `needs_user_decision`; participant count alone never
+proves agreement.
+
+`/meeting-report` uses the stored session and outcome. It must not reconstruct
+an empty session, substitute the agenda for consensus, fabricate generic action
+items, or use separate visible-role worker output as the report's primary
+evidence.
+
+Discord provenance is exact:
+
+```text
+user_id | guild_id | parent channel_id | thread_id | priority | platform | invocation_id
+```
+
+Live Gateway execution must not persist Phase 14 fixture identities. A new
+meeting starts only from the verified CEO parent channel. An existing thread can
+continue only when it is already linked to a stored `MeetingRun`; otherwise the
+command fails closed with a user-facing instruction.
+
+Discord interaction ID is the canonical idempotency key. When unavailable, a
+90-second key derived from profile, user, channel or thread, and normalized topic
+prevents immediate duplicate starts.
+
+The expected baseline cost is:
+
+```text
+12 visible-role calls + selected internal specialists + 1 outcome evaluation
+```
+
+The previous second set of six visible-role worker calls is redundant. Visible
+worker artifacts are derived from stored final statements; only internal
+specialists run separately. Calls inside one round may use at most three
+concurrent provider requests, while round two always waits for round one.
 
 ## 5. MeetingRun Top-Level State Machine
 
@@ -432,9 +482,11 @@ Used when the request requires multi-role discussion.
 agenda_built
   -> participants_selected
   -> round_1_opinions
+  -> session_round_1_persisted
   -> round_2_rebuttals
-  -> consensus_built
-  -> consensus_ready | escalation_required
+  -> session_round_2_persisted
+  -> outcome_validation
+  -> agreed | partial_agreement | blocked | needs_user_decision
 ```
 
 Fast-path requests may skip MeetingPhase.
@@ -613,6 +665,54 @@ Raw meeting logs stay in project storage.
 }
 ```
 
+### 7.8 MeetingSession
+
+```json
+{
+  "schema_version": 1,
+  "meeting_run_id": "mr_...",
+  "participants": ["ceo_coordinator", "content_lead", "art_lead", "tech_lead", "marketing_lead", "validation_audit"],
+  "rounds": [
+    {
+      "round_number": 1,
+      "phase": "opinions",
+      "messages": [
+        {
+          "bot_role": "content_lead",
+          "content": "...",
+          "generation_status": "live",
+          "provider": "opencode-go",
+          "model": "qwen3.7-plus",
+          "error_code": ""
+        }
+      ]
+    }
+  ],
+  "created_at": "ISO-8601",
+  "updated_at": "ISO-8601"
+}
+```
+
+### 7.9 MeetingOutcome
+
+```json
+{
+  "schema_version": 1,
+  "meeting_run_id": "mr_...",
+  "status": "agreed | partial_agreement | blocked | needs_user_decision",
+  "summary": "",
+  "agreements": [],
+  "disagreements": [],
+  "action_items": [],
+  "evidence_refs": ["round:1:content_lead"],
+  "validator_notes": [],
+  "generation_status": "live | failed",
+  "model": "",
+  "error_code": "",
+  "created_at": "ISO-8601"
+}
+```
+
 ## 8. Storage Policy
 
 Recommended project-local storage is limited to AI_Agent domain artifacts.
@@ -635,12 +735,19 @@ runtime/
   meeting_runs/
     mr_*/
       meeting_run.json
+      meeting_session.json
+      meeting_outcome.json
       packets/
       worker_outputs/
       validation/
       discord_projection/
       checkpoints/
       final_report.md
+      reports/
+        summary.md
+        agreement.md
+        action_items.md
+        final_report.md
   decision_log.jsonl
   audit_log.jsonl
   queue_policy.json
@@ -699,15 +806,19 @@ Discord mention
 ### 9.2 Meeting Request
 
 ```text
-Discord mention
+/meeting-start <회의 주제>
 -> MeetingRun created
 -> routed to teams/roles
 -> queue
 -> MeetingPhase round 1 opinions
+-> meeting_session.json saved
 -> round 2 rebuttals
--> consensus
--> GLM validation
--> CEO Bot final report + Validation Bot verdict
+-> meeting_session.json saved
+-> validation_audit evaluates transcript evidence
+-> meeting_outcome.json saved
+-> agreed | partial_agreement | blocked | needs_user_decision
+-> compact Discord outcome
+-> on-demand report from the stored session and outcome
 ```
 
 ### 9.3 Worker Execution Request
