@@ -11,6 +11,7 @@ from src.runtime_architecture_v2.multi_bot import (
     MeetingRound,
     MultiBotSession,
 )
+from src.runtime_architecture_v2.schemas import MeetingOutcome
 from src.runtime_architecture_v2.workers import OpenCodeGoRunResult
 
 VISIBLE_ROLES = (
@@ -75,6 +76,9 @@ def _payload(status: str = "agreed") -> dict[str, object]:
         "summary": "콘텐츠 방향과 검증 조건에 합의했습니다.",
         "agreements": ["콘텐츠 방향"],
         "disagreements": [] if status == "agreed" else ["출시 일정"],
+        "unresolved_roles": (
+            [] if status == "agreed" else ["content_lead", "marketing_lead"]
+        ),
         "action_items": ["검증 조건을 문서화한다"],
         "evidence_refs": [
             "round:1:content_lead",
@@ -125,6 +129,77 @@ def test_partial_agreement_requires_four_roles_and_live_validation(tmp_path: Pat
 
     assert outcome.status == "needs_user_decision"
     assert outcome.error_code == "insufficient_live_evidence"
+
+
+def test_blocked_outcome_requires_live_validation_evidence(tmp_path: Path):
+    outcome = evaluate_meeting_outcome(
+        _session(live_roles=VISIBLE_ROLES[:4]),
+        command_runner=_runner(_payload("blocked")),
+        workdir=tmp_path,
+    )
+
+    assert outcome.status == "needs_user_decision"
+    assert outcome.error_code == "insufficient_live_evidence"
+
+
+def test_meeting_outcome_rejects_unknown_resolution_kind() -> None:
+    with pytest.raises(ValueError, match="resolution kind"):
+        MeetingOutcome(
+            meeting_run_id="mr_invalid_resolution",
+            status="blocked",
+            resolution_kind="unknown",
+        )
+
+
+def test_outcome_round_trip_preserves_convergence_metadata(tmp_path: Path):
+    outcome = evaluate_meeting_outcome(
+        _session(),
+        command_runner=_runner(_payload("partial_agreement")),
+        workdir=tmp_path,
+    )
+
+    restored = type(outcome).from_dict(outcome.to_dict())
+
+    assert restored.unresolved_roles == ("content_lead", "marketing_lead")
+    assert restored.evaluator_role == "validation_audit"
+    assert restored.resolution_kind == "validation"
+
+
+def test_unknown_unresolved_role_fails_closed(tmp_path: Path):
+    payload = _payload("partial_agreement")
+    payload["unresolved_roles"] = ["unknown_role"]
+
+    outcome = evaluate_meeting_outcome(
+        _session(),
+        command_runner=_runner(payload),
+        workdir=tmp_path,
+    )
+
+    assert outcome.status == "needs_user_decision"
+    assert outcome.error_code == "invalid_outcome_role"
+
+
+def test_non_agreed_ceo_arbitration_requires_user_decision(tmp_path: Path):
+    previous = evaluate_meeting_outcome(
+        _session(),
+        command_runner=_runner(_payload("partial_agreement")),
+        workdir=tmp_path,
+    )
+
+    outcome = evaluate_meeting_outcome(
+        _session(),
+        command_runner=_runner(_payload("blocked")),
+        workdir=tmp_path,
+        evaluator_role="ceo_coordinator",
+        resolution_kind="arbitration",
+        previous_outcome=previous,
+    )
+
+    assert outcome.status == "needs_user_decision"
+    assert outcome.error_code == "arbitration_unresolved"
+    assert outcome.evaluator_role == "ceo_coordinator"
+    assert outcome.resolution_kind == "arbitration"
+    assert outcome.disagreements == ("출시 일정",)
 
 
 @pytest.mark.parametrize(

@@ -366,12 +366,14 @@ registration module.
 
 ## 4.3 Trustworthy Multi-Agent Meeting Baseline
 
-The visible meeting is a six-role, two-round discussion:
+The visible meeting is a six-role discussion with two mandatory rounds and
+bounded convergence rounds when material disagreement remains:
 
 ```text
 대표 -> 콘텐츠 -> 아트 -> 기술 -> 마케팅 -> 품질관리
 round 1: initial positions
 round 2: agreement, rebuttal, and conditions using the round-1 transcript
+round 3-6: unresolved roles plus validation, or one CEO arbitration round
 ```
 
 The Personal Assistant may start or report a meeting but is not a company
@@ -399,7 +401,7 @@ text is never presented or stored as a successful live answer. Session state is
 saved after every completed round.
 
 Agreement is content-derived by the `validation_audit` role model after round
-two. Valid statuses are:
+two and after every additional convergence round. Valid statuses are:
 
 ```text
 agreed | partial_agreement | blocked | needs_user_decision
@@ -410,6 +412,35 @@ agreed | partial_agreement | blocked | needs_user_decision
 including `validation_audit`. Lower response coverage, malformed synthesis, or
 missing evidence forces `needs_user_decision`; participant count alone never
 proves agreement.
+
+The meeting controller follows these convergence rules:
+
+```text
+minimum rounds: 2
+maximum rounds: 6
+continue: partial_agreement or blocked with live, evidence-backed disagreement
+next speakers: unresolved_roles plus validation_audit
+deadlock: the same normalized disagreement appears in 2 consecutive outcomes
+deadlock resolver: ceo_coordinator performs one evidence-bound arbitration
+stop immediately: agreed, failed evaluation, or needs_user_decision
+stop immediately: a non-agreed outcome without a concrete disagreement
+hard stop: non-agreement after round 6 becomes needs_user_decision
+```
+
+`unresolved_roles` is produced by outcome validation and must contain only
+meeting participants. If a live non-agreed outcome omits role ownership, the
+controller conservatively invites all six visible roles rather than guessing.
+The CEO does not join ordinary convergence rounds unless listed as unresolved;
+the CEO becomes the arbiter only after the same disagreement repeats twice.
+
+CEO arbitration is not permission to fabricate consensus. It may return
+`agreed` only when the stored transcript demonstrates that every unresolved
+role accepted the same condition. Any other arbitration result becomes
+`needs_user_decision` with the agreements, remaining disagreement, evidence,
+and decision options preserved. The arbitration summary is stored as the next
+`phase="consensus"` round with one `ceo_coordinator` message, so Discord and
+reports show the representative's actual ruling instead of hiding it as an
+internal evaluator call.
 
 `/meeting-report` uses the stored session and outcome. It must not reconstruct
 an empty session, substitute the agenda for consensus, fabricate generic action
@@ -435,11 +466,17 @@ tokens are not written to the reservation record. Reservation uses exclusive
 file creation before provider work, and completion adds the reusable
 `MeetingRun`/thread result without replacing the original reservation time.
 
-The expected baseline cost is:
+The expected fast-path cost is:
 
 ```text
 12 visible-role calls + selected internal specialists + 1 outcome evaluation
 ```
+
+Each convergence round adds one call per selected unresolved role, always adds
+`validation_audit` when it is not already selected, and then adds one outcome
+evaluation. A deadlock adds one CEO arbitration call. The three-call
+concurrency bound remains in force inside every round; rounds and outcome
+evaluations remain strictly sequential barriers.
 
 The previous second set of six visible-role worker calls is redundant. Visible
 worker artifacts are derived from stored final statements; only internal
@@ -490,7 +527,13 @@ agenda_built
   -> round_2_rebuttals
   -> session_round_2_persisted
   -> outcome_validation
-  -> agreed | partial_agreement | blocked | needs_user_decision
+  -> agreed
+  -> partial_agreement | blocked
+       -> round_3_to_6_targeted_convergence
+       -> session_round_n_persisted
+       -> outcome_validation
+       -> repeated_disagreement_twice -> ceo_arbitration
+  -> needs_user_decision
 ```
 
 Fast-path requests may skip MeetingPhase.
@@ -707,9 +750,12 @@ Raw meeting logs stay in project storage.
   "summary": "",
   "agreements": [],
   "disagreements": [],
+  "unresolved_roles": ["content_lead", "marketing_lead"],
   "action_items": [],
   "evidence_refs": ["round:1:content_lead"],
   "validator_notes": [],
+  "evaluator_role": "validation_audit | ceo_coordinator",
+  "resolution_kind": "validation | arbitration",
   "generation_status": "live | failed",
   "model": "",
   "error_code": "",
@@ -819,8 +865,12 @@ Discord mention
 -> round 2 rebuttals
 -> meeting_session.json saved
 -> validation_audit evaluates transcript evidence
--> meeting_outcome.json saved
--> agreed | partial_agreement | blocked | needs_user_decision
+-> agreed: meeting_outcome.json saved and stop
+-> partial_agreement or blocked: unresolved roles plus validation continue
+-> every additional round is saved before another outcome evaluation
+-> same disagreement twice: CEO performs one evidence-bound arbitration
+-> round 6 without agreement: needs_user_decision
+-> final meeting_outcome.json saved
 -> compact Discord outcome
 -> on-demand report from the stored session and outcome
 ```

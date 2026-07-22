@@ -432,7 +432,9 @@ def route_bot_projection(
     return sink.publish(event)
 
 
-def _truncate_discord_projection_content(content: str, *, max_length: int = 1900) -> str:
+def _truncate_discord_projection_content(
+    content: str, *, max_length: int = 1900
+) -> str:
     if len(content) <= max_length:
         return content
     truncated = content[: max_length - 1].rstrip() + "…"
@@ -580,10 +582,11 @@ def _generate_meeting_round(
     roles: tuple[str, ...],
     live_role_set: set[str],
     round_num: int,
-    msg_type: Literal["opinion", "rebuttal"],
+    msg_type: Literal["opinion", "rebuttal", "consensus"],
     command_runner: OpenCodeGoCommandRunner | None,
     workdir: str,
     previous_messages: tuple[BotMessage, ...],
+    focus_items: tuple[str, ...] = (),
 ) -> tuple[BotMessage, ...]:
     def generate(role: str) -> BotGenerationResult:
         return _generate_bot_content(
@@ -595,6 +598,7 @@ def _generate_meeting_round(
             command_runner=command_runner,
             workdir=workdir,
             previous_messages=previous_messages,
+            focus_items=focus_items,
         )
 
     with ThreadPoolExecutor(max_workers=min(3, len(roles))) as executor:
@@ -602,7 +606,9 @@ def _generate_meeting_round(
 
     messages: list[BotMessage] = []
     for role, generation in zip(roles, generations, strict=True):
-        mentions = tuple(other for other in roles if other != role) if round_num >= 2 else ()
+        mentions = (
+            tuple(other for other in roles if other != role) if round_num >= 2 else ()
+        )
         messages.append(
             BotMessage(
                 bot_role=role,
@@ -619,6 +625,124 @@ def _generate_meeting_round(
             )
         )
     return tuple(messages)
+
+
+def _run_convergent_meeting(
+    *,
+    run: MeetingRun,
+    session: MultiBotSession,
+    participants: tuple[str, ...],
+    live_bot_roles: tuple[str, ...],
+    command_runner: OpenCodeGoCommandRunner | None,
+    workdir: str | Path,
+    on_round_completed: Callable[[MultiBotSession], object] | None,
+) -> tuple[MultiBotSession, MeetingOutcome]:
+    """Evaluate and extend a live meeting until a bounded terminal decision."""
+
+    from .meeting_convergence import decide_convergence
+    from .meeting_outcome import evaluate_meeting_outcome
+
+    outcomes: list[MeetingOutcome] = []
+    outcome = evaluate_meeting_outcome(
+        session,
+        command_runner=command_runner,
+        workdir=workdir,
+    )
+    outcomes.append(outcome)
+    live_role_set = set(live_bot_roles)
+
+    while True:
+        decision = decide_convergence(
+            tuple(outcomes),
+            participants=participants,
+            completed_rounds=len(session.rounds),
+        )
+        if decision.action == "stop":
+            if decision.reason == "max_rounds_reached":
+                outcome = replace(
+                    outcome,
+                    status=MeetingOutcomeStatus.NEEDS_USER_DECISION,
+                    error_code="max_rounds_reached",
+                )
+            return session, outcome
+
+        if decision.action == "arbitrate":
+            outcome = evaluate_meeting_outcome(
+                session,
+                command_runner=command_runner,
+                workdir=workdir,
+                evaluator_role="ceo_coordinator",
+                resolution_kind="arbitration",
+                previous_outcome=outcome,
+            )
+            arbitration_round_number = len(session.rounds) + 1
+            arbitration_message = BotMessage(
+                bot_role="ceo_coordinator",
+                meeting_run_id=session.meeting_run_id,
+                round=arbitration_round_number,
+                msg_type="consensus",
+                content=outcome.summary or "대표 중재 결과에 사용자 판단이 필요합니다.",
+                mentions=tuple(
+                    role for role in participants if role != "ceo_coordinator"
+                ),
+                visible_on_discord=True,
+                generation_status=outcome.generation_status,
+                provider="opencode-go",
+                model=outcome.model,
+                error_code=outcome.error_code,
+            )
+            session = replace(
+                session,
+                rounds=session.rounds
+                + (
+                    MeetingRound(
+                        round_number=arbitration_round_number,
+                        phase="consensus",
+                        messages=(arbitration_message,),
+                    ),
+                ),
+                updated_at=datetime.now(UTC).isoformat(),
+            )
+            if on_round_completed is not None:
+                on_round_completed(session)
+            return session, outcome
+
+        round_number = len(session.rounds) + 1
+        previous_messages = tuple(
+            message for round_data in session.rounds for message in round_data.messages
+        )
+        messages = _generate_meeting_round(
+            run=run,
+            roles=decision.next_roles,
+            live_role_set=live_role_set,
+            round_num=round_number,
+            msg_type="consensus",
+            command_runner=command_runner,
+            workdir=str(workdir),
+            previous_messages=previous_messages,
+            focus_items=outcome.disagreements,
+        )
+        session = replace(
+            session,
+            rounds=session.rounds
+            + (
+                MeetingRound(
+                    round_number=round_number,
+                    phase="consensus",
+                    messages=messages,
+                ),
+            ),
+            updated_at=datetime.now(UTC).isoformat(),
+        )
+        if on_round_completed is not None:
+            on_round_completed(session)
+        outcome = evaluate_meeting_outcome(
+            session,
+            command_runner=command_runner,
+            workdir=workdir,
+            previous_outcome=outcome,
+        )
+        outcomes.append(outcome)
 
 
 # ── Multi-bot Pilot Orchestrator ───────────────────────────────────────
@@ -667,7 +791,8 @@ def _build_phase14_worker_tasks(
     for index, role in enumerate(all_task_roles, start=1):
         runner_enum = (
             WorkerTaskRunner.OPENCODE_GO
-            if role in live_roles or (live_specialists and role in internal_specialist_roles)
+            if role in live_roles
+            or (live_specialists and role in internal_specialist_roles)
             else WorkerTaskRunner.HERMES_WRAPPER
         )
         task_id = f"wt_{run.meeting_run_id}_{index}_{role}"
@@ -889,12 +1014,14 @@ def run_phase14_multi_bot_pilot(
     )
 
     if mode == "live-worker" and active_live_bot_roles:
-        from .meeting_outcome import evaluate_meeting_outcome
-
-        outcome = evaluate_meeting_outcome(
-            session,
+        session, outcome = _run_convergent_meeting(
+            run=run,
+            session=session,
+            participants=participants,
+            live_bot_roles=active_live_bot_roles,
             command_runner=command_runner,
             workdir=root,
+            on_round_completed=store.save_meeting_session,
         )
     else:
         outcome = MeetingOutcome(
@@ -1048,11 +1175,7 @@ def run_phase14_multi_bot_pilot(
         ),
         metadata={
             **run.metadata,
-            **(
-                {"discord_thread_id": meeting_thread_id}
-                if meeting_thread_id
-                else {}
-            ),
+            **({"discord_thread_id": meeting_thread_id} if meeting_thread_id else {}),
         },
     )
     store.save_meeting_run(run)
@@ -1094,6 +1217,7 @@ def _generate_bot_content(
     command_runner: OpenCodeGoCommandRunner | None,
     workdir: str,
     previous_messages: tuple[BotMessage, ...] = (),
+    focus_items: tuple[str, ...] = (),
 ) -> BotGenerationResult:
     """Generate content for a bot message — live via opencode-go or fake."""
     if not is_live:
@@ -1115,6 +1239,7 @@ def _generate_bot_content(
         command_runner,
         workdir,
         previous_messages=previous_messages,
+        focus_items=focus_items,
     )
 
 
@@ -1139,6 +1264,11 @@ def _fake_bot_content(
             "각 팀장은 안건 유지와 실행 조건을 중심으로 말해주세요."
         )
     if role == "ceo_coordinator":
+        if round_num > 2:
+            return (
+                f"{agenda_text} {round_num}라운드 수렴 진행: 남은 쟁점만 검토하고 "
+                "수용 가능한 공통 조건 또는 사용자 결정이 필요한 선택지를 정리합니다."
+            )
         return (
             f"{agenda_text} 1라운드 발언을 종합해 2라운드 쟁점을 제시합니다. "
             "각 팀장은 앞선 의견을 반복하지 말고 보완/반박과 합의 조건을 제시해주세요."
@@ -1151,6 +1281,11 @@ def _fake_bot_content(
             "리스크는 안건 이탈과 근거 없는 합의입니다."
         )
     if role in {"quality_lead", "validation_audit"}:
+        if round_num > 2:
+            return (
+                f"{agenda_text} Round {round_num} 수렴 검증: 남은 쟁점의 수용 여부와 "
+                "근거를 확인하고 해결되지 않은 항목을 명시합니다."
+            )
         return (
             f"{agenda_text} Round 2 최종 검증: 수정요구 조건은 안건 유지 증거, "
             "대표 브리핑 반영, 반복 없는 팀별 보완안입니다. "
@@ -1161,6 +1296,11 @@ def _fake_bot_content(
         return (
             f"{persona} 관점에서 {agenda_text} 안건의 핵심 판단과 근거를 제시합니다. "
             "1라운드에서는 역할별 리스크와 실행 조건을 구체화합니다."
+        )
+    if round_num > 2:
+        return (
+            f"{persona} Round {round_num} 수렴 의견: 남은 쟁점에 대해 수용 조건과 "
+            "구체적인 해결안을 제안합니다."
         )
     return (
         f"{persona} Round 2 의견: 1라운드 대표 브리핑과 타 팀 의견을 반영해 "
@@ -1176,8 +1316,13 @@ def _prompt_for_live_bot_message(
     msg_type: str,
     agenda: str,
     previous_messages: tuple[BotMessage, ...] = (),
+    focus_items: tuple[str, ...] = (),
 ) -> str:
-    display_persona = "품질관리 팀장(QA 리드)" if role in {"quality_lead", "validation_audit"} else persona
+    display_persona = (
+        "품질관리 팀장(QA 리드)"
+        if role in {"quality_lead", "validation_audit"}
+        else persona
+    )
     base = [
         f"당신은 AI 가상 엔터테인먼트 회사의 '{display_persona}'입니다.",
         f"회의 안건: {agenda}",
@@ -1190,13 +1335,27 @@ def _prompt_for_live_bot_message(
                 "핵심 판단 1개와 근거 1개를 포함하세요.",
             ]
         )
-    else:
+    elif round_num == 2:
         base.extend(
             [
                 "아래는 1라운드 회의록입니다:",
                 _format_previous_round_transcript(previous_messages),
                 "2라운드에서는 1라운드 의견을 반복하지 마세요.",
                 "반드시 동의하는 다른 팀장 의견 1개, 보완/반박할 다른 팀장 의견 1개, 최종 합의에 넣을 조건 1개를 포함하세요.",
+            ]
+        )
+    else:
+        unresolved = (
+            "\n".join(f"- {item}" for item in focus_items) or "- 명시된 쟁점 없음"
+        )
+        base.extend(
+            [
+                "아래는 지금까지의 회의록입니다:",
+                _format_previous_round_transcript(previous_messages),
+                "이번 라운드에서 해결할 미합의 쟁점:",
+                unresolved,
+                "이전 발언을 반복하지 말고 각 쟁점의 수용 또는 거부 조건을 명확히 밝히세요.",
+                "합의 가능한 구체적 해결안 1개를 제시하고, 사용자 결정이 필요하면 선택지를 명시하세요.",
             ]
         )
     if role in {"quality_lead", "validation_audit"}:
@@ -1235,6 +1394,7 @@ def _live_bot_content(
     command_runner: OpenCodeGoCommandRunner | None,
     workdir: str,
     previous_messages: tuple[BotMessage, ...] = (),
+    focus_items: tuple[str, ...] = (),
 ) -> BotGenerationResult:
     """Generate live bot content through opencode-go worker, respecting the
     role's canonical model policy when available.
@@ -1248,6 +1408,7 @@ def _live_bot_content(
         msg_type=msg_type,
         agenda=str(run.trigger.get("text", "")),
         previous_messages=previous_messages,
+        focus_items=focus_items,
     )
 
     try:
@@ -1392,7 +1553,7 @@ def _execute_phase14_tasks(
             runner = FakeWorkerRunner(
                 output={
                     "summary": bot_output,
-                    "source": "meeting_session_round_2",
+                    "source": "meeting_session_final_round",
                 }
             )
         elif task.runner == WorkerTaskRunner.OPENCODE_GO and mode == "live-worker":
@@ -1472,7 +1633,7 @@ def _human_facing_text(value: object) -> str:
     candidate = text
     for _ in range(2):
         stripped = candidate.strip()
-        if not stripped or stripped[0] not in "[{\"":
+        if not stripped or stripped[0] not in '[{"':
             break
         try:
             parsed = json.loads(stripped)
@@ -1532,7 +1693,9 @@ def _validation_evidence_lines(validation_verdicts: tuple[object, ...]) -> list[
         role = str(getattr(verdict, "validator_role", "validator"))
         result = str(getattr(verdict, "verdict", "")) or "unknown"
         confidence = str(getattr(verdict, "confidence", ""))
-        findings = _one_line("; ".join(getattr(verdict, "findings", ())), max_length=160)
+        findings = _one_line(
+            "; ".join(getattr(verdict, "findings", ())), max_length=160
+        )
         lines.append(f"validation:{role:<16} {result.upper()} confidence={confidence}")
         if findings:
             lines.append(f"findings: {findings}")
@@ -1551,8 +1714,14 @@ def _model_evidence_lines(worker_tasks: tuple[WorkerTask, ...]) -> list[str]:
             for key in ("content", "summary", "stdout")
             if payload.get(key) is not None
         )
-        icon = "✅" if task.state == WorkerTaskState.SUCCEEDED and not placeholder_failed else "⚠️"
-        state_note = " worker_execution_failed=placeholder_output" if placeholder_failed else ""
+        icon = (
+            "✅"
+            if task.state == WorkerTaskState.SUCCEEDED and not placeholder_failed
+            else "⚠️"
+        )
+        state_note = (
+            " worker_execution_failed=placeholder_output" if placeholder_failed else ""
+        )
         line = f"{task.role:<22} {icon} {model_path} fallback_used={str(len(attempts) > 1).lower()}{state_note}"
         if placeholder_failed or task.state != WorkerTaskState.SUCCEEDED:
             warning_lines.append(line)
@@ -1587,10 +1756,17 @@ def _derive_agreement_items(
             "placeholder specialist output은 성공 산출물이 아니라 worker_execution_failed로 표시하고 evidence 상태와 동기화한다."
         )
 
-    if any(term in source_text for term in ("discord", "bullet", "표", "artifact", "evidence")):
-        add("Discord thread는 사용자 판단 화면, local runtime artifact는 전체 evidence 보관소로 역할을 분리한다.")
+    if any(
+        term in source_text
+        for term in ("discord", "bullet", "표", "artifact", "evidence")
+    ):
+        add(
+            "Discord thread는 사용자 판단 화면, local runtime artifact는 전체 evidence 보관소로 역할을 분리한다."
+        )
     else:
-        add("회의에서 합의된 결정은 역할별 발언과 specialist 결과를 기준으로 세부 항목으로 관리한다.")
+        add(
+            "회의에서 합의된 결정은 역할별 발언과 specialist 결과를 기준으로 세부 항목으로 관리한다."
+        )
 
     if fallback_used:
         add("fallback 사용 role은 모델 경로와 결과 품질을 별도 확인 대상으로 둔다.")
@@ -1611,9 +1787,13 @@ def _derive_action_items(
             actions.append(action)
 
     if "legal-reviewer" in source_text and "placeholder" in source_text:
-        add("legal-reviewer placeholder output을 worker_execution_failed로 처리하는 회귀 테스트를 고정한다.")
+        add(
+            "legal-reviewer placeholder output을 worker_execution_failed로 처리하는 회귀 테스트를 고정한다."
+        )
     elif "placeholder" in source_text and "worker_execution_failed" in source_text:
-        add("placeholder specialist output을 worker_execution_failed로 처리하는 회귀 테스트를 고정한다.")
+        add(
+            "placeholder specialist output을 worker_execution_failed로 처리하는 회귀 테스트를 고정한다."
+        )
     elif "회귀 테스트" in source_text:
         if "evidence" in source_text:
             add("evidence 분리와 specialist 고유 output을 회귀 테스트로 고정한다.")
@@ -1621,7 +1801,12 @@ def _derive_action_items(
             add("specialist 고유 output을 회귀 테스트로 고정한다.")
     if "API" in source_text or "큐" in source_text or "자동화" in source_text:
         add("기술 제안에 따라 API/큐/자동화 경계를 구현 작업으로 분리한다.")
-    if "UI" in source_text or "UX" in source_text or "bullet" in source_text or "표" in source_text:
+    if (
+        "UI" in source_text
+        or "UX" in source_text
+        or "bullet" in source_text
+        or "표" in source_text
+    ):
         add("Discord는 bullet 요약을 유지하고 local artifact는 표 렌더링을 유지한다.")
     if fallback_used:
         add("fallback이 발생한 role의 모델 경로와 산출물 품질을 추가 확인한다.")
@@ -1648,7 +1833,9 @@ def _task_attempts(task: WorkerTask) -> tuple[str, ...]:
     attempts = payload.get("attempted_models") or []
     if isinstance(attempts, list):
         return tuple(str(item) for item in attempts if str(item).strip())
-    model = str(payload.get("model") or task.model_policy.get("preferred") or "").strip()
+    model = str(
+        payload.get("model") or task.model_policy.get("preferred") or ""
+    ).strip()
     return (model,) if model else ()
 
 
@@ -1673,10 +1860,14 @@ def _build_final_report(
     trigger_text = _human_facing_text(run.trigger.get("text"))
     agenda = _first_line(trigger_text, fallback="AI_Agent 회의")
     fallback_used = bool(fallback_events)
-    validation_passed = all(
-        str(getattr(v, "verdict", "")).lower() in {"pass", "passed", "ok"}
-        for v in validation_verdicts
-    ) if validation_verdicts else True
+    validation_passed = (
+        all(
+            str(getattr(v, "verdict", "")).lower() in {"pass", "passed", "ok"}
+            for v in validation_verdicts
+        )
+        if validation_verdicts
+        else True
+    )
     status = (
         f"**상태:** ✅ 완료 · 검증 {'PASS' if validation_passed else 'REVIEW'} · "
         f"fallback {'있음' if fallback_used else '없음'}"
@@ -1705,9 +1896,16 @@ def _build_final_report(
         for role, summary in specialist_summaries.items()
     ] or ["| - | 투입된 내부 specialist 없음"]
 
-    evidence_lines = _validation_evidence_lines(validation_verdicts) + [""] + _model_evidence_lines(worker_tasks)
+    evidence_lines = (
+        _validation_evidence_lines(validation_verdicts)
+        + [""]
+        + _model_evidence_lines(worker_tasks)
+    )
 
-    consensus = session.consensus_summary or "합의안은 회의 발언과 specialist 결과를 기준으로 정리합니다."
+    consensus = (
+        session.consensus_summary
+        or "합의안은 회의 발언과 specialist 결과를 기준으로 정리합니다."
+    )
     conclusion = _concrete_conclusion(agenda=agenda, consensus=consensus)
     agreement_items = _prefix_lines(
         "-",
@@ -1731,7 +1929,9 @@ def _build_final_report(
     risk_items = (
         ["- fallback이 사용되어 해당 모델 경로와 결과 품질을 추가 확인해야 합니다."]
         if fallback_used
-        else ["- 리스크 없음 — fallback 없이 완료되었고, 세부 evidence는 참고 정보로 분리합니다."]
+        else [
+            "- 리스크 없음 — fallback 없이 완료되었고, 세부 evidence는 참고 정보로 분리합니다."
+        ]
     )
 
     return "\n".join(
@@ -1782,10 +1982,14 @@ def _build_discord_final_report(
     trigger_text = _human_facing_text(run.trigger.get("text"))
     agenda = _first_line(trigger_text, fallback="AI_Agent 회의")
     fallback_used = bool(fallback_events)
-    validation_passed = all(
-        str(getattr(v, "verdict", "")).lower() in {"pass", "passed", "ok"}
-        for v in validation_verdicts
-    ) if validation_verdicts else True
+    validation_passed = (
+        all(
+            str(getattr(v, "verdict", "")).lower() in {"pass", "passed", "ok"}
+            for v in validation_verdicts
+        )
+        if validation_verdicts
+        else True
+    )
     status = (
         f"**상태:** ✅ 완료 · 검증 {'PASS' if validation_passed else 'REVIEW'} · "
         f"fallback {'있음' if fallback_used else '없음'}"
@@ -1810,12 +2014,18 @@ def _build_discord_final_report(
         if role in task_by_role
     }
     specialist_lines = [
-        f"• {role}: {summary}"
-        for role, summary in specialist_summaries.items()
+        f"• {role}: {summary}" for role, summary in specialist_summaries.items()
     ] or ["• 투입된 내부 specialist 없음"]
-    evidence_lines = _validation_evidence_lines(validation_verdicts) + [""] + _model_evidence_lines(worker_tasks)
+    evidence_lines = (
+        _validation_evidence_lines(validation_verdicts)
+        + [""]
+        + _model_evidence_lines(worker_tasks)
+    )
 
-    consensus = session.consensus_summary or "합의안은 회의 발언과 specialist 결과를 기준으로 정리합니다."
+    consensus = (
+        session.consensus_summary
+        or "합의안은 회의 발언과 specialist 결과를 기준으로 정리합니다."
+    )
     conclusion = _concrete_conclusion(agenda=agenda, consensus=consensus)
     agreement_items = _prefix_lines(
         "•",

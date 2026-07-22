@@ -618,3 +618,96 @@ findings, so changed-file F/I and diff checks remain the scoped quality gate.
 git add src/runtime_architecture_v2/multi_bot.py tests/test_runtime_architecture_v2_phase14_multi_bot.py docs/operations/discord-save-slash-command.md .superpowers/sdd/progress.md
 git commit -m "perf: remove duplicate meeting worker calls"
 ```
+
+### Task 12: Add Bounded Convergence and CEO Deadlock Arbitration
+
+**Files:**
+- Create: `src/runtime_architecture_v2/meeting_convergence.py`
+- Modify: `src/runtime_architecture_v2/schemas.py`
+- Modify: `src/runtime_architecture_v2/meeting_outcome.py`
+- Modify: `src/runtime_architecture_v2/multi_bot.py`
+- Create: `tests/test_runtime_architecture_v2_meeting_convergence.py`
+- Modify: `tests/test_runtime_architecture_v2_meeting_outcome.py`
+- Modify: `tests/test_runtime_architecture_v2_phase14_multi_bot.py`
+- Modify: `docs/runtime-architecture-v2.md`
+- Modify: `.superpowers/sdd/progress.md`
+
+**Interfaces:**
+- Produces: `ConvergencePolicy(min_rounds=2, max_rounds=6, deadlock_threshold=2)`.
+- Produces: `decide_convergence(...) -> ConvergenceDecision` with `stop`,
+  `continue`, or `arbitrate` action and an ordered `next_roles` tuple.
+- Extends: `MeetingOutcome` with backward-compatible `unresolved_roles`,
+  `evaluator_role`, and `resolution_kind` fields.
+- Extends: `evaluate_meeting_outcome(..., evaluator_role="validation_audit",
+  resolution_kind="validation", previous_outcome=None)`.
+- Changes: live meetings evaluate after round two and every targeted round until
+  agreement, CEO arbitration, provider/evidence failure, or round six.
+
+- [x] **Step 1: Write failing outcome-schema and convergence-decision tests**
+
+Assert old outcome JSON still loads. Assert unknown unresolved roles fail
+closed. Cover agreement stop, failed evaluation stop, targeted continuation,
+all-role fallback when ownership is missing, repeated-disagreement arbitration,
+and the round-six user-decision hard stop.
+
+- [x] **Step 2: Run the focused tests and confirm RED**
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_runtime_architecture_v2_meeting_convergence.py tests/test_runtime_architecture_v2_meeting_outcome.py -q
+```
+
+Expected: missing convergence module, schema fields, and evaluator controls.
+
+- [x] **Step 3: Implement the pure convergence policy**
+
+Normalize disagreement text into a stable fingerprint without persisting raw
+command text. Preserve canonical visible-role order, include
+`validation_audit` in every targeted continuation round, and return
+`needs_user_decision` at the maximum round instead of forcing consensus.
+
+- [x] **Step 4: Extend outcome validation for targeted rounds and arbitration**
+
+Require all six live roles in the two baseline rounds. For later rounds require
+every selected speaker to be live and require evidence from the latest round.
+Validate `unresolved_roles` against session participants. Use the CEO model
+policy only for `resolution_kind="arbitration"`; a non-agreed CEO result becomes
+`needs_user_decision` while preserving evidence-backed details.
+
+- [x] **Step 5: Write failing orchestration tests**
+
+Cover fast-path agreement at thirteen provider calls, one targeted third round,
+same-disagreement CEO arbitration, provider failure stop, and round-six hard
+stop. Assert every completed round and final outcome are durably persisted and
+round concurrency never exceeds three.
+
+- [x] **Step 6: Implement convergence orchestration**
+
+Keep `run_meeting_phase` as the two-round baseline. Append immutable
+`phase="consensus"` rounds for the selected roles, persist immediately, then
+evaluate. Use one CEO arbitration call when the policy requests it. Project and
+report from the final stored session and outcome without changing slash command
+names, bot tokens, channel IDs, or manual `/archive` behavior.
+
+- [x] **Step 7: Run focused and full Runtime v2 verification**
+
+```powershell
+$env:PYTHONUTF8='1'
+.\.venv\Scripts\python.exe -m pytest tests/test_runtime_architecture_v2_meeting_convergence.py tests/test_runtime_architecture_v2_meeting_outcome.py tests/test_runtime_architecture_v2_phase14_multi_bot.py tests/test_runtime_architecture_v2_on_demand_exports.py tests/test_runtime_architecture_v2_meeting_commands.py tests/test_runtime_smoke_packet.py -q
+.\.venv\Scripts\python.exe -m pytest tests/test_runtime_architecture_v2_*.py -q
+.\.venv\Scripts\ruff.exe check --select F,I src/runtime_architecture_v2 tests/test_runtime_architecture_v2_meeting_convergence.py tests/test_runtime_architecture_v2_meeting_outcome.py tests/test_runtime_architecture_v2_phase14_multi_bot.py
+git diff --check
+```
+
+- [x] **Step 8: Record implementation evidence in existing documents**
+
+Mark this task complete only with fresh test counts. Update the existing
+progress document and this plan in place; do not create a parallel design or
+runbook.
+
+Implemented on 2026-07-22. The new policy and orchestration tests were observed
+failing before implementation. The final focused meeting, outcome, report,
+command, and smoke suite passed 125 tests. The complete Runtime v2 UTF-8 suite
+passed 819 tests with 1 skip. Changed-file Ruff F/I and `git diff --check`
+passed. Fast-path agreement remains thirteen provider calls; targeted rounds,
+CEO arbitration, and the round-six stop are covered without changing Discord
+commands, tokens, channel IDs, or manual `/archive` behavior.

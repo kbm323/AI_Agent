@@ -198,9 +198,12 @@ class MeetingOutcome:
     summary: str = ""
     agreements: tuple[str, ...] = ()
     disagreements: tuple[str, ...] = ()
+    unresolved_roles: tuple[str, ...] = ()
     action_items: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     validator_notes: tuple[str, ...] = ()
+    evaluator_role: str = "validation_audit"
+    resolution_kind: str = "validation"
     generation_status: str = "failed"
     model: str = ""
     error_code: str = ""
@@ -213,6 +216,10 @@ class MeetingOutcome:
             raise ValueError(
                 f"invalid meeting outcome generation status: {self.generation_status}"
             )
+        if self.resolution_kind not in {"validation", "arbitration"}:
+            raise ValueError(
+                f"invalid meeting outcome resolution kind: {self.resolution_kind}"
+            )
         if self.schema_version != 1:
             raise ValueError(
                 f"unsupported meeting outcome schema version: {self.schema_version}"
@@ -220,6 +227,7 @@ class MeetingOutcome:
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "agreements", _tuple(self.agreements))
         object.__setattr__(self, "disagreements", _tuple(self.disagreements))
+        object.__setattr__(self, "unresolved_roles", _tuple(self.unresolved_roles))
         object.__setattr__(self, "action_items", _tuple(self.action_items))
         object.__setattr__(self, "evidence_refs", _tuple(self.evidence_refs))
         object.__setattr__(self, "validator_notes", _tuple(self.validator_notes))
@@ -232,9 +240,12 @@ class MeetingOutcome:
             "summary": self.summary,
             "agreements": list(self.agreements),
             "disagreements": list(self.disagreements),
+            "unresolved_roles": list(self.unresolved_roles),
             "action_items": list(self.action_items),
             "evidence_refs": list(self.evidence_refs),
             "validator_notes": list(self.validator_notes),
+            "evaluator_role": self.evaluator_role,
+            "resolution_kind": self.resolution_kind,
             "generation_status": self.generation_status,
             "model": self.model,
             "error_code": self.error_code,
@@ -250,9 +261,12 @@ class MeetingOutcome:
             summary=str(payload.get("summary", "")),
             agreements=tuple(payload.get("agreements") or ()),
             disagreements=tuple(payload.get("disagreements") or ()),
+            unresolved_roles=tuple(payload.get("unresolved_roles") or ()),
             action_items=tuple(payload.get("action_items") or ()),
             evidence_refs=tuple(payload.get("evidence_refs") or ()),
             validator_notes=tuple(payload.get("validator_notes") or ()),
+            evaluator_role=str(payload.get("evaluator_role", "validation_audit")),
+            resolution_kind=str(payload.get("resolution_kind", "validation")),
             generation_status=str(payload.get("generation_status", "failed")),
             model=str(payload.get("model", "")),
             error_code=str(payload.get("error_code", "")),

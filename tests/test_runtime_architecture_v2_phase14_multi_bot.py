@@ -107,9 +107,7 @@ def test_multi_bot_session_serialization_round_trips():
     session = MultiBotSession(
         meeting_run_id="mr_session",
         participants=("content_lead",),
-        rounds=(
-            MeetingRound(round_number=1, phase="opinions", messages=(message,)),
-        ),
+        rounds=(MeetingRound(round_number=1, phase="opinions", messages=(message,)),),
         consensus_reached=False,
         escalation_required=True,
         schema_version=1,
@@ -256,7 +254,9 @@ def test_meeting_phase_records_live_and_replacement_generation_evidence(
         workdir=str(tmp_path),
     )
 
-    messages = [message for round_data in session.rounds for message in round_data.messages]
+    messages = [
+        message for round_data in session.rounds for message in round_data.messages
+    ]
     content_messages = [m for m in messages if m.bot_role == "content_lead"]
     marketing_messages = [m for m in messages if m.bot_role == "marketing_lead"]
     assert {m.generation_status for m in content_messages} == {"live"}
@@ -293,7 +293,9 @@ def test_meeting_phase_emits_session_after_each_completed_round(tmp_path: Path):
     assert snapshots[-1].updated_at
 
 
-def test_meeting_phase_round2_prompt_uses_round1_transcript_and_quality_language(tmp_path: Path):
+def test_meeting_phase_round2_prompt_uses_round1_transcript_and_quality_language(
+    tmp_path: Path,
+):
     from src.runtime_architecture_v2.pilot import (
         build_phase13_pilot_request,
         create_phase13_meeting_run,
@@ -340,7 +342,9 @@ def test_meeting_phase_round2_prompt_uses_round1_transcript_and_quality_language
     assert any("품질관리 팀장:" in prompt for prompt in round2_prompts)
 
     quality_round2_prompt = next(
-        prompt for prompt in round2_prompts if "당신은 AI 가상 엔터테인먼트 회사의 '품질관리 팀장" in prompt
+        prompt
+        for prompt in round2_prompts
+        if "당신은 AI 가상 엔터테인먼트 회사의 '품질관리 팀장" in prompt
     )
     assert "사용자가 이해할 수 있는 품질 기준" in quality_round2_prompt
     assert "worker_execution_failed → 실패 상태로 표시" in quality_round2_prompt
@@ -349,10 +353,14 @@ def test_meeting_phase_round2_prompt_uses_round1_transcript_and_quality_language
     assert "evidence artifact → 검증 기록" in quality_round2_prompt
 
     quality_round1 = next(
-        msg.content for msg in session.rounds[0].messages if msg.bot_role == "quality_lead"
+        msg.content
+        for msg in session.rounds[0].messages
+        if msg.bot_role == "quality_lead"
     )
     quality_round2 = next(
-        msg.content for msg in session.rounds[1].messages if msg.bot_role == "quality_lead"
+        msg.content
+        for msg in session.rounds[1].messages
+        if msg.bot_role == "quality_lead"
     )
     assert quality_round1 != quality_round2
 
@@ -412,7 +420,10 @@ def test_meeting_phase_live_bot_uses_trigger_text_in_hermes_prompt(
     )
 
     assert "정보 쇼츠 유튜브 콘텐츠 회의" in prompts[0]
-    assert session.rounds[0].messages[0].content == "정보 쇼츠 안건을 반영한 콘텐츠 의견입니다."
+    assert (
+        session.rounds[0].messages[0].content
+        == "정보 쇼츠 안건을 반영한 콘텐츠 의견입니다."
+    )
 
 
 def test_meeting_phase_rejects_no_participants(tmp_path: Path):
@@ -799,7 +810,10 @@ def test_phase14_live_discord_creates_shared_thread_and_posts_all_visible_messag
     assert all("## ✅ 합의안" not in body for body in message_bodies)
     assert all("## 🚀 다음 액션" not in body for body in message_bodies)
     assert all("회의 체크포인트" not in body for body in message_bodies)
-    assert any("사용자 질문 스타일에 맞춘 정상 한국어 회의 발언" in body for body in message_bodies)
+    assert any(
+        "사용자 질문 스타일에 맞춘 정상 한국어 회의 발언" in body
+        for body in message_bodies
+    )
     assert all('"status": "succeeded"' not in body for body in message_bodies)
     assert all("test-model" not in body for body in message_bodies)
     assert all("\\u" not in body for body in message_bodies)
@@ -1087,6 +1101,224 @@ def test_six_role_meeting_uses_exactly_twelve_statements_and_one_outcome_call(
         assert payload["result"]["summary"] == final_by_role[task.role]
 
 
+def test_partial_agreement_runs_one_targeted_convergence_round(tmp_path: Path) -> None:
+    roles = (
+        "ceo_coordinator",
+        "content_lead",
+        "art_lead",
+        "tech_lead",
+        "marketing_lead",
+        "validation_audit",
+    )
+    calls: list[str] = []
+    evaluation_count = 0
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        nonlocal evaluation_count
+        prompt = command[command.index("--prompt") + 1]
+        calls.append(prompt)
+        if "필수 키: status" in prompt:
+            evaluation_count += 1
+            status = "partial_agreement" if evaluation_count == 1 else "agreed"
+            payload = {
+                "status": status,
+                "summary": "출시 시점을 조정 중입니다."
+                if status != "agreed"
+                else "합의 완료",
+                "agreements": ["콘텐츠 방향"],
+                "disagreements": ["출시 시점"] if status != "agreed" else [],
+                "unresolved_roles": (
+                    ["content_lead", "marketing_lead"] if status != "agreed" else []
+                ),
+                "action_items": ["일정을 확정한다"],
+                "evidence_refs": (
+                    ["round:2:validation_audit"]
+                    if status != "agreed"
+                    else ["round:3:validation_audit"]
+                ),
+                "validator_notes": ["근거 확인"],
+            }
+            content = json.dumps(payload, ensure_ascii=False)
+        else:
+            content = "역할별 실제 회의 응답"
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout=content,
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=6,
+        command_runner=command_runner,
+        trigger_text="출시 일정 수렴 회의",
+        live_bot_roles_override=roles,
+        fake_bot_roles_override=(),
+    )
+
+    stored = MeetingRunStore(tmp_path).load_meeting_session(
+        result.meeting_run.meeting_run_id
+    )
+    assert result.outcome is not None
+    assert result.outcome.status == "agreed"
+    assert result.rounds_completed == 3
+    assert len(calls) == 17
+    assert [message.bot_role for message in stored.rounds[2].messages] == [
+        "content_lead",
+        "marketing_lead",
+        "validation_audit",
+    ]
+    assert sum("현재 3라운드" in prompt for prompt in calls) == 3
+
+
+def test_repeated_disagreement_uses_one_ceo_arbitration_call(tmp_path: Path) -> None:
+    roles = (
+        "ceo_coordinator",
+        "content_lead",
+        "art_lead",
+        "tech_lead",
+        "marketing_lead",
+        "validation_audit",
+    )
+    calls: list[str] = []
+    validation_count = 0
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        nonlocal validation_count
+        prompt = command[command.index("--prompt") + 1]
+        calls.append(prompt)
+        if "대표(CEO) 중재자" in prompt:
+            payload = {
+                "status": "agreed",
+                "summary": "대표 중재로 공통 조건을 확정했습니다.",
+                "agreements": ["단계적 출시"],
+                "disagreements": [],
+                "unresolved_roles": [],
+                "action_items": ["단계적 출시를 실행한다"],
+                "evidence_refs": ["round:3:validation_audit"],
+                "validator_notes": ["중재 근거 확인"],
+            }
+            content = json.dumps(payload, ensure_ascii=False)
+        elif "필수 키: status" in prompt:
+            validation_count += 1
+            payload = {
+                "status": "partial_agreement" if validation_count == 1 else "blocked",
+                "summary": "출시 일정 충돌이 남았습니다.",
+                "agreements": ["품질 기준"],
+                "disagreements": ["출시 일정 충돌"],
+                "unresolved_roles": ["content_lead", "marketing_lead"],
+                "action_items": [],
+                "evidence_refs": [
+                    "round:2:validation_audit"
+                    if validation_count == 1
+                    else "round:3:validation_audit"
+                ],
+                "validator_notes": ["교착 확인"],
+            }
+            content = json.dumps(payload, ensure_ascii=False)
+        else:
+            content = "역할별 실제 회의 응답"
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout=content,
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=6,
+        command_runner=command_runner,
+        trigger_text="반복 이견 중재 회의",
+        live_bot_roles_override=roles,
+        fake_bot_roles_override=(),
+    )
+
+    assert result.outcome is not None
+    assert result.outcome.status == "agreed"
+    assert result.outcome.evaluator_role == "ceo_coordinator"
+    assert result.outcome.resolution_kind == "arbitration"
+    assert result.rounds_completed == 4
+    assert len(calls) == 18
+    assert sum("대표(CEO) 중재자" in prompt for prompt in calls) == 1
+    arbitration_round = result.session.rounds[-1]
+    assert arbitration_round.phase == "consensus"
+    assert [message.bot_role for message in arbitration_round.messages] == [
+        "ceo_coordinator"
+    ]
+    assert (
+        arbitration_round.messages[0].content == "대표 중재로 공통 조건을 확정했습니다."
+    )
+    assert arbitration_round.messages[0].generation_status == "live"
+
+
+def test_changing_disagreements_stop_at_round_six_for_user_decision(
+    tmp_path: Path,
+) -> None:
+    roles = (
+        "ceo_coordinator",
+        "content_lead",
+        "art_lead",
+        "tech_lead",
+        "marketing_lead",
+        "validation_audit",
+    )
+    calls: list[str] = []
+    evaluation_count = 0
+
+    def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
+        nonlocal evaluation_count
+        prompt = command[command.index("--prompt") + 1]
+        calls.append(prompt)
+        if "필수 키: status" in prompt:
+            evaluation_count += 1
+            current_round = evaluation_count + 1
+            payload = {
+                "status": "partial_agreement",
+                "summary": f"{current_round}라운드 이견",
+                "agreements": ["품질 기준"],
+                "disagreements": [f"변경되는 쟁점 {evaluation_count}"],
+                "unresolved_roles": ["content_lead", "marketing_lead"],
+                "action_items": [],
+                "evidence_refs": [f"round:{current_round}:validation_audit"],
+                "validator_notes": ["추가 논의 필요"],
+            }
+            content = json.dumps(payload, ensure_ascii=False)
+        else:
+            content = "역할별 실제 회의 응답"
+        return OpenCodeGoRunResult(
+            exit_code=0,
+            stdout=content,
+            stderr="",
+            timeout_occurred=False,
+            duration_seconds=0.01,
+        )
+
+    result = run_phase14_multi_bot_pilot(
+        root=tmp_path,
+        mode="live-worker",
+        max_live_workers=6,
+        command_runner=command_runner,
+        trigger_text="장기 의견 조율",
+        live_bot_roles_override=roles,
+        fake_bot_roles_override=(),
+    )
+
+    stored_outcome = MeetingRunStore(tmp_path).load_meeting_outcome(
+        result.meeting_run.meeting_run_id
+    )
+    assert result.rounds_completed == 6
+    assert stored_outcome.status == "needs_user_decision"
+    assert stored_outcome.error_code == "max_rounds_reached"
+    assert len(calls) == 29
+    assert sum("대표(CEO) 중재자" in prompt for prompt in calls) == 0
+
+
 def test_meeting_rounds_use_bounded_concurrency_and_preserve_round_barrier(
     tmp_path: Path,
 ) -> None:
@@ -1321,7 +1553,9 @@ def test_phase14_gateway_trigger_text_overrides_static_pilot_request(tmp_path: P
     assert result.meeting_run.trigger["text"] == "정보 쇼츠 유튜브 콘텐츠 회의"
 
 
-def test_phase14_selects_internal_specialists_without_discord_participation(tmp_path: Path):
+def test_phase14_selects_internal_specialists_without_discord_participation(
+    tmp_path: Path,
+):
     result = run_phase14_multi_bot_pilot(
         root=tmp_path,
         mode="dry-run",
@@ -1414,8 +1648,12 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
     assert report.index("## 🎯 결론") < report.index("## ✅ 합의안")
     assert report.index("## ✅ 합의안") < report.index("## 🚀 다음 액션")
     assert report.index("## 🚀 다음 액션") < report.index("## 👥 팀장 핵심 의견")
-    assert report.index("## 👥 팀장 핵심 의견") < report.index("## 🧑‍💻 Specialist 투입")
-    assert report.index("## 🧑‍💻 Specialist 투입") < report.index("## 🔍 검증 상세 / 모델 Evidence")
+    assert report.index("## 👥 팀장 핵심 의견") < report.index(
+        "## 🧑‍💻 Specialist 투입"
+    )
+    assert report.index("## 🧑‍💻 Specialist 투입") < report.index(
+        "## 🔍 검증 상세 / 모델 Evidence"
+    )
     assert "**상태:** ✅ 완료" in report
     assert "| 팀장 | 핵심 포인트 |" in report
     assert "| specialist | 결과 한줄 요약 |" in report
@@ -1430,18 +1668,27 @@ def test_phase14_final_report_summarizes_evidence_and_fallbacks(tmp_path: Path):
     assert "fallback_used=true" in report
     assert "qwen3.7-plus -> deepseek-v4-pro" in report
     assert "검증 팀장 관점에서" not in report
-    assert report.index("| 팀장 | 핵심 포인트 |") < report.index("| specialist | 결과 한줄 요약 |")
-    agreement_section = report.split("## ✅ 합의안", 1)[1].split("## 🚀 다음 액션", 1)[0]
+    assert report.index("| 팀장 | 핵심 포인트 |") < report.index(
+        "| specialist | 결과 한줄 요약 |"
+    )
+    agreement_section = report.split("## ✅ 합의안", 1)[1].split("## 🚀 다음 액션", 1)[
+        0
+    ]
     assert "기준으로 확정한다" not in agreement_section
     assert agreement_section.count("안건은") <= 1
     action_section = report.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
     assert "회귀 테스트" in action_section
     assert "specialist 고유 output" in action_section
     assert "evidence 분리" in action_section
-    assert "최종 보고 마지막 메시지의 결론/합의안/다음 액션을 우선 확인" not in action_section
+    assert (
+        "최종 보고 마지막 메시지의 결론/합의안/다음 액션을 우선 확인"
+        not in action_section
+    )
 
 
-def test_phase14_final_report_marks_placeholder_specialist_output_failed(tmp_path: Path):
+def test_phase14_final_report_marks_placeholder_specialist_output_failed(
+    tmp_path: Path,
+):
     def command_runner(command: list[str], timeout_seconds: int, workdir: str | None):
         prompt = command[command.index("--prompt") + 1] if "--prompt" in command else ""
         if "legal-reviewer" in prompt:
@@ -1480,8 +1727,12 @@ def test_phase14_final_report_marks_placeholder_specialist_output_failed(tmp_pat
     assert "legal-reviewer" in report
     assert "legal-reviewer specialist output" not in report
     assert "worker_execution_failed" in report
-    agreement_section = report.split("## ✅ 합의안", 1)[1].split("## 🚀 다음 액션", 1)[0]
-    conclusion_section = report.split("## 🎯 결론", 1)[1].split("## ✅ 합의안", 1)[0].strip()
+    agreement_section = report.split("## ✅ 합의안", 1)[1].split("## 🚀 다음 액션", 1)[
+        0
+    ]
+    conclusion_section = (
+        report.split("## 🎯 결론", 1)[1].split("## ✅ 합의안", 1)[0].strip()
+    )
     assert "최종 합의는 `" not in agreement_section
     assert conclusion_section not in agreement_section
     assert "legal-reviewer placeholder" in agreement_section
@@ -1489,7 +1740,10 @@ def test_phase14_final_report_marks_placeholder_specialist_output_failed(tmp_pat
     action_section = report.split("## 🚀 다음 액션", 1)[1].split("## ⚠️", 1)[0]
     assert "legal-reviewer placeholder" in action_section
     assert "worker_execution_failed" in action_section
-    assert "evidence 분리와 specialist 고유 output을 회귀 테스트로 고정한다" not in action_section
+    assert (
+        "evidence 분리와 specialist 고유 output을 회귀 테스트로 고정한다"
+        not in action_section
+    )
     legal_line = next(
         line for line in report.splitlines() if line.startswith("legal-reviewer")
     )
@@ -1561,10 +1815,7 @@ def test_phase32_default_meeting_does_not_auto_generate_final_report_v2(
     assert result.final_report == ""
 
     run_dir = (
-        Path(tmp_path)
-        / "runtime"
-        / "meeting_runs"
-        / result.meeting_run.meeting_run_id
+        Path(tmp_path) / "runtime" / "meeting_runs" / result.meeting_run.meeting_run_id
     )
     report_path = run_dir / "final_report_v2.md"
     assert not report_path.exists(), "final_report_v2.md must not be auto-generated"

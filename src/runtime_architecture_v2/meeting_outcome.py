@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping
@@ -44,12 +44,22 @@ def evaluate_meeting_outcome(
     *,
     command_runner: OpenCodeGoCommandRunner | None,
     workdir: str | Path,
+    evaluator_role: str = "validation_audit",
+    resolution_kind: str = "validation",
+    previous_outcome: MeetingOutcome | None = None,
 ) -> MeetingOutcome:
     """Evaluate a persisted transcript and fail closed on unproven agreement."""
 
-    policy = worker_model_policy_for_role("validation_audit")
+    if resolution_kind not in {"validation", "arbitration"}:
+        raise ValueError(f"invalid outcome resolution kind: {resolution_kind}")
+    policy = worker_model_policy_for_role(evaluator_role)
     model = str(policy.get("preferred") or policy.get("primary_model") or "glm-5.1")
-    prompt = _build_outcome_prompt(session)
+    prompt = _build_outcome_prompt(
+        session,
+        evaluator_role=evaluator_role,
+        resolution_kind=resolution_kind,
+        previous_outcome=previous_outcome,
+    )
     try:
         raw = _run_outcome_provider(
             session,
@@ -60,15 +70,39 @@ def evaluate_meeting_outcome(
             workdir=Path(workdir),
         )
         payload = _decode_outcome_payload(raw)
-        outcome = _outcome_from_payload(session, payload, model=model)
-        return _apply_live_evidence_gate(session, outcome)
+        outcome = _outcome_from_payload(
+            session,
+            payload,
+            model=model,
+            evaluator_role=evaluator_role,
+            resolution_kind=resolution_kind,
+        )
+        outcome = _apply_live_evidence_gate(session, outcome)
+        if (
+            resolution_kind == "arbitration"
+            and outcome.status != MeetingOutcomeStatus.AGREED
+        ):
+            return replace(
+                outcome,
+                status=MeetingOutcomeStatus.NEEDS_USER_DECISION,
+                error_code="arbitration_unresolved",
+            )
+        return outcome
     except _OutcomeEvaluationError as exc:
-        return _failed_outcome(session.meeting_run_id, model=model, error_code=exc.code)
+        return _failed_outcome(
+            session.meeting_run_id,
+            model=model,
+            error_code=exc.code,
+            evaluator_role=evaluator_role,
+            resolution_kind=resolution_kind,
+        )
     except Exception:
         return _failed_outcome(
             session.meeting_run_id,
             model=model,
             error_code="outcome_provider_error",
+            evaluator_role=evaluator_role,
+            resolution_kind=resolution_kind,
         )
 
 
@@ -124,7 +158,13 @@ def _run_outcome_provider(
     return content
 
 
-def _build_outcome_prompt(session: MultiBotSession) -> str:
+def _build_outcome_prompt(
+    session: MultiBotSession,
+    *,
+    evaluator_role: str,
+    resolution_kind: str,
+    previous_outcome: MeetingOutcome | None,
+) -> str:
     transcript_lines = []
     for round_data in session.rounds:
         for message in round_data.messages:
@@ -133,14 +173,27 @@ def _build_outcome_prompt(session: MultiBotSession) -> str:
                 f"[{evidence_ref}] status={message.generation_status} {message.content}"
             )
     transcript = "\n".join(transcript_lines)
+    role_instruction = (
+        "당신은 반복된 의견 충돌을 판정하는 대표(CEO) 중재자입니다."
+        if resolution_kind == "arbitration"
+        else "당신은 회의 결과를 검증하는 품질관리 책임자입니다."
+    )
+    previous = ""
+    if previous_outcome is not None:
+        previous = (
+            "\n직전 미합의 항목: " + "; ".join(previous_outcome.disagreements) + "\n"
+        )
     return (
-        "당신은 회의 결과를 검증하는 품질관리 책임자입니다.\n"
+        f"{role_instruction}\n"
+        f"평가 역할: {evaluator_role}\n"
         "아래 회의록만 근거로 결과를 JSON 객체 하나로 반환하세요.\n"
         "status는 agreed, partial_agreement, blocked, needs_user_decision 중 하나입니다.\n"
-        "필수 키: status, summary, agreements, disagreements, action_items, "
+        "필수 키: status, summary, agreements, disagreements, unresolved_roles, action_items, "
         "evidence_refs, validator_notes.\n"
+        "unresolved_roles에는 남은 이견을 직접 해결해야 하는 회의 참여자 역할만 넣으세요.\n"
         "evidence_refs에는 제공된 round:<번호>:<역할> 식별자만 사용하세요.\n"
         "근거가 부족하면 needs_user_decision을 선택하세요.\n\n"
+        f"{previous}"
         f"{transcript}"
     )
 
@@ -171,6 +224,8 @@ def _outcome_from_payload(
     payload: Mapping[str, object],
     *,
     model: str,
+    evaluator_role: str,
+    resolution_kind: str,
 ) -> MeetingOutcome:
     status_text = str(payload.get("status", ""))
     try:
@@ -188,6 +243,10 @@ def _outcome_from_payload(
         raise _OutcomeEvaluationError("missing_outcome_evidence")
     if any(reference not in valid_refs for reference in evidence_refs):
         raise _OutcomeEvaluationError("invalid_outcome_evidence")
+    unresolved_roles = _string_tuple(payload.get("unresolved_roles"))
+    participant_set = set(session.participants)
+    if any(role not in participant_set for role in unresolved_roles):
+        raise _OutcomeEvaluationError("invalid_outcome_role")
 
     return MeetingOutcome(
         meeting_run_id=session.meeting_run_id,
@@ -195,9 +254,12 @@ def _outcome_from_payload(
         summary=str(payload.get("summary", "")).strip(),
         agreements=_string_tuple(payload.get("agreements")),
         disagreements=_string_tuple(payload.get("disagreements")),
+        unresolved_roles=unresolved_roles,
         action_items=_string_tuple(payload.get("action_items")),
         evidence_refs=evidence_refs,
         validator_notes=_string_tuple(payload.get("validator_notes")),
+        evaluator_role=evaluator_role,
+        resolution_kind=resolution_kind,
         generation_status="live",
         model=model,
         created_at=datetime.now(UTC).isoformat(),
@@ -218,7 +280,9 @@ def _apply_live_evidence_gate(
             }
         )
     live_in_every_round = (
-        set.intersection(*live_roles_by_round) if live_roles_by_round else set()
+        set.intersection(*live_roles_by_round[:2])
+        if len(live_roles_by_round) >= 2
+        else set()
     )
     if outcome.status == MeetingOutcomeStatus.AGREED and not _VISIBLE_ROLES.issubset(
         live_in_every_round
@@ -228,8 +292,13 @@ def _apply_live_evidence_gate(
             model=outcome.model,
             error_code="insufficient_live_evidence",
             summary=outcome.summary,
+            evaluator_role=outcome.evaluator_role,
+            resolution_kind=outcome.resolution_kind,
         )
-    if outcome.status == MeetingOutcomeStatus.PARTIAL_AGREEMENT and (
+    if outcome.status in {
+        MeetingOutcomeStatus.PARTIAL_AGREEMENT,
+        MeetingOutcomeStatus.BLOCKED,
+    } and (
         len(live_in_every_round & _VISIBLE_ROLES) < 4
         or "validation_audit" not in live_in_every_round
     ):
@@ -238,7 +307,44 @@ def _apply_live_evidence_gate(
             model=outcome.model,
             error_code="insufficient_live_evidence",
             summary=outcome.summary,
+            evaluator_role=outcome.evaluator_role,
+            resolution_kind=outcome.resolution_kind,
         )
+    for round_data in session.rounds[2:]:
+        if not round_data.messages or any(
+            message.generation_status != "live" for message in round_data.messages
+        ):
+            return _failed_outcome(
+                session.meeting_run_id,
+                model=outcome.model,
+                error_code="insufficient_live_evidence",
+                summary=outcome.summary,
+                evaluator_role=outcome.evaluator_role,
+                resolution_kind=outcome.resolution_kind,
+            )
+        round_roles = {message.bot_role for message in round_data.messages}
+        if "validation_audit" not in round_roles:
+            return _failed_outcome(
+                session.meeting_run_id,
+                model=outcome.model,
+                error_code="missing_convergence_validator",
+                summary=outcome.summary,
+                evaluator_role=outcome.evaluator_role,
+                resolution_kind=outcome.resolution_kind,
+            )
+    if session.rounds and len(session.rounds) > 2:
+        latest_prefix = f"round:{session.rounds[-1].round_number}:"
+        if not any(
+            reference.startswith(latest_prefix) for reference in outcome.evidence_refs
+        ):
+            return _failed_outcome(
+                session.meeting_run_id,
+                model=outcome.model,
+                error_code="missing_latest_round_evidence",
+                summary=outcome.summary,
+                evaluator_role=outcome.evaluator_role,
+                resolution_kind=outcome.resolution_kind,
+            )
     return outcome
 
 
@@ -248,11 +354,15 @@ def _failed_outcome(
     model: str,
     error_code: str,
     summary: str = "회의 결과를 확정하지 못했습니다.",
+    evaluator_role: str = "validation_audit",
+    resolution_kind: str = "validation",
 ) -> MeetingOutcome:
     return MeetingOutcome(
         meeting_run_id=meeting_run_id,
         status=MeetingOutcomeStatus.NEEDS_USER_DECISION,
         summary=summary,
+        evaluator_role=evaluator_role,
+        resolution_kind=resolution_kind,
         generation_status="failed",
         model=model,
         error_code=error_code,
