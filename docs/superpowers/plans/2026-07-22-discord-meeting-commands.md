@@ -283,3 +283,325 @@ Verify blank `/meeting-start` rejection and outside-thread `/meeting-report` rej
 - [ ] **Step 7: Record final deployment evidence**
 
 Update the existing progress document with commit, plugin version, command count, profile count, and verification result; commit and push the evidence update.
+
+---
+
+## Trustworthy Meeting Hardening Extension
+
+Tasks 1-5 describe the command rollout already completed on 2026-07-22. The
+following tasks extend that implementation in the priority order defined by
+`docs/runtime-architecture-v2.md` section 4.3. Existing command names, bot
+tokens, role IDs, profile mappings, and manual `/archive` behavior remain
+unchanged.
+
+### Task 6: Persist Canonical Meeting Sessions and Outcomes
+
+**Files:**
+- Modify: `src/runtime_architecture_v2/multi_bot.py`
+- Modify: `src/runtime_architecture_v2/schemas.py`
+- Modify: `src/runtime_architecture_v2/store.py`
+- Modify: `tests/test_runtime_architecture_v2_phase14_multi_bot.py`
+- Modify: `tests/test_runtime_architecture_v2_store.py`
+
+**Interfaces:**
+- Produces: `MultiBotSession.from_dict(data) -> MultiBotSession`.
+- Produces: `MeetingOutcome` with status, evidence, agreements, disagreements,
+  actions, validator metadata, and backward-compatible serialization.
+- Produces: `MeetingRunStore.save_meeting_session`, `load_meeting_session`,
+  `save_meeting_outcome`, and `load_meeting_outcome`.
+
+- [ ] **Step 1: Write failing store round-trip tests**
+
+Create a two-round `MultiBotSession` and a `MeetingOutcome`, save them, reload
+them, and assert exact equality. Assert paths are:
+
+```python
+run_dir / "meeting_session.json"
+run_dir / "meeting_outcome.json"
+```
+
+Also load a legacy `BotMessage` dictionary without evidence fields and assert
+`generation_status == "replacement"`.
+
+- [ ] **Step 2: Run focused tests and confirm RED**
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_runtime_architecture_v2_store.py tests/test_runtime_architecture_v2_phase14_multi_bot.py -q
+```
+
+Expected: missing outcome type, session loader, and store methods.
+
+- [ ] **Step 3: Add backward-compatible message and outcome schemas**
+
+Extend `BotMessage` with defaulted `generation_status`, `provider`, `model`, and
+`error_code` fields. Add `MultiBotSession.from_dict`. Add a frozen
+`MeetingOutcome` schema with strict allowed statuses and `to_dict/from_dict`.
+
+- [ ] **Step 4: Add guarded store methods**
+
+Reuse `MeetingRunStore._atomic_write_json` and existing meeting ID validation.
+Reject a session or outcome whose `meeting_run_id` differs from the requested
+directory.
+
+- [ ] **Step 5: Run focused tests and commit**
+
+Expected: focused tests pass and `git diff --check` exits zero.
+
+```bash
+git add src/runtime_architecture_v2/multi_bot.py src/runtime_architecture_v2/schemas.py src/runtime_architecture_v2/store.py tests/test_runtime_architecture_v2_phase14_multi_bot.py tests/test_runtime_architecture_v2_store.py
+git commit -m "feat: persist canonical meeting evidence"
+```
+
+### Task 7: Record Generation Evidence and Persist Every Round
+
+**Files:**
+- Modify: `src/runtime_architecture_v2/multi_bot.py`
+- Modify: `tests/test_runtime_architecture_v2_phase14_multi_bot.py`
+
+**Interfaces:**
+- Produces: internal `BotGenerationResult(content, generation_status, provider,
+  model, error_code)`.
+- Extends: `run_meeting_phase(..., on_round_completed=None)`.
+
+- [ ] **Step 1: Write failing generation-evidence tests**
+
+Use an injected runner that succeeds for one role and fails for another. Assert
+successful messages are `live`, deterministic text is `replacement`, failures
+carry a sanitized category, and no raw exception text is serialized.
+
+- [ ] **Step 2: Write a failing per-round persistence test**
+
+Inject a callback and assert it receives a one-round session before round two,
+then a two-round session. In the pilot integration test, reload
+`meeting_session.json` and assert twelve ordered visible messages for six roles.
+
+- [ ] **Step 3: Run the new tests and confirm RED**
+
+Expected: content generation returns plain strings and no session file exists.
+
+- [ ] **Step 4: Implement structured generation and callback persistence**
+
+Convert provider results to `BotGenerationResult`. Never label deterministic
+text as live. Call `on_round_completed` immediately after each immutable session
+snapshot is built. The pilot passes `MeetingRunStore.save_meeting_session`.
+
+- [ ] **Step 5: Run focused tests and commit**
+
+```bash
+git add src/runtime_architecture_v2/multi_bot.py tests/test_runtime_architecture_v2_phase14_multi_bot.py
+git commit -m "feat: record durable meeting transcript evidence"
+```
+
+### Task 8: Replace Participant-Count Consensus with Structured Validation
+
+**Files:**
+- Create: `src/runtime_architecture_v2/meeting_outcome.py`
+- Modify: `src/runtime_architecture_v2/multi_bot.py`
+- Create: `tests/test_runtime_architecture_v2_meeting_outcome.py`
+- Modify: `tests/test_runtime_architecture_v2_phase14_multi_bot.py`
+
+**Interfaces:**
+- Produces: `evaluate_meeting_outcome(session, *, command_runner, workdir) -> MeetingOutcome`.
+- Consumes: persisted `MultiBotSession` and the `validation_audit` model policy.
+
+- [ ] **Step 1: Write failing outcome parser tests**
+
+Cover `agreed`, `partial_agreement`, `blocked`, malformed JSON, unknown status,
+missing evidence, and provider failure. Assert malformed or failed synthesis
+returns `needs_user_decision` with no fabricated agreements or actions.
+
+- [ ] **Step 2: Write failing response-coverage tests**
+
+Assert `agreed` requires twelve live statements. Assert `partial_agreement`
+requires at least four live roles in both rounds including `validation_audit`.
+Lower coverage must override provider JSON to `needs_user_decision`.
+
+- [ ] **Step 3: Run outcome tests and confirm RED**
+
+Expected: module import failure.
+
+- [ ] **Step 4: Implement strict structured evaluation**
+
+Build one transcript prompt, request JSON from the validation model, validate
+all evidence references against stored `round:<number>:<role>` identifiers, and
+apply response-coverage gates after parsing. Sanitize all error codes.
+
+- [ ] **Step 5: Integrate outcome persistence**
+
+Run evaluation only after the two-round session is stored. Save
+`meeting_outcome.json`, set compatibility fields `consensus_reached` and
+`escalation_required` from the outcome status, and surface degraded outcomes in
+the Gateway summary.
+
+- [ ] **Step 6: Run focused tests and commit**
+
+```bash
+git add src/runtime_architecture_v2/meeting_outcome.py src/runtime_architecture_v2/multi_bot.py tests/test_runtime_architecture_v2_meeting_outcome.py tests/test_runtime_architecture_v2_phase14_multi_bot.py
+git commit -m "feat: validate meeting outcomes from transcript evidence"
+```
+
+### Task 9: Generate Reports from Canonical Meeting Evidence
+
+**Files:**
+- Modify: `src/runtime_architecture_v2/on_demand_exports.py`
+- Modify: `src/runtime_architecture_v2/meeting_commands.py`
+- Modify: `tests/test_runtime_architecture_v2_on_demand_exports.py`
+- Modify: `tests/test_runtime_architecture_v2_meeting_commands.py`
+
+**Interfaces:**
+- Changes: all export types load canonical session and outcome artifacts.
+- Produces: `reports/<export_type>.md` for every successful export.
+
+- [ ] **Step 1: Write failing evidence-based report tests**
+
+Persist unique phrases in round messages and structured action items in the
+outcome. Assert summary, agreement, action, and final reports contain those
+phrases and do not contain the old generic action text. Assert legacy meetings
+display an explicit reduced-evidence notice.
+
+- [ ] **Step 2: Write a failing long-report delivery test**
+
+Assert the compact Discord response ends at a complete section boundary,
+identifies the `MeetingRun`, and leaves the complete Markdown in
+`reports/final_report.md` instead of adding `...` after 1,900 characters.
+
+- [ ] **Step 3: Run report tests and confirm RED**
+
+Expected: empty-session reconstruction, generic actions, and character slicing
+violate the assertions.
+
+- [ ] **Step 4: Rebuild exports from stored artifacts**
+
+Remove `_reconstruct_session`. Load the canonical session and outcome, render
+evidence citations by role and round, write reports atomically, and use only
+verifiable worker artifacts for disclosed legacy fallback.
+
+- [ ] **Step 5: Replace character slicing with compact rendering**
+
+Return a bounded summary containing outcome status, summary, disagreements,
+next actions, and full artifact location. Never cut a Markdown section or
+fabricate omitted content.
+
+- [ ] **Step 6: Run focused tests and commit**
+
+```bash
+git add src/runtime_architecture_v2/on_demand_exports.py src/runtime_architecture_v2/meeting_commands.py tests/test_runtime_architecture_v2_on_demand_exports.py tests/test_runtime_architecture_v2_meeting_commands.py
+git commit -m "fix: ground meeting reports in canonical evidence"
+```
+
+### Task 10: Preserve Discord Provenance, Routing, and Idempotency
+
+**Files:**
+- Modify: `src/runtime_architecture_v2/gateway_bridge.py`
+- Modify: `src/runtime_architecture_v2/multi_bot.py`
+- Modify: `src/runtime_architecture_v2/meeting_commands.py`
+- Modify: `src/runtime_architecture_v2/hermes_command_context.py`
+- Modify: `src/runtime_architecture_v2/store.py`
+- Modify: `hermes_plugins/ai-agent-commands/__init__.py`
+- Modify: `tests/test_runtime_smoke_packet.py`
+- Modify: `tests/test_runtime_architecture_v2_meeting_commands.py`
+
+**Interfaces:**
+- Extends: `GatewayMeetingTrigger` with `invocation_id`.
+- Extends: the pilot entry point with real trigger provenance.
+- Produces: store lookup and reservation by invocation or 90-second fallback key.
+
+- [ ] **Step 1: Write failing provenance tests**
+
+Start through the real Gateway boundary and assert the stored `MeetingRun`
+contains the real user, guild, parent channel, thread, priority, platform, and
+invocation values rather than `phase14-*` fixtures.
+
+- [ ] **Step 2: Write failing routing tests**
+
+Assert new starts outside the CEO parent channel fail before provider work.
+Assert an already-linked meeting thread resolves its stored parent channel.
+Assert an unlinked thread fails closed instead of treating the thread as its own
+parent.
+
+- [ ] **Step 3: Write failing duplicate-delivery tests**
+
+Invoke the same interaction twice and assert only one MeetingRun, one thread
+creation, and one provider sequence. Cover the 90-second fallback key when no
+interaction ID is available.
+
+- [ ] **Step 4: Run the new tests and confirm RED**
+
+Expected: fixture provenance, parent mismatch, and duplicate work.
+
+- [ ] **Step 5: Implement provenance and routing corrections**
+
+Pass the trigger fields into the pilot request. Resolve linked threads through
+`MeetingRunStore`; otherwise require the verified CEO parent channel. Keep
+profile tokens and channel IDs unchanged.
+
+- [ ] **Step 6: Implement idempotent reservation**
+
+Persist the invocation key before provider execution. A repeated delivery
+returns the stored MeetingRun result. Never use token values or raw command text
+as key material.
+
+- [ ] **Step 7: Run focused tests and commit**
+
+```bash
+git add src/runtime_architecture_v2/gateway_bridge.py src/runtime_architecture_v2/multi_bot.py src/runtime_architecture_v2/meeting_commands.py src/runtime_architecture_v2/hermes_command_context.py src/runtime_architecture_v2/store.py hermes_plugins/ai-agent-commands/__init__.py tests/test_runtime_smoke_packet.py tests/test_runtime_architecture_v2_meeting_commands.py
+git commit -m "fix: preserve meeting origin and prevent duplicates"
+```
+
+### Task 11: Remove Duplicate Calls and Complete Verification
+
+**Files:**
+- Modify: `src/runtime_architecture_v2/multi_bot.py`
+- Modify: `tests/test_runtime_architecture_v2_phase14_multi_bot.py`
+- Modify: `docs/operations/discord-save-slash-command.md`
+- Modify: `.superpowers/sdd/progress.md`
+
+**Interfaces:**
+- Keeps: twelve visible-role calls for two six-role rounds.
+- Keeps: selected internal specialist calls.
+- Adds: one outcome evaluation and a maximum of three concurrent calls per round.
+
+- [ ] **Step 1: Write a failing exact-call-count test**
+
+For six live roles and no specialists, assert exactly thirteen provider calls:
+twelve discussion calls plus one outcome evaluation. Assert visible-role worker
+artifacts contain their stored final statements without another provider call.
+
+- [ ] **Step 2: Write a failing bounded-concurrency test**
+
+Instrument the runner and assert peak simultaneous calls is at most three,
+round-two calls start only after every round-one call finishes, and outcome
+evaluation starts only after round two is persisted.
+
+- [ ] **Step 3: Run focused tests and confirm RED**
+
+Expected: eighteen sequential calls.
+
+- [ ] **Step 4: Reuse final statements and add bounded round execution**
+
+Create visible worker outputs from round-two messages. Dispatch only internal
+specialists through worker runners. Use a three-worker executor inside each
+round while preserving deterministic role order in the stored session and
+Discord projection.
+
+- [ ] **Step 5: Run all meeting and Runtime v2 tests**
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_runtime_architecture_v2_phase14_multi_bot.py tests/test_runtime_architecture_v2_meeting_outcome.py tests/test_runtime_architecture_v2_on_demand_exports.py tests/test_runtime_architecture_v2_meeting_commands.py tests/test_runtime_smoke_packet.py -q
+.\.venv\Scripts\python.exe -m pytest tests/test_runtime_architecture_v2_*.py -q
+.\.venv\Scripts\ruff.exe check src/runtime_architecture_v2 hermes_plugins/ai-agent-commands tests
+git diff --check
+```
+
+- [ ] **Step 6: Update existing operations and progress documents**
+
+Record the canonical artifact checks, outcome statuses, replacement disclosure,
+exact call-count expectation, and bounded supervised live smoke. Do not create a
+parallel runbook or rotate any Discord token.
+
+- [ ] **Step 7: Commit verification documentation**
+
+```bash
+git add src/runtime_architecture_v2/multi_bot.py tests/test_runtime_architecture_v2_phase14_multi_bot.py docs/operations/discord-save-slash-command.md .superpowers/sdd/progress.md
+git commit -m "perf: remove duplicate meeting worker calls"
+```
