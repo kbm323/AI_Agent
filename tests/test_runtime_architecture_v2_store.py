@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from src.runtime_architecture_v2.multi_bot import (
+    BotMessage,
+    MeetingRound,
+    MultiBotSession,
+)
 from src.runtime_architecture_v2.schemas import (
+    MeetingOutcome,
     MeetingRun,
     MeetingRunState,
     RecoveryCheckpoint,
@@ -47,6 +53,75 @@ def test_store_saves_meeting_run_with_expected_layout_and_deterministic_json(
     assert raw.endswith("\n")
     assert json.loads(raw) == run.to_dict()
     assert store.load_meeting_run("mr_001") == run
+
+
+def test_meeting_session_and_outcome_round_trip(tmp_path: Path):
+    store = MeetingRunStore(tmp_path)
+    store.save_meeting_run(_meeting_run())
+    message = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_001",
+        round=1,
+        msg_type="opinion",
+        content="콘텐츠 근거가 있는 의견",
+        generation_status="live",
+        provider="opencode-go",
+        model="qwen3.7-plus",
+    )
+    session = MultiBotSession(
+        meeting_run_id="mr_001",
+        participants=("content_lead",),
+        rounds=(
+            MeetingRound(round_number=1, phase="opinions", messages=(message,)),
+        ),
+        consensus_reached=False,
+        escalation_required=True,
+        schema_version=1,
+        created_at="2026-07-22T12:00:00+00:00",
+        updated_at="2026-07-22T12:01:00+00:00",
+    )
+    outcome = MeetingOutcome(
+        meeting_run_id="mr_001",
+        status="partial_agreement",
+        summary="콘텐츠 방향에는 합의했지만 일정은 보류했습니다.",
+        agreements=("콘텐츠 방향",),
+        disagreements=("출시 일정",),
+        action_items=("일정 근거를 보완한다",),
+        evidence_refs=("round:1:content_lead",),
+        validator_notes=("일정 검증 필요",),
+        generation_status="live",
+        model="glm-5.1",
+        created_at="2026-07-22T12:02:00+00:00",
+    )
+
+    session_path = store.save_meeting_session(session)
+    outcome_path = store.save_meeting_outcome(outcome)
+
+    run_dir = tmp_path / "runtime" / "meeting_runs" / "mr_001"
+    assert session_path == run_dir / "meeting_session.json"
+    assert outcome_path == run_dir / "meeting_outcome.json"
+    assert store.load_meeting_session("mr_001") == session
+    assert store.load_meeting_outcome("mr_001") == outcome
+
+
+def test_meeting_evidence_store_rejects_mismatched_run_id(tmp_path: Path):
+    store = MeetingRunStore(tmp_path)
+    session = MultiBotSession(
+        meeting_run_id="mr_other",
+        participants=("content_lead",),
+        rounds=(),
+        consensus_reached=False,
+        escalation_required=True,
+    )
+    outcome = MeetingOutcome(
+        meeting_run_id="mr_other",
+        status="needs_user_decision",
+    )
+
+    with pytest.raises(StoreError, match="meeting_run_id mismatch"):
+        store.save_meeting_session(session, meeting_run_id="mr_001")
+    with pytest.raises(StoreError, match="meeting_run_id mismatch"):
+        store.save_meeting_outcome(outcome, meeting_run_id="mr_001")
 
 
 def test_store_rejects_path_traversal_meeting_run_ids(tmp_path: Path):

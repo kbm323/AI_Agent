@@ -125,6 +125,10 @@ class BotMessage:
     content: str
     mentions: tuple[str, ...] = ()
     visible_on_discord: bool = True
+    generation_status: str = "replacement"
+    provider: str = ""
+    model: str = ""
+    error_code: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -135,6 +139,10 @@ class BotMessage:
             "content": self.content,
             "mentions": list(self.mentions),
             "visible_on_discord": self.visible_on_discord,
+            "generation_status": self.generation_status,
+            "provider": self.provider,
+            "model": self.model,
+            "error_code": self.error_code,
         }
 
     @classmethod
@@ -152,6 +160,10 @@ class BotMessage:
             content=str(data["content"]),
             mentions=mentions,
             visible_on_discord=bool(data.get("visible_on_discord", True)),
+            generation_status=str(data.get("generation_status", "replacement")),
+            provider=str(data.get("provider", "")),
+            model=str(data.get("model", "")),
+            error_code=str(data.get("error_code", "")),
         )
 
 
@@ -196,6 +208,9 @@ class MultiBotSession:
     escalation_required: bool
     consensus_summary: str = ""
     escalation_reason: str = ""
+    schema_version: int = 1
+    created_at: str = ""
+    updated_at: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -206,7 +221,41 @@ class MultiBotSession:
             "escalation_required": self.escalation_required,
             "consensus_summary": self.consensus_summary,
             "escalation_reason": self.escalation_reason,
+            "schema_version": self.schema_version,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> MultiBotSession:
+        raw_participants = data.get("participants") or []
+        participants = (
+            tuple(str(value) for value in raw_participants)
+            if isinstance(raw_participants, list)
+            else ()
+        )
+        raw_rounds = data.get("rounds") or []
+        rounds = (
+            tuple(
+                MeetingRound.from_dict(value)
+                for value in raw_rounds
+                if isinstance(value, dict)
+            )
+            if isinstance(raw_rounds, list)
+            else ()
+        )
+        return cls(
+            meeting_run_id=str(data["meeting_run_id"]),
+            participants=participants,
+            rounds=rounds,
+            consensus_reached=bool(data.get("consensus_reached", False)),
+            escalation_required=bool(data.get("escalation_required", False)),
+            consensus_summary=str(data.get("consensus_summary", "")),
+            escalation_reason=str(data.get("escalation_reason", "")),
+            schema_version=int(str(data.get("schema_version", 1))),
+            created_at=str(data.get("created_at", "")),
+            updated_at=str(data.get("updated_at", "")),
+        )
 
 
 @dataclass(frozen=True)

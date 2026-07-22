@@ -73,6 +73,50 @@ def test_bot_message_serialization_round_trips():
     assert restored.visible_on_discord == msg.visible_on_discord
 
 
+def test_legacy_bot_message_loads_with_unproven_generation_status():
+    restored = BotMessage.from_dict(
+        {
+            "bot_role": "content_lead",
+            "meeting_run_id": "mr_legacy",
+            "round": 1,
+            "msg_type": "opinion",
+            "content": "출처 필드가 없던 과거 발언",
+        }
+    )
+
+    assert restored.generation_status == "replacement"
+    assert restored.provider == ""
+    assert restored.model == ""
+    assert restored.error_code == ""
+
+
+def test_multi_bot_session_serialization_round_trips():
+    message = BotMessage(
+        bot_role="content_lead",
+        meeting_run_id="mr_session",
+        round=1,
+        msg_type="opinion",
+        content="저장할 발언",
+        generation_status="live",
+        provider="opencode-go",
+        model="qwen3.7-plus",
+    )
+    session = MultiBotSession(
+        meeting_run_id="mr_session",
+        participants=("content_lead",),
+        rounds=(
+            MeetingRound(round_number=1, phase="opinions", messages=(message,)),
+        ),
+        consensus_reached=False,
+        escalation_required=True,
+        schema_version=1,
+        created_at="2026-07-22T12:00:00+00:00",
+        updated_at="2026-07-22T12:01:00+00:00",
+    )
+
+    assert MultiBotSession.from_dict(session.to_dict()) == session
+
+
 def test_meeting_round_holds_multiple_bot_messages():
     msgs = tuple(
         BotMessage(

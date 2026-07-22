@@ -54,6 +54,13 @@ class ValidationVerdictValue(StrEnum):
     DEGRADED = "degraded"
 
 
+class MeetingOutcomeStatus(StrEnum):
+    AGREED = "agreed"
+    PARTIAL_AGREEMENT = "partial_agreement"
+    BLOCKED = "blocked"
+    NEEDS_USER_DECISION = "needs_user_decision"
+
+
 _VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}
 _RESEARCH_FORBIDDEN_TEAMS = {"research_lead", "research_intelligence_lead"}
 _TERMINAL_STATES = {
@@ -179,6 +186,77 @@ class MeetingRun:
             projection_event_ids=tuple(payload.get("projection_event_ids") or ()),
             checkpoint_ids=tuple(payload.get("checkpoint_ids") or ()),
             metadata=dict(payload.get("metadata") or {}),
+        )
+
+
+@dataclass(frozen=True)
+class MeetingOutcome:
+    """Durable, evidence-linked result of one multi-agent meeting."""
+
+    meeting_run_id: str
+    status: MeetingOutcomeStatus | str
+    summary: str = ""
+    agreements: tuple[str, ...] = ()
+    disagreements: tuple[str, ...] = ()
+    action_items: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    validator_notes: tuple[str, ...] = ()
+    generation_status: str = "failed"
+    model: str = ""
+    error_code: str = ""
+    created_at: str = ""
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        status = _enum_value(MeetingOutcomeStatus, self.status, "meeting outcome")
+        if self.generation_status not in {"live", "failed"}:
+            raise ValueError(
+                f"invalid meeting outcome generation status: {self.generation_status}"
+            )
+        if self.schema_version != 1:
+            raise ValueError(
+                f"unsupported meeting outcome schema version: {self.schema_version}"
+            )
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "agreements", _tuple(self.agreements))
+        object.__setattr__(self, "disagreements", _tuple(self.disagreements))
+        object.__setattr__(self, "action_items", _tuple(self.action_items))
+        object.__setattr__(self, "evidence_refs", _tuple(self.evidence_refs))
+        object.__setattr__(self, "validator_notes", _tuple(self.validator_notes))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "meeting_run_id": self.meeting_run_id,
+            "status": _enum_text(self.status),
+            "summary": self.summary,
+            "agreements": list(self.agreements),
+            "disagreements": list(self.disagreements),
+            "action_items": list(self.action_items),
+            "evidence_refs": list(self.evidence_refs),
+            "validator_notes": list(self.validator_notes),
+            "generation_status": self.generation_status,
+            "model": self.model,
+            "error_code": self.error_code,
+            "created_at": self.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> MeetingOutcome:
+        return cls(
+            schema_version=int(payload.get("schema_version", 1)),
+            meeting_run_id=str(payload["meeting_run_id"]),
+            status=str(payload["status"]),
+            summary=str(payload.get("summary", "")),
+            agreements=tuple(payload.get("agreements") or ()),
+            disagreements=tuple(payload.get("disagreements") or ()),
+            action_items=tuple(payload.get("action_items") or ()),
+            evidence_refs=tuple(payload.get("evidence_refs") or ()),
+            validator_notes=tuple(payload.get("validator_notes") or ()),
+            generation_status=str(payload.get("generation_status", "failed")),
+            model=str(payload.get("model", "")),
+            error_code=str(payload.get("error_code", "")),
+            created_at=str(payload.get("created_at", "")),
         )
 
 
@@ -449,6 +527,8 @@ class RecoveryCheckpoint:
 
 __all__ = [
     "DiscordProjectionEvent",
+    "MeetingOutcome",
+    "MeetingOutcomeStatus",
     "MeetingRun",
     "MeetingRunState",
     "RecoveryCheckpoint",

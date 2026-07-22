@@ -13,9 +13,12 @@ import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .schemas import MeetingRun, MeetingRunState, RecoveryCheckpoint
+from .schemas import MeetingOutcome, MeetingRun, MeetingRunState, RecoveryCheckpoint
+
+if TYPE_CHECKING:
+    from .multi_bot import MultiBotSession
 
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 _RUNTIME_LAYOUT_DIRS = (
@@ -78,6 +81,74 @@ class MeetingRunStore:
             raise StoreError(
                 code="corrupt_meeting_run",
                 message="corrupt data: meeting run reconstruction failed",
+                meeting_run_id=meeting_run_id,
+                path=str(path),
+            ) from exc
+
+    def save_meeting_session(
+        self,
+        session: MultiBotSession,
+        *,
+        meeting_run_id: str | None = None,
+    ) -> Path:
+        resolved_id = meeting_run_id or session.meeting_run_id
+        self._require_matching_run_id(resolved_id, session.meeting_run_id)
+        path = self._ensure_run_layout(resolved_id) / "meeting_session.json"
+        self._atomic_write_json(path, session.to_dict())
+        return path
+
+    def load_meeting_session(self, meeting_run_id: str) -> MultiBotSession:
+        from .multi_bot import MultiBotSession
+
+        path = self.meeting_run_dir(meeting_run_id) / "meeting_session.json"
+        if not path.exists():
+            raise StoreError(
+                code="missing_meeting_session",
+                message="meeting_session.json does not exist",
+                meeting_run_id=meeting_run_id,
+                path=str(path),
+            )
+        try:
+            session = MultiBotSession.from_dict(self._read_json(path))
+            self._require_matching_run_id(meeting_run_id, session.meeting_run_id)
+            return session
+        except Exception as exc:
+            raise StoreError(
+                code="corrupt_meeting_session",
+                message="corrupt data: meeting session reconstruction failed",
+                meeting_run_id=meeting_run_id,
+                path=str(path),
+            ) from exc
+
+    def save_meeting_outcome(
+        self,
+        outcome: MeetingOutcome,
+        *,
+        meeting_run_id: str | None = None,
+    ) -> Path:
+        resolved_id = meeting_run_id or outcome.meeting_run_id
+        self._require_matching_run_id(resolved_id, outcome.meeting_run_id)
+        path = self._ensure_run_layout(resolved_id) / "meeting_outcome.json"
+        self._atomic_write_json(path, outcome.to_dict())
+        return path
+
+    def load_meeting_outcome(self, meeting_run_id: str) -> MeetingOutcome:
+        path = self.meeting_run_dir(meeting_run_id) / "meeting_outcome.json"
+        if not path.exists():
+            raise StoreError(
+                code="missing_meeting_outcome",
+                message="meeting_outcome.json does not exist",
+                meeting_run_id=meeting_run_id,
+                path=str(path),
+            )
+        try:
+            outcome = MeetingOutcome.from_dict(self._read_json(path))
+            self._require_matching_run_id(meeting_run_id, outcome.meeting_run_id)
+            return outcome
+        except Exception as exc:
+            raise StoreError(
+                code="corrupt_meeting_outcome",
+                message="corrupt data: meeting outcome reconstruction failed",
                 meeting_run_id=meeting_run_id,
                 path=str(path),
             ) from exc
@@ -240,6 +311,16 @@ class MeetingRunStore:
             state=MeetingRunState.CREATED,
             note="no checkpoint found",
         )
+
+    def _require_matching_run_id(self, expected: str, actual: str) -> None:
+        self._validate_id(expected, "meeting_run_id")
+        self._validate_id(actual, "meeting_run_id")
+        if expected != actual:
+            raise StoreError(
+                code="meeting_run_id_mismatch",
+                message=f"meeting_run_id mismatch: expected {expected}, got {actual}",
+                meeting_run_id=expected,
+            )
 
     def _validate_id(self, value: str, label: str) -> None:
         if (
