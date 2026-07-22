@@ -24,3 +24,12 @@ Task 6: complete (commit fb3a1f4; Hermes command registration, plugin 0.2.0, arc
 Task 7: complete (commits 649ac69..fe0bf7b; reconciliation CLI, ARM-safe QMD/abx-dl runbook, systemd and rollout guards; live Ubuntu ARM64 deployment complete)
 Live deployment (2026-07-22): QMD 2.5.3 and abx-dl 1.11.235 installed; one `obsidian` collection indexes the Google Drive vault; the five-minute QMD reconciliation timer is active; plugin 0.2.0 was hash-verified and deployed to all seven Hermes profiles; Discord API verification reported 59 commands per bot with `/archive`, `/llmwiki-ingest`, `/llmwiki-find`, and `/llmwiki-note` present. Content-level smoke tests remain intentionally deferred to normal operation.
 Final local verification: 240 focused passed, 1 skipped; changed-file Ruff clean; range secret scan clean; Runtime v2 broad 752 passed, 1 skipped, with the same 2 unrelated Phase 14 live-Discord failures. Node syntax 158 files passed; full repository Ruff remains blocked by existing backup/legacy debt and mypy was unavailable in the offline local cache.
+
+# Discord Meeting Commands SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-discord-meeting-commands.md
+Baseline: 6229f55
+Task 1: complete (commit e3b559d; explicit command intent bypass, persisted Discord thread linkage, and profile-independent live projection tests; 68 focused tests passed)
+Task 2: complete (commit d82596a; transport-neutral meeting start/report service; 18 tests; Ruff clean)
+Task 3: complete (commit cd90e57; Hermes `/meeting-start` and `/meeting-report`, plugin 0.3.0; 49 combined tests; Ruff clean)
+Task 4: implementation complete (existing design, runbook, operational guards, and progress record updated; live deployment pending final regression and merge)

@@ -422,3 +422,18 @@ def test_runbook_defines_one_five_minute_reconcile_timer_and_rollout_gate():
     assistant = runbook.index("aicompanyassistant")
     remaining = runbook.index("remaining six profiles", assistant)
     assert assistant < remaining
+
+
+def test_runbook_defines_meeting_command_rollout_and_safe_smoke():
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+
+    assert "ai-agent-commands 0.3.0" in runbook
+    assert "/meeting-start" in runbook
+    assert "/meeting-report" in runbook
+    assert "discord_thread_id" in runbook
+    assert "blank `/meeting-start`" in runbook
+    assert "outside-thread `/meeting-report`" in runbook
+    assistant = runbook.index("aicompanyassistant")
+    meeting_smoke = runbook.index("blank `/meeting-start`", assistant)
+    remaining = runbook.index("remaining six profiles", meeting_smoke)
+    assert assistant < meeting_smoke < remaining

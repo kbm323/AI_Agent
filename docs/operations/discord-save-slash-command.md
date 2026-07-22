@@ -637,3 +637,36 @@ bash scripts/rollback_discord_save_profiles.sh finalize
 
 Rollback leaves the Obsidian vault, immutable raw records, and the local QMD
 cache intact. It must not delete user knowledge to remove the command surface.
+
+## Meeting command extension (`ai-agent-commands 0.3.0`)
+
+Version `0.3.0` adds `/meeting-start` and `/meeting-report` to the same reviewed
+plugin. `/meeting-start` calls the existing Runtime v2 Gateway bridge and
+persists the resolved Discord thread as `MeetingRun.metadata.discord_thread_id`.
+`/meeting-report` resolves only that persisted linkage and uses the existing
+on-demand export service. Neither command writes to Obsidian automatically;
+the user keeps using `/archive` when the thread should be retained.
+
+Apply the same source-hash, enable-without-tool-override, and assistant-first
+rules from this runbook. Before starting any provider-backed meeting, use the
+assistant profile for a bounded registration smoke:
+
+1. Confirm `/meeting-start` and `/meeting-report` appear in the native picker.
+2. Run blank `/meeting-start` and confirm that it requests a meeting topic
+   without creating a thread or MeetingRun.
+3. Run outside-thread `/meeting-report` and confirm that it requests a linked
+   meeting thread without creating a report.
+4. Confirm `/archive` and all three `/llmwiki-*` commands remain present.
+5. Confirm the installed `plugin.yaml` and `__init__.py` hashes match the
+   reviewed checkout and that the Gateway stays connected.
+
+Only after this assistant smoke passes, install the same `0.3.0` hashes and
+restart the remaining six profiles sequentially. After the first supervised
+content-level meeting, verify the created `meeting_run.json` contains the exact
+`discord_thread_id`, then run `/meeting-report 브리핑해줘` inside that thread.
+Keep the first provider-backed content smoke supervised; registration rollout
+must not create a live meeting by itself.
+
+Rollback restores the prior plugin revision and restarts the affected profiles.
+It does not delete MeetingRun artifacts, archived conversations, the Obsidian
+vault, or the QMD index.

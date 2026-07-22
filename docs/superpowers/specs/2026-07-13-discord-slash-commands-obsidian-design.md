@@ -2,7 +2,7 @@
 
 Status: APPROVED CANONICAL DESIGN
 Created: 2026-07-13 KST
-Last updated: 2026-07-20 KST
+Last updated: 2026-07-22 KST
 Canonical architecture: `docs/runtime-architecture-v2.md`
 
 ## 1. Decision
@@ -105,6 +105,11 @@ emphasis without changing meeting evidence. It fails safely outside a linked
 meeting thread. Meeting completion and report generation never write to
 Obsidian automatically; the user invokes `/archive` when the discussion is
 worth retaining.
+
+Implementation status (2026-07-22): the transport-neutral Runtime v2 service,
+Hermes command adapters, explicit-command intent bypass, and persisted
+`discord_thread_id` linkage are implemented as plugin version `0.3.0`. Live
+registration follows the existing assistant-first seven-profile rollout gate.
 
 ### 3.3 LLM Wiki commands
 
