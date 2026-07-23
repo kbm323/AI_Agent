@@ -348,6 +348,7 @@ the following top-level Discord commands with natural-language tails:
 /llmwiki-find <검색 요청>
 /llmwiki-note <메모>
 /archive
+/kakao-collect
 ```
 
 `/meeting-start` is the explicit meeting entry point. It reuses the Runtime v2
@@ -363,6 +364,16 @@ explicit slash command exists.
 The plugin is a thin transport adapter. Meeting, LLM Wiki, and archive behavior
 belongs to transport-neutral Runtime v2 services rather than the Discord
 registration module.
+
+`/kakao-collect` is a Hermes skill command rather than a direct plugin command.
+The skill calls the plugin's read-only room-list tool, uses Hermes `clarify`
+buttons to select one of at most 10 recent server-allowlisted rooms, and then
+calls the read-only collection tool. Runtime v2 stores immutable records under
+`raw/chat-logs/kakaotalk/<chat_id>/` and advances the room cursor only after
+the complete batch is persisted. A room without a cursor is initialized at the
+current log position and does not import older history. Iris is reachable only
+through loopback `/query`; the plugin and skill expose no send, reply, edit,
+delete, or reaction operation.
 
 ## 4.3 Trustworthy Multi-Agent Meeting Baseline
 

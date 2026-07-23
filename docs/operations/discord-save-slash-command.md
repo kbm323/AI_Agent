@@ -713,3 +713,24 @@ must not create a live meeting by itself.
 Rollback restores the prior plugin revision and restarts the affected profiles.
 It does not delete MeetingRun artifacts, archived conversations, the Obsidian
 vault, or the QMD index.
+
+## KakaoTalk read-only extension (`ai-agent-commands 0.4.0`)
+
+Version `0.4.0` adds two internal tools and the `kakao-collect` Hermes skill.
+The skill appears as `/kakao-collect` in Discord, lists at most 10 recent rooms
+from the JSON object in `KAKAO_ALLOWED_ROOMS`, and uses Hermes `clarify`
+buttons for selection. Keys are numeric KakaoTalk chat IDs and values are safe
+display names. An empty, malformed, or unmatched allowlist fails closed.
+
+The extension calls only Iris `http://127.0.0.1:3000/query`. It contains no
+KakaoTalk send or reply tool. Raw messages are written to
+`raw/chat-logs/kakaotalk/<chat_id>/`; cursors are written to
+`runtime/kakaotalk/cursors/` only after persistence. On the first request for a
+room, `initial_baseline=current` records the current cursor without importing
+old history.
+
+Deploy the plugin and `hermes_skills/kakao-collect/SKILL.md` from the same
+reviewed commit. Restart profiles sequentially, confirm the native command is
+registered, and verify tool inventory contains only
+`list_recent_kakaotalk_rooms` and `collect_kakaotalk_room_readonly` for Kakao.
+Do not expose Iris port 3000 or Android ADB port 5555 beyond loopback.

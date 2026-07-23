@@ -25,6 +25,8 @@ _MEETING_REPORT_DESCRIPTION = "Generate an on-demand report for this meeting."
 _LLMWIKI_INGEST_DESCRIPTION = "Retrieve one URL and save it to the Obsidian LLM Wiki."
 _LLMWIKI_FIND_DESCRIPTION = "Search the complete Obsidian vault with QMD."
 _LLMWIKI_NOTE_DESCRIPTION = "Save a free-form note to the Obsidian LLM Wiki."
+_KAKAO_LIST_TOOL = "list_recent_kakaotalk_rooms"
+_KAKAO_COLLECT_TOOL = "collect_kakaotalk_room_readonly"
 _TOOL_SCHEMA = {
     "name": _TOOL_NAME,
     "description": _TOOL_DESCRIPTION,
@@ -32,6 +34,32 @@ _TOOL_SCHEMA = {
         "type": "object",
         "properties": {},
         "required": [],
+        "additionalProperties": False,
+    },
+}
+_KAKAO_LIST_SCHEMA = {
+    "name": _KAKAO_LIST_TOOL,
+    "description": "List up to 10 recent allowlisted KakaoTalk rooms.",
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": False,
+    },
+}
+_KAKAO_COLLECT_SCHEMA = {
+    "name": _KAKAO_COLLECT_TOOL,
+    "description": "Read unseen messages from one allowlisted KakaoTalk room.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "chat_id": {"type": "string", "pattern": "^[0-9]+$"},
+            "initial_baseline": {
+                "type": "string",
+                "enum": ["current"],
+            },
+        },
+        "required": ["chat_id"],
         "additionalProperties": False,
     },
 }
@@ -195,15 +223,87 @@ def _capture_gateway_boundary(**kwargs: Any) -> None:
             "source_kind": source_kind,
             "chat_id": str(getattr(source, "chat_id", "") or ""),
             "guild_id": str(getattr(source, "guild_id", "") or ""),
-            "parent_channel_id": str(
-                getattr(source, "parent_channel_id", "") or ""
-            ),
+            "parent_channel_id": str(getattr(source, "parent_channel_id", "") or ""),
             "invocation_id": exact_invocation_id,
         }
     )
 
 
 def register(ctx: Any) -> None:
+    def kakao_service():
+        paths = _runtime_paths()
+        if paths is None:
+            raise RuntimeError("KakaoTalk collection is not configured")
+        root, vault = paths
+        allowlist_raw = os.environ.get("KAKAO_ALLOWED_ROOMS", "")
+        allowlist = json.loads(allowlist_raw)
+        if not isinstance(allowlist, dict) or not allowlist:
+            raise RuntimeError("KakaoTalk allowlist is not configured")
+        normalized = {
+            str(chat_id): str(name).strip()
+            for chat_id, name in allowlist.items()
+            if str(chat_id).isdecimal() and str(name).strip()
+        }
+        if len(normalized) != len(allowlist):
+            raise RuntimeError("KakaoTalk allowlist is invalid")
+
+        from src.runtime_architecture_v2.kakaotalk_readonly import (
+            CursorStore,
+            IrisHttpTransport,
+            IrisReadOnlyClient,
+            KakaoCollectionService,
+            KakaoObsidianRawStore,
+        )
+
+        return KakaoCollectionService(
+            client=IrisReadOnlyClient(IrisHttpTransport("http://127.0.0.1:3000")),
+            raw_store=KakaoObsidianRawStore(vault),
+            cursor_store=CursorStore(root / "runtime" / "kakaotalk" / "cursors"),
+            allowlist=normalized,
+        )
+
+    async def handle_kakao_list(args: object, **_dispatch_context: Any) -> str:
+        if not isinstance(args, dict) or args:
+            return json.dumps({"ok": False, "message": "Invalid request."})
+        try:
+            rooms = await asyncio.to_thread(kakao_service().recent_rooms)
+            return json.dumps({"ok": True, "rooms": rooms}, ensure_ascii=False)
+        except Exception:
+            return json.dumps(
+                {"ok": False, "message": "KakaoTalk rooms are unavailable."}
+            )
+
+    async def handle_kakao_collect(args: object, **_dispatch_context: Any) -> str:
+        if not isinstance(args, dict):
+            return json.dumps({"ok": False, "message": "Invalid request."})
+        chat_id = args.get("chat_id")
+        baseline = args.get("initial_baseline")
+        if (
+            not isinstance(chat_id, str)
+            or not chat_id.isdecimal()
+            or baseline not in {None, "current"}
+            or set(args) - {"chat_id", "initial_baseline"}
+        ):
+            return json.dumps({"ok": False, "message": "Invalid request."})
+        try:
+            result = await asyncio.to_thread(
+                kakao_service().collect,
+                chat_id,
+                initial_baseline=baseline,
+            )
+            return json.dumps(
+                {
+                    "ok": True,
+                    "room": result.chat_name,
+                    "collected_count": result.collected_count,
+                    "cursor": result.cursor,
+                    "initialized": result.initialized,
+                },
+                ensure_ascii=False,
+            )
+        except Exception:
+            return json.dumps({"ok": False, "message": "KakaoTalk collection failed."})
+
     async def execute_save() -> str:
         token = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
         if not token:
@@ -407,12 +507,9 @@ def register(ctx: Any) -> None:
                 context,
                 guild_id=boundary.get("guild_id") or context.guild_id,
                 parent_channel_id=(
-                    boundary.get("parent_channel_id")
-                    or context.parent_channel_id
+                    boundary.get("parent_channel_id") or context.parent_channel_id
                 ),
-                invocation_id=(
-                    boundary.get("invocation_id") or context.invocation_id
-                ),
+                invocation_id=(boundary.get("invocation_id") or context.invocation_id),
             )
             result = await asyncio.to_thread(
                 run_meeting_start,
@@ -480,6 +577,22 @@ def register(ctx: Any) -> None:
         handler=handle_save,
         is_async=True,
         description=_TOOL_DESCRIPTION,
+    )
+    ctx.register_tool(
+        name=_KAKAO_LIST_TOOL,
+        toolset=_TOOLSET,
+        schema=_KAKAO_LIST_SCHEMA,
+        handler=handle_kakao_list,
+        is_async=True,
+        description=_KAKAO_LIST_SCHEMA["description"],
+    )
+    ctx.register_tool(
+        name=_KAKAO_COLLECT_TOOL,
+        toolset=_TOOLSET,
+        schema=_KAKAO_COLLECT_SCHEMA,
+        handler=handle_kakao_collect,
+        is_async=True,
+        description=_KAKAO_COLLECT_SCHEMA["description"],
     )
     ctx.register_command(
         "archive",

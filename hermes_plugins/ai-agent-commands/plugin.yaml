@@ -1,6 +1,8 @@
 name: ai-agent-commands
-version: 0.3.0
-description: "Runtime Architecture v2 Discord commands for meetings and Obsidian knowledge capture."
+version: 0.4.0
+description: "Runtime Architecture v2 Discord commands and read-only knowledge capture."
 author: "kbm323"
 provides_tools:
   - save_discord_thread_to_obsidian
+  - list_recent_kakaotalk_rooms
+  - collect_kakaotalk_room_readonly

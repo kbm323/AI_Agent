@@ -14,6 +14,8 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = PROJECT_ROOT / "hermes_plugins" / "ai-agent-commands"
 TOOL_NAME = "save_discord_thread_to_obsidian"
+KAKAO_LIST_TOOL = "list_recent_kakaotalk_rooms"
+KAKAO_COLLECT_TOOL = "collect_kakaotalk_room_readonly"
 SAVE_FAILED = "대화를 저장하지 못했습니다. 잠시 후 /archive를 다시 시도해주세요."
 SAVE_IN_PROGRESS = "대화를 저장하고 있습니다."
 
@@ -124,12 +126,14 @@ def test_manifest_declares_tool_without_secret_or_provider_dependencies() -> Non
 
     assert manifest == (
         "name: ai-agent-commands\n"
-        "version: 0.3.0\n"
-        'description: "Runtime Architecture v2 Discord commands for meetings '
-        'and Obsidian knowledge capture."\n'
+        "version: 0.4.0\n"
+        'description: "Runtime Architecture v2 Discord commands and read-only '
+        'knowledge capture."\n'
         'author: "kbm323"\n'
         "provides_tools:\n"
         f"  - {TOOL_NAME}\n"
+        f"  - {KAKAO_LIST_TOOL}\n"
+        f"  - {KAKAO_COLLECT_TOOL}\n"
     )
     assert "requires_env" not in manifest
     assert "provider" not in manifest.lower()
@@ -165,7 +169,7 @@ def test_plugin_registers_all_runtime_v2_commands_with_async_tool() -> None:
             "llmwiki-note",
         )
     )
-    assert list(ctx.tools) == [TOOL_NAME]
+    assert list(ctx.tools) == [TOOL_NAME, KAKAO_LIST_TOOL, KAKAO_COLLECT_TOOL]
     assert tool["toolset"] == "ai_agent_commands"
     assert tool["is_async"] is True
     assert inspect.iscoroutinefunction(tool["handler"])
@@ -180,6 +184,24 @@ def test_plugin_registers_all_runtime_v2_commands_with_async_tool() -> None:
         },
     }
     assert tool["description"] == "Save the current Discord thread to Obsidian."
+    assert ctx.tools[KAKAO_LIST_TOOL]["schema"]["parameters"] == {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": False,
+    }
+    assert ctx.tools[KAKAO_COLLECT_TOOL]["schema"]["parameters"] == {
+        "type": "object",
+        "properties": {
+            "chat_id": {"type": "string", "pattern": "^[0-9]+$"},
+            "initial_baseline": {
+                "type": "string",
+                "enum": ["current"],
+            },
+        },
+        "required": ["chat_id"],
+        "additionalProperties": False,
+    }
     assert list(ctx.hooks) == ["pre_gateway_dispatch"]
 
 
