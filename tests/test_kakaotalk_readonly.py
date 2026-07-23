@@ -15,6 +15,7 @@ from src.runtime_architecture_v2.kakaotalk_readonly import (
     KakaoObsidianRawStore,
     ReadOnlyBoundaryError,
     RoomCandidate,
+    RoomSelectionStore,
     select_recent_allowlisted_rooms,
     validate_collection_request,
 )
@@ -254,7 +255,7 @@ def test_raw_store_rejects_non_numeric_identifiers(tmp_path) -> None:
         store.persist("42", [message])
 
 
-def test_collection_service_lists_only_recent_allowlisted_room_ids(tmp_path) -> None:
+def test_collection_service_lists_current_recent_named_rooms(tmp_path) -> None:
     client = type(
         "Client",
         (),
@@ -269,7 +270,6 @@ def test_collection_service_lists_only_recent_allowlisted_room_ids(tmp_path) -> 
         client=client,
         raw_store=KakaoObsidianRawStore(tmp_path / "vault"),
         cursor_store=CursorStore(tmp_path / "cursors"),
-        allowlist={"42": "approved"},
     )
 
     assert service.recent_rooms() == [
@@ -277,7 +277,12 @@ def test_collection_service_lists_only_recent_allowlisted_room_ids(tmp_path) -> 
             "chat_id": "42",
             "name": "approved",
             "has_cursor": False,
-        }
+        },
+        {
+            "chat_id": "99",
+            "name": "private",
+            "has_cursor": False,
+        },
     ]
 
 
@@ -297,10 +302,9 @@ def test_first_collection_can_initialize_at_current_cursor_without_saving(
         client=Client(),
         raw_store=KakaoObsidianRawStore(tmp_path / "vault"),
         cursor_store=cursors,
-        allowlist={"42": "approved"},
     )
 
-    result = service.collect("42", initial_baseline="current")
+    result = service.collect("42", "approved", initial_baseline="current")
 
     assert result == CollectionResult(
         chat_id="42",
@@ -331,25 +335,45 @@ def test_collection_resumes_after_durable_cursor_and_persists_raw(tmp_path) -> N
         client=Client(),
         raw_store=KakaoObsidianRawStore(tmp_path / "vault"),
         cursor_store=cursors,
-        allowlist={"42": "approved"},
     )
 
-    result = service.collect("42")
+    result = service.collect("42", "approved")
 
     assert result.collected_count == 1
     assert result.cursor == "101"
     assert (tmp_path / "vault/raw/chat-logs/kakaotalk/42/101.json").is_file()
 
 
-def test_collection_rejects_room_id_outside_allowlist_before_iris_access(
-    tmp_path,
-) -> None:
-    service = KakaoCollectionService(
-        client=object(),
-        raw_store=KakaoObsidianRawStore(tmp_path / "vault"),
-        cursor_store=CursorStore(tmp_path / "cursors"),
-        allowlist={"42": "approved"},
+def test_room_selection_token_expires_and_is_single_use(tmp_path) -> None:
+    now = [1000.0]
+    selections = RoomSelectionStore(
+        tmp_path / "selections",
+        ttl_seconds=60,
+        clock=lambda: now[0],
     )
+    issued = selections.issue(
+        [{"chat_id": "42", "name": "approved", "has_cursor": True}]
+    )
+    token = issued[0]["selection_token"]
 
-    with pytest.raises(ReadOnlyBoundaryError, match="allowlist"):
-        service.collect("99", initial_baseline="current")
+    assert selections.resolve(token) == {
+        "chat_id": "42",
+        "name": "approved",
+        "has_cursor": True,
+    }
+    with pytest.raises(ReadOnlyBoundaryError, match="invalid or expired"):
+        selections.resolve(token)
+
+    expired = selections.issue(
+        [{"chat_id": "43", "name": "later", "has_cursor": False}]
+    )[0]["selection_token"]
+    now[0] = 1061.0
+    with pytest.raises(ReadOnlyBoundaryError, match="invalid or expired"):
+        selections.resolve(expired)
+
+
+def test_room_selection_rejects_malformed_token_without_path_escape(tmp_path) -> None:
+    selections = RoomSelectionStore(tmp_path / "selections")
+
+    with pytest.raises(ReadOnlyBoundaryError, match="invalid or expired"):
+        selections.resolve("../42")

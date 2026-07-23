@@ -53,13 +53,16 @@ _KAKAO_COLLECT_SCHEMA = {
     "parameters": {
         "type": "object",
         "properties": {
-            "chat_id": {"type": "string", "pattern": "^[0-9]+$"},
+            "selection_token": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]+$",
+            },
             "initial_baseline": {
                 "type": "string",
                 "enum": ["current"],
             },
         },
-        "required": ["chat_id"],
+        "required": ["selection_token"],
         "additionalProperties": False,
     },
 }
@@ -235,18 +238,6 @@ def register(ctx: Any) -> None:
         if paths is None:
             raise RuntimeError("KakaoTalk collection is not configured")
         root, vault = paths
-        allowlist_raw = os.environ.get("KAKAO_ALLOWED_ROOMS", "")
-        allowlist = json.loads(allowlist_raw)
-        if not isinstance(allowlist, dict) or not allowlist:
-            raise RuntimeError("KakaoTalk allowlist is not configured")
-        normalized = {
-            str(chat_id): str(name).strip()
-            for chat_id, name in allowlist.items()
-            if str(chat_id).isdecimal() and str(name).strip()
-        }
-        if len(normalized) != len(allowlist):
-            raise RuntimeError("KakaoTalk allowlist is invalid")
-
         from src.runtime_architecture_v2.kakaotalk_readonly import (
             CursorStore,
             IrisHttpTransport,
@@ -259,14 +250,24 @@ def register(ctx: Any) -> None:
             client=IrisReadOnlyClient(IrisHttpTransport("http://127.0.0.1:3000")),
             raw_store=KakaoObsidianRawStore(vault),
             cursor_store=CursorStore(root / "runtime" / "kakaotalk" / "cursors"),
-            allowlist=normalized,
         )
+
+    def kakao_selection_store():
+        root = _runtime_root()
+        if root is None:
+            raise RuntimeError("KakaoTalk collection is not configured")
+        from src.runtime_architecture_v2.kakaotalk_readonly import (
+            RoomSelectionStore,
+        )
+
+        return RoomSelectionStore(root / "runtime" / "kakaotalk" / "selections")
 
     async def handle_kakao_list(args: object, **_dispatch_context: Any) -> str:
         if not isinstance(args, dict) or args:
             return json.dumps({"ok": False, "message": "Invalid request."})
         try:
             rooms = await asyncio.to_thread(kakao_service().recent_rooms)
+            rooms = await asyncio.to_thread(kakao_selection_store().issue, rooms)
             return json.dumps({"ok": True, "rooms": rooms}, ensure_ascii=False)
         except Exception:
             return json.dumps(
@@ -276,19 +277,23 @@ def register(ctx: Any) -> None:
     async def handle_kakao_collect(args: object, **_dispatch_context: Any) -> str:
         if not isinstance(args, dict):
             return json.dumps({"ok": False, "message": "Invalid request."})
-        chat_id = args.get("chat_id")
+        selection_token = args.get("selection_token")
         baseline = args.get("initial_baseline")
         if (
-            not isinstance(chat_id, str)
-            or not chat_id.isdecimal()
+            not isinstance(selection_token, str)
             or baseline not in {None, "current"}
-            or set(args) - {"chat_id", "initial_baseline"}
+            or set(args) - {"selection_token", "initial_baseline"}
         ):
             return json.dumps({"ok": False, "message": "Invalid request."})
         try:
+            selected = await asyncio.to_thread(
+                kakao_selection_store().resolve,
+                selection_token,
+            )
             result = await asyncio.to_thread(
                 kakao_service().collect,
-                chat_id,
+                selected["chat_id"],
+                selected["name"],
                 initial_baseline=baseline,
             )
             return json.dumps(

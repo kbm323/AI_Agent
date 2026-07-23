@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
+import secrets
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -272,6 +275,67 @@ class CursorStore:
         return saved_ids
 
 
+class RoomSelectionStore:
+    """Persist short-lived, single-use room choices across Gateway workers."""
+
+    _TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+
+    def __init__(
+        self,
+        root: Path,
+        *,
+        ttl_seconds: int = 300,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
+        self._root = root
+        self._root.mkdir(parents=True, exist_ok=True)
+        self._ttl_seconds = ttl_seconds
+        self._clock = clock
+
+    def issue(self, rooms: list[dict[str, object]]) -> list[dict[str, object]]:
+        issued = []
+        for room in rooms[:10]:
+            token = secrets.token_urlsafe(24)
+            payload = {
+                "chat_id": room["chat_id"],
+                "name": room["name"],
+                "has_cursor": bool(room["has_cursor"]),
+                "expires_at": self._clock() + self._ttl_seconds,
+            }
+            path = self._root / f"{token}.json"
+            temporary = path.with_suffix(".json.tmp")
+            temporary.write_text(
+                json.dumps(payload, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            temporary.replace(path)
+            issued.append({**room, "selection_token": token})
+        return issued
+
+    def resolve(self, token: object) -> dict[str, object]:
+        if not isinstance(token, str) or not self._TOKEN_PATTERN.fullmatch(token):
+            raise ReadOnlyBoundaryError("selection is invalid or expired")
+        path = self._root / f"{token}.json"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError) as error:
+            raise ReadOnlyBoundaryError("selection is invalid or expired") from error
+        if (
+            not isinstance(payload, dict)
+            or float(payload.get("expires_at", 0)) < self._clock()
+            or not str(payload.get("chat_id", "")).isdecimal()
+            or not str(payload.get("name", "")).strip()
+        ):
+            path.unlink(missing_ok=True)
+            raise ReadOnlyBoundaryError("selection is invalid or expired")
+        path.unlink()
+        return {
+            "chat_id": str(payload["chat_id"]),
+            "name": str(payload["name"]),
+            "has_cursor": bool(payload.get("has_cursor")),
+        }
+
+
 class KakaoCollectionService:
     """Coordinate one explicit, allowlisted, read-only collection request."""
 
@@ -281,34 +345,31 @@ class KakaoCollectionService:
         client: Any,
         raw_store: KakaoObsidianRawStore,
         cursor_store: CursorStore,
-        allowlist: dict[str, str],
     ) -> None:
         self._client = client
         self._raw_store = raw_store
         self._cursor_store = cursor_store
-        self._allowlist = dict(allowlist)
 
     def recent_rooms(self) -> list[dict[str, object]]:
         candidates = self._client.recent_rooms(limit=10)
         return [
             {
                 "chat_id": room.chat_id,
-                "name": self._allowlist[room.chat_id],
+                "name": room.name,
                 "has_cursor": self._cursor_store.cursor(room.chat_id) is not None,
             }
             for room in candidates
-            if room.chat_id in self._allowlist
         ][:10]
 
     def collect(
         self,
         chat_id: str,
+        chat_name: str,
         *,
         initial_baseline: str | None = None,
     ) -> CollectionResult:
-        if chat_id not in self._allowlist:
-            raise ReadOnlyBoundaryError("chat room is outside the allowlist")
-        chat_name = self._allowlist[chat_id]
+        if not chat_id.isdecimal() or not chat_name.strip():
+            raise ReadOnlyBoundaryError("selected room is invalid")
         cursor = self._cursor_store.cursor(chat_id)
         if cursor is None:
             if initial_baseline != "current":

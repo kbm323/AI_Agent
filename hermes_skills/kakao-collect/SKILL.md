@@ -11,14 +11,15 @@ Follow this workflow exactly:
    arguments.
 2. If the result is not successful, return its message and stop.
 3. Present every returned room, up to 10, through the `clarify` tool as one
-   button choice. Display only the room name; retain its `chat_id` internally.
+   button choice. Display only the room name; retain its `selection_token`
+   internally.
 4. If the user cancels, the choice expires, or the selected room is not in the
    returned list, stop without calling another tool.
 5. If `has_cursor` is false, explain that the first run establishes the current
-   point and call `collect_kakaotalk_room_readonly` with the selected `chat_id`
-   and `initial_baseline` set to `current`.
+   point and call `collect_kakaotalk_room_readonly` with the selected
+   `selection_token` and `initial_baseline` set to `current`.
 6. Otherwise call `collect_kakaotalk_room_readonly` with only the selected
-   `chat_id`.
+   `selection_token`.
 7. Report only the room name, collected count, whether the baseline was
    initialized, and cursor. Never include message bodies.
 

@@ -14,3 +14,4 @@ def test_kakao_collect_skill_uses_buttons_and_read_only_tools() -> None:
     assert "`collect_kakaotalk_room_readonly`" in skill
     assert "Never call any KakaoTalk send or reply operation" in skill
     assert "initial_baseline" in skill
+    assert "selection_token" in skill

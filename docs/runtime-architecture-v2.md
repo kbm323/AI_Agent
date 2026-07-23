@@ -367,8 +367,10 @@ registration module.
 
 `/kakao-collect` is a Hermes skill command rather than a direct plugin command.
 The skill calls the plugin's read-only room-list tool, uses Hermes `clarify`
-buttons to select one of at most 10 recent server-allowlisted rooms, and then
-calls the read-only collection tool. Runtime v2 stores immutable records under
+buttons to select one of at most 10 rooms that are recent when the command is
+invoked, and then calls the read-only collection tool with a short-lived,
+single-use selection token. Rooms whose display name cannot be safely resolved
+are omitted. Runtime v2 stores immutable records under
 `raw/chat-logs/kakaotalk/<chat_id>/` and advances the room cursor only after
 the complete batch is persisted. A room without a cursor is initialized at the
 current log position and does not import older history. Iris is reachable only

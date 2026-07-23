@@ -2,24 +2,28 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Run a server-resident, read-only KakaoTalk collector on demand for an explicit chat allowlist, then route the requested messages to Hermes for Notion scheduling and Obsidian knowledge capture.
+**Goal:** Run a server-resident, read-only KakaoTalk collector on demand for a
+room explicitly selected from the current recent-10 list, then route the
+requested messages to Hermes for Notion scheduling and Obsidian capture.
 
 **Architecture:** Run KakaoTalk inside an ARM64-compatible Android container based on redroid only when collection is requested. Iris or the selected Android bridge reads the requested chat room, a small read-only command boundary filters allowed chat rooms and resumes from that room's durable collection cursor, and the bridge forwards only unseen sanitized message records to the existing Runtime v2 ingestion boundary. No background listener, persistent message stream, outbound KakaoTalk tool, reply endpoint, send capability, or automatic response is installed.
 
 **Discord Interaction:** Start collection from `/kakao-collect`, then present the
-10 most recently active rooms that are also configured in the server-side
-allowlist through Hermes's interactive Discord UI. Hermes plugin command
+10 most recently active rooms whose display names can be safely resolved
+through Hermes's interactive Discord UI. Hermes plugin command
 handlers return direct strings and do not expose the adapter-internal Select
 component used by `/model`, so use a Hermes skill command and the documented
 `clarify` button flow without forking Hermes core. The selected room and
-collection request must still pass the server-side allowlist and cursor checks;
-Discord UI selection is not an authorization boundary by itself.
+collection request must carry the short-lived, single-use selection token
+issued for that exact list; Discord display text is not an authorization
+boundary by itself.
 
 **Tech Stack:** Ubuntu 24.04 ARM64, Docker, redroid, Android KakaoTalk APK, Iris, Python Runtime v2, Hermes Gateway, Notion integration, existing Obsidian vault.
 
 ## Global Constraints
 
-- Only explicitly allowlisted KakaoTalk chat rooms may be collected.
+- Only a room selected from the current command's recent-room list may be
+  collected.
 - Collection happens only after an explicit user request; there is no real-time or background collection.
 - The first request for each room requires an explicit initial baseline; later requests resume after that room's last durable cursor.
 - Cursor advancement occurs only after raw persistence succeeds, preventing data loss on interrupted collection.
@@ -28,7 +32,8 @@ Discord UI selection is not an authorization boundary by itself.
 - Notion receives extracted schedules and tasks; Obsidian receives raw chat records and durable analysis.
 - Existing Runtime v2 architecture and existing documents remain canonical; do not create a parallel runtime.
 - Deployment must be reversible and must not change existing Discord bot tokens or commands.
-- The Kakao collection command must not expose free-form room names as the primary path; room selection is interactive and limited to the 10 most recently active allowlisted rooms.
+- The Kakao collection command must not accept free-form room identifiers;
+  selection is interactive and limited to the 10 rooms recent at invocation.
 - Discord interaction timeouts and abandoned selections must not start collection or advance a cursor.
 
 ---
@@ -51,14 +56,17 @@ Discord UI selection is not an authorization boundary by itself.
 
 - [ ] Add a typed collection request containing `chat_name`, an optional initial baseline, and a request ID; later requests use the stored room cursor.
 - [ ] Inspect Hermes Discord command/plugin interfaces and identify whether a custom Select menu can be created from a command/skill; document the verified API and version-specific limitation.
-- [ ] Implement the Discord flow as `/kakao-collect` followed by a Select menu containing exactly the 10 most recently active allowlisted rooms; use Hermes `clarify` buttons as the supported fallback. Do not paginate because the display set is fixed at 10.
-- [ ] Define and test the recent-room ordering key, tie-breaker, and behavior when fewer than 10 allowlisted rooms are available.
+- [ ] Implement `/kakao-collect` followed by `clarify` buttons containing up to
+  10 rooms recent at invocation. Do not paginate.
+- [ ] Define and test ordering and behavior when fewer than 10 named rooms exist.
 - [ ] Ensure expired, cancelled, or unauthorized interactions produce no collection request and no cursor mutation.
 - [ ] Add a typed inbound record containing `event_id`, `chat_name`, `sender`, `message`, `sent_at`, and source metadata.
-- [ ] Reject requests whose normalized chat name is not in the configured allowlist.
+- [ ] Reject missing, expired, malformed, or reused selection tokens.
 - [ ] Reject requests without an explicit room, first-run baseline, or cursor, outbound-shaped requests, and any request containing send/reply operation names.
 - [ ] Deduplicate records by stable event ID, with a deterministic fallback hash for records without an ID.
-- [ ] Write failing tests for allowlist rejection, missing baseline/cursor, cursor resume, cursor non-advancement on failure, duplicate suppression, malformed input, and explicit send/reply rejection.
+- [ ] Write failing tests for selection-token rejection, missing baseline/cursor,
+  cursor resume, cursor non-advancement, duplicate suppression, malformed input,
+  and explicit send/reply rejection.
 - [ ] Implement the minimal adapter and pass the focused tests.
 
 ### Task 3: Add Durable Read-Only Ingestion
@@ -69,7 +77,8 @@ Discord UI selection is not an authorization boundary by itself.
 
 - [ ] Persist accepted messages under the existing `raw/chat` convention without changing the canonical vault layout.
 - [ ] Preserve source event ID, room name, sender, timestamp, and ingestion status.
-- [ ] Store one durable cursor per allowlisted chat room and advance it only after the complete batch is persisted.
+- [ ] Store one durable cursor per selected chat room and advance it only after
+  the complete batch is persisted.
 - [ ] Make retries idempotent and prevent duplicate Notion or Obsidian writes.
 - [ ] Keep message content out of operational logs.
 
@@ -83,7 +92,7 @@ Discord UI selection is not an authorization boundary by itself.
 - [ ] Pin the tested redroid image and ARM64 KakaoTalk APK version after capability validation.
 - [ ] Run redroid with only the device and storage permissions required for an on-demand Android container.
 - [ ] Complete first-time KakaoTalk login through a temporary remote screen; never place credentials in scripts or environment files committed to Git.
-- [ ] Install Iris and verify a requested read using one allowlisted test room.
+- [ ] Install Iris and verify a requested read using one selected test room.
 - [ ] Do not expose or invoke Iris reply/send endpoints or keep a background event subscription.
 - [ ] Add status checks for container health, Android device availability, Iris health, and read-only request completion.
 
@@ -108,11 +117,11 @@ Discord UI selection is not an authorization boundary by itself.
 - Test: focused tests and controlled server smoke checks
 
 - [ ] Run the focused Python suite and Runtime v2 regression suite.
-- [ ] Request an initial read from the allowlisted room and verify the cursor is created.
+- [ ] Request an initial read from a selected room and verify the cursor.
 - [ ] Request collection again and verify only messages after the saved cursor are returned.
 - [ ] Force a persistence failure and verify the cursor does not advance.
 - [ ] Verify repeating the same request is idempotent and creates no duplicate raw records or Notion candidates.
-- [ ] Verify a non-allowlisted room is ignored.
+- [ ] Verify an arbitrary room ID without a valid selection token is rejected.
 - [ ] Verify no send/reply tool or endpoint is available.
 - [ ] Stop and start the redroid/Iris/bridge stack and verify a later explicit request works without background collection.
 - [ ] Record final evidence without message bodies, credentials, or tokens.

@@ -126,7 +126,7 @@ def test_manifest_declares_tool_without_secret_or_provider_dependencies() -> Non
 
     assert manifest == (
         "name: ai-agent-commands\n"
-        "version: 0.4.0\n"
+        "version: 0.4.1\n"
         'description: "Runtime Architecture v2 Discord commands and read-only '
         'knowledge capture."\n'
         'author: "kbm323"\n'
@@ -193,13 +193,16 @@ def test_plugin_registers_all_runtime_v2_commands_with_async_tool() -> None:
     assert ctx.tools[KAKAO_COLLECT_TOOL]["schema"]["parameters"] == {
         "type": "object",
         "properties": {
-            "chat_id": {"type": "string", "pattern": "^[0-9]+$"},
+            "selection_token": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]+$",
+            },
             "initial_baseline": {
                 "type": "string",
                 "enum": ["current"],
             },
         },
-        "required": ["chat_id"],
+        "required": ["selection_token"],
         "additionalProperties": False,
     }
     assert list(ctx.hooks) == ["pre_gateway_dispatch"]
